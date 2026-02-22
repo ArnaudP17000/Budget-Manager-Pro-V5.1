@@ -161,7 +161,7 @@ class BudgetV5Service:
         # Essai 1 : vue v_synthese_budget
         try:
             rows = self.db.fetch_all(f"""
-                SELECT *, statut AS statut_budget
+                SELECT *
                 FROM v_synthese_budget
                 {where_view}
                 ORDER BY exercice DESC, entite_code, nature

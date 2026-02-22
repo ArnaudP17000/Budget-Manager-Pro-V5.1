@@ -150,13 +150,7 @@ class ProjetView(QWidget):
         self.btn_rafraichir = QPushButton("🔄 Rafraîchir")
         self.btn_rafraichir.clicked.connect(self.load_projets)
         layout.addWidget(self.btn_rafraichir)
-
-        self.btn_fiche = QPushButton("🖨️ Fiche Word")
-        self.btn_fiche.setStyleSheet(
-            "background:#C00000;color:white;font-weight:bold;padding:5px 12px;border-radius:4px;")
-        self.btn_fiche.clicked.connect(self.exporter_fiche)
-        layout.addWidget(self.btn_fiche)
-
+        
         layout.addStretch()
         return layout
     
@@ -344,32 +338,6 @@ class ProjetView(QWidget):
             logger.error(f"Erreur édition projet: {e}", exc_info=True)
             QMessageBox.critical(self, "Erreur", f"Impossible de modifier le projet:\n{e}")
     
-    def exporter_fiche(self):
-        """Exporte la fiche Word du projet sélectionné."""
-        import os, sys
-        from pathlib import Path
-        try:
-            selected_row = self.table.currentRow()
-            if selected_row < 0:
-                from PyQt5.QtWidgets import QMessageBox
-                QMessageBox.warning(self, "Attention", "Sélectionnez un projet.")
-                return
-            projet_id = self.table.item(selected_row, 0).data(Qt.UserRole)
-            from app.services.fiche_projet_service import generer_fiche_depuis_id
-            out_dir = str(Path(__file__).parent.parent.parent)
-            path = generer_fiche_depuis_id(projet_id, out_dir)
-            if sys.platform == 'win32':
-                os.startfile(path)
-            else:
-                import subprocess
-                subprocess.Popen(['xdg-open', path])
-            from PyQt5.QtWidgets import QMessageBox
-            QMessageBox.information(self, "✅ Fiche générée", f"Fiche enregistrée :\n{path}")
-        except Exception as e:
-            logger.error(f"Erreur fiche: {e}", exc_info=True)
-            from PyQt5.QtWidgets import QMessageBox
-            QMessageBox.critical(self, "Erreur", f"Impossible de générer la fiche :\n{e}")
-
     def delete_projet(self):
         """Supprime le projet sélectionné."""
         try:

@@ -141,6 +141,18 @@ ALTER_SQL = [
     "ALTER TABLE bons_commande ADD COLUMN budget_impute TEXT",
     # --- projets ---
     "ALTER TABLE projets ADD COLUMN entite_id INTEGER REFERENCES entites(id)",
+    "ALTER TABLE projets ADD COLUMN ligne_budgetaire_id INTEGER REFERENCES lignes_budgetaires(id)",
+    "ALTER TABLE projets ADD COLUMN objectifs TEXT",
+    "ALTER TABLE projets ADD COLUMN enjeux TEXT",
+    "ALTER TABLE projets ADD COLUMN risques TEXT",
+    "ALTER TABLE projets ADD COLUMN gains TEXT",
+    "ALTER TABLE projets ADD COLUMN contraintes TEXT",
+    "ALTER TABLE projets ADD COLUMN solutions TEXT",
+    # --- projet_membres : coordonnées acteurs ---
+    "ALTER TABLE projet_membres ADD COLUMN fonction TEXT",
+    "ALTER TABLE projet_membres ADD COLUMN email TEXT",
+    "ALTER TABLE projet_membres ADD COLUMN telephone TEXT",
+    "ALTER TABLE projet_membres ADD COLUMN role_projet TEXT",
     # --- entites ---
     "ALTER TABLE entites ADD COLUMN statut TEXT DEFAULT 'ACTIF'",
     "ALTER TABLE entites ADD COLUMN actif INTEGER DEFAULT 1",

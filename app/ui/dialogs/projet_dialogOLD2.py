@@ -54,9 +54,6 @@ class ProjetDialog(QDialog):
         self.tabs.addTab(general_tab, "📋 Général")
         
         # Onglet 2: Budget
-        opportunite_tab = self.create_opportunite_tab()
-        self.tabs.addTab(opportunite_tab, "🎯 Opportunité")
-
         budget_tab = self.create_budget_tab()
         self.tabs.addTab(budget_tab, "💰 Budget")
         
@@ -65,12 +62,6 @@ class ProjetDialog(QDialog):
         self.tabs.addTab(equipe_tab, "👥 Équipe")
         
         # Onglet 4: Contacts
-        acteurs_tab = self.create_acteurs_tab()
-        self.tabs.addTab(acteurs_tab, "🪪 Acteurs détail")
-
-        couts_tab = self.create_couts_tab()
-        self.tabs.addTab(couts_tab, "💶 Coûts & Charges")
-
         contacts_tab = self.create_contacts_tab()
         self.tabs.addTab(contacts_tab, "📞 Contacts")
         
@@ -84,21 +75,11 @@ class ProjetDialog(QDialog):
         
         layout.addWidget(self.tabs)
         
-        # Boutons
-        btn_layout = QHBoxLayout()
-
-        self.btn_fiche = QPushButton("🖨️ Exporter Fiche Word")
-        self.btn_fiche.setStyleSheet(
-            "background:#C00000;color:white;font-weight:bold;padding:6px 14px;border-radius:4px;")
-        self.btn_fiche.clicked.connect(self._exporter_fiche)
-        btn_layout.addWidget(self.btn_fiche)
-
-        btn_layout.addStretch()
+        # Boutons OK/Annuler
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept_dialog)
         buttons.rejected.connect(self.reject)
-        btn_layout.addWidget(buttons)
-        layout.addLayout(btn_layout)
+        layout.addWidget(buttons)
     
     def create_general_tab(self):
         """Crée l'onglet Général."""
@@ -215,59 +196,6 @@ class ProjetDialog(QDialog):
         layout.addStretch()
         return widget
     
-    def create_opportunite_tab(self):
-        """Crée l'onglet Opportunité — objectifs, risques, gains, solutions."""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        form = QFormLayout()
-        form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
-
-        # Objectifs métier
-        self.objectifs_edit = QTextEdit()
-        self.objectifs_edit.setPlaceholderText(
-            "Quels sont les objectifs métier opérationnels du projet ?")
-        self.objectifs_edit.setMinimumHeight(80)
-        form.addRow("Objectifs métier:", self.objectifs_edit)
-
-        # Enjeux stratégiques
-        self.enjeux_edit = QTextEdit()
-        self.enjeux_edit.setPlaceholderText(
-            "À quels enjeux stratégiques de l'établissement ce projet concourt-il ?")
-        self.enjeux_edit.setMinimumHeight(60)
-        form.addRow("Enjeux stratégiques:", self.enjeux_edit)
-
-        # Risques
-        self.risques_edit = QTextEdit()
-        self.risques_edit.setPlaceholderText(
-            "Principaux risques identifiés à NE PAS faire le projet ?")
-        self.risques_edit.setMinimumHeight(70)
-        form.addRow("Risques / Freins:", self.risques_edit)
-
-        # Gains qualitatifs
-        self.gains_edit = QTextEdit()
-        self.gains_edit.setPlaceholderText(
-            "Gains qualitatifs et bénéfices attendus...")
-        self.gains_edit.setMinimumHeight(70)
-        form.addRow("Gains / Bénéfices:", self.gains_edit)
-
-        # Contraintes techniques / RGPD
-        self.contraintes_edit = QTextEdit()
-        self.contraintes_edit.setPlaceholderText(
-            "Contraintes techniques, réglementaires ou RGPD...")
-        self.contraintes_edit.setMinimumHeight(60)
-        form.addRow("Contraintes:", self.contraintes_edit)
-
-        # Solutions envisagées
-        self.solutions_edit = QTextEdit()
-        self.solutions_edit.setPlaceholderText(
-            "Solutions organisationnelles et techniques envisagées...")
-        self.solutions_edit.setMinimumHeight(60)
-        form.addRow("Solutions:", self.solutions_edit)
-
-        layout.addLayout(form)
-        layout.addStretch()
-        return widget
-
     def create_budget_tab(self):
         """Crée l'onglet Budget — V5 (lignes budgétaires)."""
         widget = QWidget()
@@ -448,239 +376,6 @@ class ProjetDialog(QDialog):
         layout.addStretch()
         return widget
     
-    def create_acteurs_tab(self):
-        """Onglet Acteurs détail — Fonction/Service et Email/Tél de chaque membre."""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        lbl = QLabel(
-            "Completez ici la fonction/service et les coordonnees de chaque acteur du projet. "
-            "Ces informations apparaitront dans la section Equipe & Contacts de la fiche Word.")
-        lbl.setStyleSheet("color:#7f8c8d; font-style:italic; padding:4px;")
-        lbl.setWordWrap(True)
-        layout.addWidget(lbl)
-
-        # Tableau éditable : Rôle | Nom | Fonction/Service | Email | Téléphone
-        self.acteurs_table = QTableWidget(0, 5)
-        self.acteurs_table.setHorizontalHeaderLabels(
-            ["Rôle", "Nom Prénom", "Fonction / Service", "Email", "Téléphone"])
-        hdr = self.acteurs_table.horizontalHeader()
-        hdr.setSectionResizeMode(0, hdr.ResizeToContents)
-        hdr.setSectionResizeMode(1, hdr.Stretch)
-        hdr.setSectionResizeMode(2, hdr.Stretch)
-        hdr.setSectionResizeMode(3, hdr.Stretch)
-        hdr.setSectionResizeMode(4, hdr.ResizeToContents)
-        self.acteurs_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.acteurs_table.setAlternatingRowColors(True)
-        layout.addWidget(self.acteurs_table)
-
-        btn_layout = QHBoxLayout()
-        btn_refresh = QPushButton("🔄 Actualiser depuis Équipe")
-        btn_refresh.setToolTip("Recharge les membres depuis l'onglet Équipe")
-        btn_refresh.clicked.connect(self._refresh_acteurs_table)
-        btn_layout.addWidget(btn_refresh)
-        btn_add_row = QPushButton("➕ Ligne manuelle")
-        btn_add_row.clicked.connect(self._add_acteur_row)
-        btn_layout.addWidget(btn_add_row)
-        btn_del_row = QPushButton("🗑️ Supprimer")
-        btn_del_row.clicked.connect(self._del_acteur_row)
-        btn_layout.addWidget(btn_del_row)
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
-        return widget
-
-    def _refresh_acteurs_table(self):
-        """Recharge le tableau acteurs depuis l'onglet Équipe + chef/responsable."""
-        t = self.acteurs_table
-        # Récupérer les lignes déjà saisies pour ne pas écraser les coordonnées
-        existing = {}
-        for r in range(t.rowCount()):
-            nom_item = t.item(r, 1)
-            if nom_item:
-                key = nom_item.text().strip()
-                existing[key] = {
-                    'role':     (t.item(r, 0).text() if t.item(r, 0) else ''),
-                    'fonction': (t.item(r, 2).text() if t.item(r, 2) else ''),
-                    'email':    (t.item(r, 3).text() if t.item(r, 3) else ''),
-                    'tel':      (t.item(r, 4).text() if t.item(r, 4) else ''),
-                }
-
-        rows_data = []
-
-        # Chef de projet
-        chef_text = self.chef_projet_combo.currentText().strip()
-        if chef_text and '---' not in chef_text:
-            ex = existing.get(chef_text, {})
-            rows_data.append({
-                'role': ex.get('role', 'Chef de projet DSI'),
-                'nom': chef_text,
-                'fonction': ex.get('fonction', ''),
-                'email': ex.get('email', ''),
-                'tel': ex.get('tel', ''),
-            })
-
-        # Responsable
-        resp_text = self.responsable_combo.currentText().strip()
-        if resp_text and '---' not in resp_text and resp_text != chef_text:
-            ex = existing.get(resp_text, {})
-            rows_data.append({
-                'role': ex.get('role', 'Responsable métier'),
-                'nom': resp_text,
-                'fonction': ex.get('fonction', ''),
-                'email': ex.get('email', ''),
-                'tel': ex.get('tel', ''),
-            })
-
-        # Membres équipe
-        for i in range(self.equipe_list.count()):
-            item = self.equipe_list.item(i)
-            if not item: continue
-            nom = item.text().replace('👤 ', '').replace('📇 ', '').strip()
-            ex = existing.get(nom, {})
-            rows_data.append({
-                'role': ex.get('role', 'Équipe projet'),
-                'nom': nom,
-                'fonction': ex.get('fonction', ''),
-                'email': ex.get('email', ''),
-                'tel': ex.get('tel', ''),
-            })
-
-        t.setRowCount(0)
-        for rd in rows_data:
-            r = t.rowCount(); t.insertRow(r)
-            t.setItem(r, 0, QTableWidgetItem(rd['role']))
-            nom_item = QTableWidgetItem(rd['nom'])
-            nom_item.setFlags(nom_item.flags() & ~Qt.ItemIsEditable)
-            t.setItem(r, 1, nom_item)
-            t.setItem(r, 2, QTableWidgetItem(rd['fonction']))
-            t.setItem(r, 3, QTableWidgetItem(rd['email']))
-            t.setItem(r, 4, QTableWidgetItem(rd['tel']))
-
-    def _add_acteur_row(self):
-        r = self.acteurs_table.rowCount()
-        self.acteurs_table.insertRow(r)
-        for c in range(5):
-            self.acteurs_table.setItem(r, c, QTableWidgetItem(''))
-
-    def _del_acteur_row(self):
-        row = self.acteurs_table.currentRow()
-        if row >= 0:
-            self.acteurs_table.removeRow(row)
-
-    def _get_acteurs_data(self):
-        """Retourne la liste des acteurs depuis le tableau pour la fiche Word."""
-        acteurs = []
-        t = self.acteurs_table
-        for r in range(t.rowCount()):
-            role  = t.item(r, 0).text().strip() if t.item(r, 0) else ''
-            nom   = t.item(r, 1).text().strip() if t.item(r, 1) else ''
-            fn    = t.item(r, 2).text().strip() if t.item(r, 2) else ''
-            email = t.item(r, 3).text().strip() if t.item(r, 3) else ''
-            tel   = t.item(r, 4).text().strip() if t.item(r, 4) else ''
-            if nom or role:
-                acteurs.append({'role': role, 'nom': nom,
-                                'fonction': fn, 'email': email or tel})
-        return acteurs
-
-    def create_couts_tab(self):
-        """Onglet Coûts & Charges — tableau MOE/MOA/Licences/Matériels."""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        lbl = QLabel(
-            "Renseignez les couts et charges par categorie et par phase. "
-            "Ces donnees alimentent le tableau Couts & Charges de la fiche Word.")
-        lbl.setStyleSheet("color:#7f8c8d; font-style:italic; padding:4px;")
-        lbl.setWordWrap(True)
-        layout.addWidget(lbl)
-
-        # Tableau des coûts : Catégorie | Définition projet | Mise en œuvre | Total €
-        self.couts_table = QTableWidget(0, 4)
-        self.couts_table.setHorizontalHeaderLabels(
-            ["Catégorie", "Définition projet (€)", "Mise en œuvre (€)", "Total €"])
-        hdr = self.couts_table.horizontalHeader()
-        hdr.setSectionResizeMode(0, hdr.Stretch)
-        hdr.setSectionResizeMode(1, hdr.ResizeToContents)
-        hdr.setSectionResizeMode(2, hdr.ResizeToContents)
-        hdr.setSectionResizeMode(3, hdr.ResizeToContents)
-        self.couts_table.setAlternatingRowColors(True)
-        self.couts_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        layout.addWidget(self.couts_table)
-
-        # Lignes par défaut
-        self._init_couts_table()
-        # Calcul automatique du total à chaque changement
-        self.couts_table.itemChanged.connect(self._update_couts_total)
-
-        # Zone modalités de financement
-        layout.addWidget(QLabel("Modalités de financement (internes / externes) :"))
-        self.financement_edit = QTextEdit()
-        self.financement_edit.setPlaceholderText(
-            "Décrivez les sources de financement, subventions, dates de disponibilité...")
-        self.financement_edit.setMaximumHeight(80)
-        layout.addWidget(self.financement_edit)
-
-        return widget
-
-    def _init_couts_table(self):
-        """Remplit le tableau Coûts avec les catégories standards."""
-        cats = [
-            "MOE interne",
-            "MOA interne",
-            "Licences / Logiciels",
-            "Matériels / Serveurs",
-            "Sous-traitance",
-            "Autres",
-        ]
-        self.couts_table.blockSignals(True)
-        self.couts_table.setRowCount(0)
-        for cat in cats:
-            r = self.couts_table.rowCount()
-            self.couts_table.insertRow(r)
-            cat_item = QTableWidgetItem(cat)
-            cat_item.setFlags(cat_item.flags() & ~Qt.ItemIsEditable)
-            cat_item.setBackground(Qt.lightGray)
-            self.couts_table.setItem(r, 0, cat_item)
-            self.couts_table.setItem(r, 1, QTableWidgetItem("0"))
-            self.couts_table.setItem(r, 2, QTableWidgetItem("0"))
-            # Total calculé auto
-            tot_item = QTableWidgetItem("0")
-            tot_item.setFlags(tot_item.flags() & ~Qt.ItemIsEditable)
-            self.couts_table.setItem(r, 3, tot_item)
-        self.couts_table.blockSignals(False)
-
-    def _update_couts_total(self, item):
-        """Recalcule le total de la ligne modifiée."""
-        if item.column() not in (1, 2):
-            return
-        r = item.row()
-        self.couts_table.blockSignals(True)
-        try:
-            v1 = float(self.couts_table.item(r, 1).text().replace(',', '.') or 0)
-        except Exception:
-            v1 = 0
-        try:
-            v2 = float(self.couts_table.item(r, 2).text().replace(',', '.') or 0)
-        except Exception:
-            v2 = 0
-        total_item = self.couts_table.item(r, 3)
-        if total_item:
-            total_item.setText(f"{v1 + v2:,.2f}")
-        self.couts_table.blockSignals(False)
-
-    def _get_couts_data(self):
-        """Retourne les coûts pour la fiche Word."""
-        couts = {}
-        for r in range(self.couts_table.rowCount()):
-            cat = self.couts_table.item(r, 0).text() if self.couts_table.item(r, 0) else ''
-            try: def_ = float(self.couts_table.item(r, 1).text().replace(',', '.') or 0)
-            except: def_ = 0
-            try: meo  = float(self.couts_table.item(r, 2).text().replace(',', '.') or 0)
-            except: meo = 0
-            if cat:
-                couts[cat] = {'definition': def_, 'mise_en_oeuvre': meo, 'total': def_ + meo}
-        return couts
-
     def create_contacts_tab(self):
         """Crée l'onglet Contacts."""
         widget = QWidget()
@@ -831,14 +526,6 @@ class ProjetDialog(QDialog):
                         self.service_combo.setCurrentIndex(i)
                         break
             
-            # Onglet Opportunité
-            self.objectifs_edit.setPlainText(safe_get(self.projet, 'objectifs', '') or '')
-            self.enjeux_edit.setPlainText(safe_get(self.projet, 'enjeux', '') or '')
-            self.risques_edit.setPlainText(safe_get(self.projet, 'risques', '') or '')
-            self.gains_edit.setPlainText(safe_get(self.projet, 'gains', '') or '')
-            self.contraintes_edit.setPlainText(safe_get(self.projet, 'contraintes', '') or '')
-            self.solutions_edit.setPlainText(safe_get(self.projet, 'solutions', '') or '')
-
             # Onglet Budget
             self.budget_initial_spin.setValue(float(safe_get(self.projet, 'budget_initial', 0) or 0))
             self.budget_estime_spin.setValue(float(safe_get(self.projet, 'budget_estime', 0) or 0))
@@ -921,12 +608,6 @@ class ProjetDialog(QDialog):
                 logger.info(f"load_equipe : {self.equipe_list.count()} membre(s) chargé(s)")
             except Exception as e:
                 logger.error(f"load_equipe : {e}")
-
-            # Recharger l'onglet Acteurs détail
-            try:
-                self._refresh_acteurs_table()
-            except Exception as e:
-                logger.error(f"_refresh_acteurs_table: {e}")
             
             # Reconstruire la liste prestataires depuis la DB
             self.prestataires_list.clear()
@@ -956,45 +637,6 @@ class ProjetDialog(QDialog):
             logger.error(f"Erreur chargement projet: {e}")
             QMessageBox.warning(self, "Erreur", f"Impossible de charger le projet:\n{e}")
     
-    def _exporter_fiche(self):
-        """Génère et ouvre la fiche projet Word."""
-        import os, sys
-        from pathlib import Path
-        try:
-            from app.services.fiche_projet_service import generer_fiche_depuis_id
-            # Si nouveau projet non encore sauvegardé, avertir
-            if not self.projet_id:
-                from PyQt5.QtWidgets import QMessageBox
-                QMessageBox.information(self, "Info",
-                    "Enregistrez d'abord le projet avant de générer la fiche.")
-                return
-            # Dossier de sortie = racine de l'appli
-            out_dir = str(Path(__file__).parent.parent.parent)
-            # Récupérer les données saisies dans les onglets Acteurs et Coûts
-            try:
-                extra = {
-                    'contacts_detail': self._get_acteurs_data(),
-                    'couts_detail':    self._get_couts_data(),
-                    'financement':     self.financement_edit.toPlainText().strip(),
-                }
-            except Exception:
-                extra = {}
-            path = generer_fiche_depuis_id(self.projet_id, out_dir, extra=extra)
-            # Ouvrir avec Word / LibreOffice
-            if sys.platform == 'win32':
-                os.startfile(path)
-            else:
-                import subprocess
-                subprocess.Popen(['xdg-open', path])
-            from PyQt5.QtWidgets import QMessageBox
-            QMessageBox.information(self, "✅ Fiche générée",
-                f"Fiche enregistrée :\n{path}")
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Erreur génération fiche: {e}", exc_info=True)
-            from PyQt5.QtWidgets import QMessageBox
-            QMessageBox.critical(self, "Erreur", f"Impossible de générer la fiche :\n{e}")
-
     def accept_dialog(self):
         """Valide et enregistre le projet."""
         try:
@@ -1026,13 +668,6 @@ class ProjetDialog(QDialog):
                 'date_debut': self.date_debut.date().toString("yyyy-MM-dd"),
                 'date_fin_prevue': self.date_fin.date().toString("yyyy-MM-dd"),
                 'avancement': self.avancement_spin.value(),
-                # Onglet Opportunité
-                'objectifs':   self.objectifs_edit.toPlainText().strip() or None,
-                'enjeux':      self.enjeux_edit.toPlainText().strip() or None,
-                'risques':     self.risques_edit.toPlainText().strip() or None,
-                'gains':       self.gains_edit.toPlainText().strip() or None,
-                'contraintes': self.contraintes_edit.toPlainText().strip() or None,
-                'solutions':   self.solutions_edit.toPlainText().strip() or None,
                 'budget_initial': self.budget_initial_spin.value(),
                 'budget_estime': self.budget_estime_spin.value(),
                 'budget_actuel': self.budget_actuel_spin.value(),

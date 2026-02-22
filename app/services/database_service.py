@@ -70,29 +70,19 @@ class DatabaseService:
                 conn.rollback()
             except Exception:
                 pass
-            import inspect
-            stack_lines = []
-            for f in inspect.stack()[1:10]:
-                fname = f.filename.replace('\\', '/').split('/')[-1]
-                stack_lines.append(f"    {fname}:{f.lineno} in {f.name}")
-            stack_str = "\n".join(stack_lines)
+            import traceback
             logger.error(
-                f"ERREUR SQL: {e}\n"
-                f"QUERY: {query[:500]}\n"
-                f"PARAMS: {params}\n"
-                f"APPELÉ DEPUIS:\n{stack_str}"
+                "ERREUR SQL: {}\nQUERY: {}\nPARAMS: {}\n{}".format(
+                    e, query[:500], params, traceback.format_exc()
+                )
             )
             raise
     
     def _log_sql_error(self, method, e, query, params):
-        import inspect
-        stack_lines = []
-        for f in inspect.stack()[2:10]:
-            fn = f.filename.replace('\\', '/').replace('\\\\', '/').split('/')[-1]
-            stack_lines.append("    {}:{} in {}".format(fn, f.lineno, f.name))
+        import traceback
         logger.error(
-            "ERREUR {}: {}\nQUERY: {}\nPARAMS: {}\nAPPELE DEPUIS:\n{}".format(
-                method, e, query[:500], params, "\n".join(stack_lines)
+            "ERREUR {}: {}\nQUERY: {}\nPARAMS: {}\n{}".format(
+                method, e, query[:500], params, traceback.format_exc()
             )
         )
 
