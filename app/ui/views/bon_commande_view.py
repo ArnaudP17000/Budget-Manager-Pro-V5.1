@@ -81,7 +81,7 @@ class BonCommandeView(QWidget):
         # Sous-onglets
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet(
-            "QTabBar::tab { padding: 8px 16px; font-weight: bold; }"
+            "QTabBar::tab { padding: 8px 16px; font-weight: bold; }" \
             "QTabBar::tab:selected { background:#2980b9; color:white; }")
         self.tabs.addTab(self._build_tab_liste(),       "📋 Liste des BC")
         self.tabs.addTab(self._build_tab_historique(),  "📊 Historique par application")
@@ -125,10 +125,11 @@ class BonCommandeView(QWidget):
         self.btn_edit   = self._btn("✏️ Modifier",  "#3498db", self._edit_bc, False)
         self.btn_valider= self._btn("✅ Valider",   "#2ecc71", self._valider_bc, False)
         self.btn_imputer= self._btn("💰 Imputer",   "#8e44ad", self._imputer_bc, False)
-        self.btn_fiche  = self._btn("📄 Fiche détail", "#2c3e50", self._voir_fiche, False)
-        self.btn_delete = self._btn("🗑️ Supprimer", "#e74c3c", self._delete_bc, False)
+        self.btn_fiche      = self._btn("📄 Fiche détail",  "#2c3e50", self._voir_fiche, False)
+        self.btn_regulariser = self._btn("🔧 Regulariser",  "#e67e22", self._regulariser_bc, False)
+        self.btn_delete     = self._btn("🗑️ Supprimer",    "#e74c3c", self._delete_bc, False)
         for b in (self.btn_add, self.btn_edit, self.btn_valider,
-                  self.btn_imputer, self.btn_fiche, self.btn_delete):
+                  self.btn_imputer, self.btn_fiche, self.btn_regulariser, self.btn_delete):
             tb.addWidget(b)
         tb.addStretch()
         layout.addLayout(tb)
@@ -181,7 +182,7 @@ class BonCommandeView(QWidget):
         self.table.setColumnCount(12)
         self.table.setHorizontalHeaderLabels([
             "ID", "Entité", "N° BC", "Date", "Fournisseur",
-            "Objet", "Contrat", "Ligne budgétaire",
+            "Objet", "Contrat", "Ligne budgetaire",
             "HT", "TTC", "Statut", "Application"
         ])
         self.table.setColumnHidden(0, True)
@@ -419,17 +420,27 @@ class BonCommandeView(QWidget):
     def _on_selection(self):
         row    = self.table.currentRow()
         has    = row >= 0
-        self.btn_edit.setEnabled(has)
-        self.btn_delete.setEnabled(has)
         if has:
             statut = (self.table.item(row, 10) or QTableWidgetItem('')).text()
+            protege = statut in ('IMPUTE', 'SOLDE')
+            self.btn_edit.setEnabled(True)
+            # Toujours actif — le message s'affiche au clic si SOLDE/IMPUTE
+            self.btn_delete.setEnabled(True)
+            self.btn_delete.setToolTip(
+                "Ce BC est " + statut + " — un message vous informera."
+                if protege else "Supprimer ce BC")
             self.btn_valider.setEnabled(statut in ('BROUILLON', 'EN_ATTENTE'))
             self.btn_imputer.setEnabled(statut == 'VALIDE')
             self.btn_fiche.setEnabled(True)
+            self.btn_regulariser.setEnabled(protege)
         else:
+            self.btn_edit.setEnabled(False)
+            self.btn_delete.setEnabled(False)
             self.btn_valider.setEnabled(False)
             self.btn_imputer.setEnabled(False)
             self.btn_fiche.setEnabled(False)
+            self.btn_regulariser.setEnabled(False)
+            self.btn_regulariser.setEnabled(False)
 
     def _get_selected_id(self):
         row = self.table.currentRow()
@@ -580,15 +591,31 @@ class BonCommandeView(QWidget):
         bc = self.svc.get_bon_commande_by_id(bc_id)
         if not bc.get('ligne_budgetaire_id'):
             QMessageBox.warning(self, "Ligne manquante",
-                "Ce BC n'est pas rattaché à une ligne budgétaire.\n"
-                "Modifiez-le et sélectionnez une ligne avant d'imputer.")
+                "Ce BC n est pas rattache a une ligne budgetaire.\n"
+                "Modifiez-le et selectionnez une ligne avant d imputer.")
             return
         result = self.svc.imputer_bon_commande(bc_id)
         if result['ok']:
-            QMessageBox.information(self, "BC imputé", result.get('message', '✅'))
+            QMessageBox.information(self, "BC impute", result.get('message', 'OK'))
             self.load_data()
-            # Proposer de créer une tâche liée
             self._proposer_tache_bc(bc)
+        elif 'Solde insuffisant' in result.get('message', ''):
+            # Solde insuffisant : proposer de forcer l imputation
+            rep = QMessageBox.question(
+                self, "Solde insuffisant",
+                result['message'] + "\n\n"
+                "Voulez-vous forcer l imputation malgre tout ?\n"
+                "(Le solde deviendra negatif — a regulariser lors du prochain budget)",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if rep == QMessageBox.Yes:
+                result2 = self.svc.imputer_bon_commande(bc_id, bypass_solde=True)
+                if result2['ok']:
+                    QMessageBox.information(self, "BC impute (hors solde)",
+                        result2.get('message', 'OK') + "\n\nAttention : solde negatif sur la ligne.")
+                    self.load_data()
+                    self._proposer_tache_bc(bc)
+                else:
+                    QMessageBox.warning(self, "Impossible", result2['message'])
         else:
             QMessageBox.warning(self, "Impossible", result['message'])
 
@@ -617,13 +644,122 @@ class BonCommandeView(QWidget):
         except Exception as e:
             pass  # Silencieux — la tâche est optionnelle
 
+    def _regulariser_bc(self):
+        """Regularise un BC SOLDE/IMPUTE dont la ligne budgetaire n a pas ete debitee."""
+        bc_id = self._get_selected_id()
+        if not bc_id or not self.svc:
+            return
+        bc = self.svc.get_bon_commande_by_id(bc_id)
+        if not bc:
+            return
+        statut   = bc.get('statut', '')
+        ligne_id = bc.get('ligne_budgetaire_id')
+        montant  = float(bc.get('montant_ttc') or bc.get('montant_ht') or 0)
+
+        if statut not in ('SOLDE', 'IMPUTE'):
+            QMessageBox.warning(self, "Action impossible",
+                "Seul un BC SOLDE ou IMPUTE peut etre regularise.")
+            return
+        if not ligne_id:
+            QMessageBox.warning(self, "Ligne manquante",
+                "Ce BC n est pas rattache a une ligne budgetaire.\n"
+                "Modifiez-le et selectionnez une ligne d abord.")
+            return
+
+        rep = QMessageBox.question(
+            self, "Regulariser le BC",
+            "BC : " + str(bc.get('numero_bc', '')) + " -- " + str(bc.get('objet', '')) + "\n"
+            "Statut : " + statut + "\n"
+            "Montant TTC : " + f"{montant:,.2f}" + " EUR\n\n"
+            "Cette operation va imputer le montant sur la ligne budgetaire.\n"
+            "Confirmer ?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if rep != QMessageBox.Yes:
+            return
+
+        try:
+            from app.services.budget_v5_service import budget_v5_service
+            conn = self.svc.db.get_connection()
+            now = __import__('datetime').datetime.now().isoformat()
+
+            # Calculer engage total sur cette ligne depuis les autres BC
+            row = conn.execute(
+                "SELECT COALESCE(SUM(b.montant_ttc), 0) AS total "
+                "FROM bons_commande b "
+                "WHERE b.ligne_budgetaire_id=? AND b.id!=? "
+                "AND b.statut IN ('IMPUTE','SOLDE')",
+                (ligne_id, bc_id)
+            ).fetchone()
+            engage_autres = float(row[0]) if row else 0.0
+            engage_total  = engage_autres + montant
+
+            # Mettre a jour la ligne budgetaire
+            conn.execute("""
+                UPDATE lignes_budgetaires SET
+                    montant_engage = ?,
+                    montant_solde  = COALESCE(montant_vote, montant_prevu, 0) - ?,
+                    date_maj = ?
+                WHERE id = ?
+            """, (engage_total, engage_total, now, ligne_id))
+
+            # Mettre a jour montant_paye si SOLDE
+            if statut == 'SOLDE':
+                conn.execute("""
+                    UPDATE lignes_budgetaires SET
+                        montant_paye = COALESCE((
+                            SELECT COALESCE(SUM(b2.montant_ttc),0)
+                            FROM bons_commande b2
+                            WHERE b2.ligne_budgetaire_id=? AND b2.statut='SOLDE'
+                        ), 0)
+                    WHERE id = ?
+                """, (ligne_id, ligne_id))
+
+            # Mettre a jour le BC
+            conn.execute("""
+                UPDATE bons_commande SET
+                    impute = 1,
+                    montant_engage = ?,
+                    date_imputation = COALESCE(date_imputation, ?),
+                    date_maj = ?
+                WHERE id = ?
+            """, (montant, now, now, bc_id))
+
+            # Recalculer le budget parent
+            budget_v5_service._recalc_budget_from_ligne(conn.cursor(), ligne_id)
+            conn.commit()
+
+            QMessageBox.information(self, "Regularisation effectuee",
+                "Ligne budgetaire mise a jour :\n"
+                "  Engage total : " + f"{engage_total:,.2f}" + " EUR\n"
+                "  dont ce BC  : " + f"{montant:,.2f}" + " EUR")
+            self.load_data()
+
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("Regularisation BC %s: %s", bc_id, e, exc_info=True)
+            QMessageBox.critical(self, "Erreur", "Regularisation impossible :\n" + str(e))
+
     def _delete_bc(self):
         bc_id = self._get_selected_id()
         if not bc_id or not self.svc:
             return
         bc = self.svc.get_bon_commande_by_id(bc_id)
-        reply = QMessageBox.question(self, "Supprimer",
-            f"Supprimer le BC « {bc.get('numero_bc','')} » ?\n{bc.get('objet','')}",
+        if not bc:
+            return
+        statut = bc.get('statut', '')
+        if statut == 'SOLDE':
+            QMessageBox.warning(self, "Suppression impossible",
+                "Bon de commande deja Solde, impossible de le supprimer.")
+            return
+        if statut == 'IMPUTE':
+            QMessageBox.warning(self, "Suppression impossible",
+                "Bon de commande Impute sur une ligne budgetaire.\n"
+                "Annulez l imputation avant de le supprimer.")
+            return
+        reply = QMessageBox.question(self, "Supprimer ce BC",
+            "BC : " + str(bc.get('numero_bc', '')) + "\n"
+            "Objet : " + str(bc.get('objet', '')) + "\n"
+            "Statut : " + statut + "\n\nConfirmer ?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply != QMessageBox.Yes:
             return
@@ -632,13 +768,12 @@ class BonCommandeView(QWidget):
             try:
                 from app.services.integrity_service import integrity_service
                 integrity_service.log('BC', bc_id, 'SUPPRESSION',
-                    f"Suppression BC {bc.get('numero_bc','')} — {bc.get('objet','')[:50]}")
+                    "Suppression BC " + str(bc.get('numero_bc', '')))
             except Exception:
                 pass
             self.load_data()
         else:
             QMessageBox.warning(self, "Impossible", result['message'])
-
 
 # =============================================================================
 # DIALOG BC — avec vérification solde contrat
@@ -706,8 +841,8 @@ class BonCommandeDialog(QDialog):
 
         form.addRow(grp1)
 
-        # ── Contrat & Ligne budgétaire ────────────────────────────────────
-        grp2 = QGroupBox("Rattachement budgétaire")
+        # ── Contrat & Ligne budgetaire ────────────────────────────────────
+        grp2 = QGroupBox("Rattachement budgetaire")
         f2   = QFormLayout(grp2)
 
         self.contrat = QComboBox()
@@ -724,7 +859,7 @@ class BonCommandeDialog(QDialog):
         self.ligne_budg = QComboBox()
         self.ligne_budg.addItem("— Aucune —", None)
         self.ligne_budg.currentIndexChanged.connect(self._on_ligne_change)
-        f2.addRow("Ligne budgétaire:", self.ligne_budg)
+        f2.addRow("Ligne budgetaire:", self.ligne_budg)
 
         self.lbl_solde_ligne = QLabel("")
         self.lbl_solde_ligne.setStyleSheet("color:#3498db; font-style:italic;")
@@ -867,7 +1002,13 @@ class BonCommandeDialog(QDialog):
             return
         try:
             from app.services.contrat_service import contrat_service
-            contrats = contrat_service.get_all(entite_id=entite_id)
+            # Charger tous les contrats, filtrer côté client si entite_id connu
+            tous = contrat_service.get_all()
+            if entite_id:
+                contrats = [c for c in tous
+                            if not c.get('entite_id') or c.get('entite_id') == entite_id]
+            else:
+                contrats = tous
             if fourn_id:
                 contrats = [c for c in contrats if c.get('fournisseur_id') == fourn_id]
             self.contrat.blockSignals(True)
@@ -875,15 +1016,18 @@ class BonCommandeDialog(QDialog):
             self.contrat.clear()
             self.contrat.addItem("— Hors marché —", None)
             for c in contrats:
-                label = f"{c.get('numero_contrat','')} — {c.get('objet','')[:40]}"
+                num = c.get('numero_contrat') or ''
+                obj = c.get('objet') or ''
+                label = f"{num} — {obj[:40]}" if num else obj[:50]
                 self.contrat.addItem(label, c['id'])
             idx = self.contrat.findData(current)
             if idx >= 0:
                 self.contrat.setCurrentIndex(idx)
             self.contrat.blockSignals(False)
             self._on_contrat_change()
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"_reload_contrats: {e}", exc_info=True)
 
     def _on_contrat_change(self):
         """Affiche le solde du contrat sélectionné."""
@@ -984,6 +1128,10 @@ class BonCommandeDialog(QDialog):
     def _fill(self):
         bc = self.bc
 
+        # Bloquer les signaux pendant le remplissage pour éviter les rechargements en cascade
+        self.entite.blockSignals(True)
+        self.fournisseur.blockSignals(True)
+
         idx = self.entite.findData(bc.get('entite_id'))
         if idx >= 0:
             self.entite.setCurrentIndex(idx)
@@ -995,6 +1143,10 @@ class BonCommandeDialog(QDialog):
         if idx2 >= 0:
             self.fournisseur.setCurrentIndex(idx2)
 
+        self.entite.blockSignals(False)
+        self.fournisseur.blockSignals(False)
+
+        # Un seul rechargement après avoir tout sélectionné
         self._reload_contrats()
         idx3 = self.contrat.findData(bc.get('contrat_id'))
         if idx3 >= 0:

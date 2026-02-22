@@ -20,6 +20,108 @@ class IntegrityService:
 
     def __init__(self):
         self.db = db_service
+        self._ensure_audit_table()
+
+    def _ensure_audit_table(self):
+        """
+        Cree ou migre la table audit_log.
+        Gere les bases avec table_name (ancienne version) ou objet_type (nouvelle).
+        """
+        conn = self.db.get_connection()
+        try:
+            cols_rows = conn.execute("PRAGMA table_info(audit_log)").fetchall()
+            cols_existantes = {r[1] for r in cols_rows}
+
+            if not cols_existantes:
+                # Table absente -> creer proprement
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS audit_log (
+                        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                        objet_type   TEXT,
+                        objet_id     INTEGER,
+                        action       TEXT NOT NULL,
+                        detail       TEXT,
+                        valeur_avant TEXT,
+                        valeur_apres TEXT,
+                        utilisateur  TEXT,
+                        date_action  TEXT DEFAULT (datetime('now'))
+                    )
+                """)
+                conn.commit()
+                logger.info("audit_log cree")
+                return
+
+            # Ancienne table avec table_name -> migrer vers objet_type
+            if 'table_name' in cols_existantes and 'objet_type' not in cols_existantes:
+                try:
+                    conn.execute("""
+                        CREATE TABLE audit_log_new (
+                            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                            objet_type   TEXT,
+                            objet_id     INTEGER,
+                            action       TEXT NOT NULL,
+                            detail       TEXT,
+                            valeur_avant TEXT,
+                            valeur_apres TEXT,
+                            utilisateur  TEXT,
+                            date_action  TEXT DEFAULT (datetime('now'))
+                        )
+                    """)
+                    # Copier les donnees en mappant table_name -> objet_type
+                    conn.execute("""
+                        INSERT INTO audit_log_new
+                            (id, objet_type, objet_id, action, detail,
+                             valeur_avant, valeur_apres, utilisateur, date_action)
+                        SELECT
+                            id,
+                            COALESCE(table_name, ''),
+                            record_id,
+                            COALESCE(action, 'ACTION'),
+                            detail,
+                            NULL, NULL,
+                            utilisateur,
+                            COALESCE(date_action, created_at, datetime('now'))
+                        FROM audit_log
+                    """)
+                    conn.execute("DROP TABLE audit_log")
+                    conn.execute("ALTER TABLE audit_log_new RENAME TO audit_log")
+                    conn.commit()
+                    logger.info("audit_log migre (table_name -> objet_type)")
+                except Exception as e:
+                    conn.rollback()
+                    logger.warning("Migration audit_log echouee : %s", e)
+                    # Plan B : juste ajouter la colonne objet_type
+                    try:
+                        conn.execute("ALTER TABLE audit_log ADD COLUMN objet_type TEXT")
+                        conn.execute("UPDATE audit_log SET objet_type = table_name WHERE objet_type IS NULL")
+                        conn.commit()
+                        logger.info("audit_log : colonne objet_type ajoutee (plan B)")
+                    except Exception as e2:
+                        logger.warning("Plan B audit_log : %s", e2)
+                return
+
+            # Ajouter les colonnes manquantes si necessaire
+            colonnes_requises = {
+                'objet_type':   'TEXT',
+                'objet_id':     'INTEGER',
+                'action':       'TEXT',
+                'detail':       'TEXT',
+                'valeur_avant': 'TEXT',
+                'valeur_apres': 'TEXT',
+                'utilisateur':  'TEXT',
+                'date_action':  "TEXT DEFAULT (datetime('now'))",
+            }
+            for col, typ in colonnes_requises.items():
+                if col not in cols_existantes:
+                    try:
+                        conn.execute(f"ALTER TABLE audit_log ADD COLUMN {col} {typ}")
+                        logger.info("audit_log : colonne '%s' ajoutee", col)
+                    except Exception as e:
+                        logger.warning("audit_log ALTER %s : %s", col, e)
+            conn.commit()
+
+        except Exception as e:
+            logger.warning("_ensure_audit_table : %s", e)
 
     # =========================================================================
     # VÉRIFICATIONS AVANT SUPPRESSION

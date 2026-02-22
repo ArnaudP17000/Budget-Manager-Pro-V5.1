@@ -236,6 +236,21 @@ ALTER_SQL = [
     "ALTER TABLE contrats ADD COLUMN reconductions INTEGER DEFAULT 0",
 ]
 
+# --- audit_log : créer si absente (jamais définie dans le schéma initial) ---
+AUDIT_LOG_SQL = """
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        objet_type   TEXT NOT NULL,
+        objet_id     INTEGER,
+        action       TEXT NOT NULL,
+        detail       TEXT,
+        valeur_avant TEXT,
+        valeur_apres TEXT,
+        utilisateur  TEXT,
+        date_action  TEXT DEFAULT (datetime('now'))
+    )
+"""
+
 VIEWS_SQL = [
 ("v_synthese_budget", """
 CREATE VIEW v_synthese_budget AS
@@ -360,10 +375,18 @@ def run():
     cur = conn.cursor()
 
     # 1. Tables
-    print("  Création tables manquantes...")
+    print("  Creation tables manquantes...")
     conn.executescript(TABLES_SQL)
     conn.commit()
-    print("  ✅ Tables OK")
+    print("  OK Tables")
+
+    # 1b. Table audit_log (non incluse dans TABLES_SQL initial)
+    try:
+        conn.executescript(AUDIT_LOG_SQL)
+        conn.commit()
+        print("  OK audit_log")
+    except Exception as e:
+        print(f"  audit_log: {e}")
 
     # 2. ALTER colonnes
     print("  Ajout colonnes manquantes...")

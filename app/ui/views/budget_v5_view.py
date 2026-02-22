@@ -529,9 +529,82 @@ class BudgetV5View(QWidget):
         self.tbl_lignes.setSelectionBehavior(QTableWidget.SelectRows)
         self.tbl_lignes.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tbl_lignes.itemSelectionChanged.connect(self._on_ligne_selection)
-        layout.addWidget(self.tbl_lignes)
+        self.tbl_lignes.itemDoubleClicked.connect(self._show_historique_bc)
+
+        # Splitter : tableau lignes (haut) + panneau historique BC (bas)
+        splitter = QSplitter(Qt.Vertical)
+        splitter.addWidget(self.tbl_lignes)
+        splitter.addWidget(self._build_historique_panel())
+        splitter.setSizes([380, 220])
+        layout.addWidget(splitter)
 
         return w
+
+    def _build_historique_panel(self):
+        """Panneau inferieur : historique BC imputes sur la ligne selectionnee."""
+        panel = QWidget()
+        vbox  = QVBoxLayout(panel)
+        vbox.setContentsMargins(0, 4, 0, 0)
+
+        # En-tete
+        hdr = QHBoxLayout()
+        self.lbl_histo_titre = QLabel("Selectionnez une ligne pour voir l historique des BC")
+        self.lbl_histo_titre.setStyleSheet(
+            "font-weight:bold; color:#ecf0f1; background:#2c3e50;"
+            "padding:6px 10px; border-radius:4px;")
+        hdr.addWidget(self.lbl_histo_titre)
+        hdr.addStretch()
+
+        self.btn_histo_refresh = QPushButton("🔄")
+        self.btn_histo_refresh.setFixedWidth(32)
+        self.btn_histo_refresh.setToolTip("Actualiser")
+        self.btn_histo_refresh.clicked.connect(self._show_historique_bc)
+        self.btn_histo_refresh.setEnabled(False)
+        hdr.addWidget(self.btn_histo_refresh)
+
+        self.btn_histo_open_bc = QPushButton("🔍 Ouvrir BC")
+        self.btn_histo_open_bc.setStyleSheet(
+            "background:#8e44ad;color:white;font-weight:bold;padding:4px 10px;")
+        self.btn_histo_open_bc.clicked.connect(self._ouvrir_bc_depuis_histo)
+        self.btn_histo_open_bc.setEnabled(False)
+        hdr.addWidget(self.btn_histo_open_bc)
+        vbox.addLayout(hdr)
+
+        # Tableau historique BC
+        self.tbl_histo_bc = QTableWidget()
+        self.tbl_histo_bc.setColumnCount(9)
+        self.tbl_histo_bc.setHorizontalHeaderLabels([
+            "ID", "N° BC", "Objet", "Fournisseur",
+            "Montant TTC", "Date imputation", "Date solde", "Statut", "Projet"
+        ])
+        self.tbl_histo_bc.setColumnHidden(0, True)
+        hdr_h = self.tbl_histo_bc.horizontalHeader()
+        hdr_h.setSectionResizeMode(QHeaderView.Interactive)
+        hdr_h.setStretchLastSection(False)
+        hdr_h.setSectionResizeMode(2, QHeaderView.Stretch)  # Objet prend l espace
+        self.tbl_histo_bc.setColumnWidth(1, 120)
+        self.tbl_histo_bc.setColumnWidth(3, 140)
+        self.tbl_histo_bc.setColumnWidth(4, 110)
+        self.tbl_histo_bc.setColumnWidth(5, 130)
+        self.tbl_histo_bc.setColumnWidth(6, 110)
+        self.tbl_histo_bc.setColumnWidth(7, 90)
+        self.tbl_histo_bc.setColumnWidth(8, 130)
+        self.tbl_histo_bc.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tbl_histo_bc.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tbl_histo_bc.setAlternatingRowColors(True)
+        self.tbl_histo_bc.itemSelectionChanged.connect(
+            lambda: self.btn_histo_open_bc.setEnabled(
+                self.tbl_histo_bc.currentRow() >= 0))
+        vbox.addWidget(self.tbl_histo_bc)
+
+        # Barre de totaux
+        self.lbl_histo_totaux = QLabel("")
+        self.lbl_histo_totaux.setStyleSheet(
+            "color:#f39c12; font-weight:bold; padding:4px 8px;"
+            "background:#1a252f; border-radius:3px;")
+        vbox.addWidget(self.lbl_histo_totaux)
+
+        return panel
 
     def load_lignes(self):
         if not self.svc:
@@ -590,7 +663,132 @@ class BudgetV5View(QWidget):
         has = self.tbl_lignes.currentRow() >= 0
         self.btn_edit_ligne.setEnabled(has)
         self.btn_del_ligne.setEnabled(has)
+        if has:
+            self._show_historique_bc()
 
+    def _show_historique_bc(self):
+        """Charge et affiche les BC imputes sur la ligne selectionnee."""
+        row = self.tbl_lignes.currentRow()
+        if row < 0 or not self.svc:
+            return
+        ligne_id = self.tbl_lignes.item(row, 0).data(Qt.UserRole)
+        libelle  = self.tbl_lignes.item(row, 1).text() if self.tbl_lignes.item(row, 1) else ''
+        vote     = self.tbl_lignes.item(row, 4).text() if self.tbl_lignes.item(row, 4) else ''
+        engage   = self.tbl_lignes.item(row, 5).text() if self.tbl_lignes.item(row, 5) else ''
+        solde    = self.tbl_lignes.item(row, 6).text() if self.tbl_lignes.item(row, 6) else ''
+
+        self.btn_histo_refresh.setEnabled(True)
+
+        try:
+            from app.services.database_service import db_service
+            rows = db_service.fetch_all("""
+                SELECT
+                    b.id,
+                    b.numero_bc,
+                    b.objet,
+                    COALESCE(f.nom, '--') AS fournisseur_nom,
+                    b.montant_ttc,
+                    b.date_imputation,
+                    b.date_solde,
+                    b.statut,
+                    COALESCE(p.code || ' -- ' || p.nom, '--') AS projet_nom
+                FROM bons_commande b
+                LEFT JOIN fournisseurs f ON f.id = b.fournisseur_id
+                LEFT JOIN projets p ON p.id = b.projet_id
+                WHERE b.ligne_budgetaire_id = ?
+                  AND b.statut IN ('IMPUTE', 'SOLDE', 'VALIDE')
+                ORDER BY COALESCE(b.date_imputation, b.date_creation) DESC
+            """, (ligne_id,)) or []
+            # Convertir sqlite3.Row en dict
+            bcs = [dict(r) for r in rows]
+        except Exception as e:
+            logger.error("Historique BC ligne %s : %s", ligne_id, e)
+            bcs = []
+
+        # Titre
+        self.lbl_histo_titre.setText(
+            f"📜 Historique BC — {libelle}   |   "
+            f"Vote : {vote}   Engage : {engage}   Solde : {solde}   "
+            f"({len(bcs)} BC)")
+
+        COULEURS = {
+            'IMPUTE': '#2980b9',
+            'SOLDE':  '#27ae60',
+            'VALIDE': '#f39c12',
+        }
+
+        self.tbl_histo_bc.setRowCount(0)
+        total_impute = 0.0
+        total_solde  = 0.0
+
+        for bc in bcs:
+            r = self.tbl_histo_bc.rowCount()
+            self.tbl_histo_bc.insertRow(r)
+
+            montant = float(bc.get('montant_ttc') or 0)
+            statut  = bc.get('statut', '')
+
+            id_item = QTableWidgetItem(str(bc.get('id', '')))
+            id_item.setData(Qt.UserRole, bc.get('id'))
+            self.tbl_histo_bc.setItem(r, 0, id_item)
+            self.tbl_histo_bc.setItem(r, 1, QTableWidgetItem(bc.get('numero_bc') or ''))
+            self.tbl_histo_bc.setItem(r, 2, QTableWidgetItem(bc.get('objet') or ''))
+            self.tbl_histo_bc.setItem(r, 3, QTableWidgetItem(bc.get('fournisseur_nom') or ''))
+
+            m_item = QTableWidgetItem(f"{montant:,.2f} €")
+            m_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            m_item.setForeground(QColor('#e67e22'))
+            self.tbl_histo_bc.setItem(r, 4, m_item)
+
+            # Date imputation
+            d_imp = str(bc.get('date_imputation') or '')[:10]
+            self.tbl_histo_bc.setItem(r, 5, QTableWidgetItem(d_imp))
+
+            # Date solde
+            d_sol = str(bc.get('date_solde') or '')[:10]
+            self.tbl_histo_bc.setItem(r, 6, QTableWidgetItem(d_sol))
+
+            # Statut coloré
+            s_item = QTableWidgetItem(statut)
+            s_item.setBackground(QColor(COULEURS.get(statut, '#7f8c8d')))
+            s_item.setForeground(QColor('#ffffff'))
+            s_item.setTextAlignment(Qt.AlignCenter)
+            self.tbl_histo_bc.setItem(r, 7, s_item)
+
+            self.tbl_histo_bc.setItem(r, 8, QTableWidgetItem(bc.get('projet_nom') or '—'))
+
+            if statut in ('IMPUTE', 'SOLDE'):
+                total_impute += montant
+            if statut == 'SOLDE':
+                total_solde += montant
+
+        # Barre totaux
+        self.lbl_histo_totaux.setText(
+            f"  Total impute : {total_impute:,.2f} €   |   "
+            f"  Total solde (paye) : {total_solde:,.2f} €   |   "
+            f"  En cours (impute non solde) : {total_impute - total_solde:,.2f} €  ")
+
+    def _ouvrir_bc_depuis_histo(self):
+        """Ouvre le detail du BC selectionne dans l historique."""
+        row = self.tbl_histo_bc.currentRow()
+        if row < 0:
+            return
+        bc_id = self.tbl_histo_bc.item(row, 0).data(Qt.UserRole)
+        if not bc_id:
+            return
+        try:
+            from app.services.bon_commande_service import bon_commande_service
+            bc = bon_commande_service.get_bon_commande_by_id(bc_id)
+            if bc:
+                from app.ui.views.fiche_bc_view import FicheBCView
+                dlg = FicheBCView(bc, parent=self)
+                dlg.exec_()
+        except Exception as e:
+            logger.error("Ouverture BC %s : %s", bc_id, e)
+            num  = self.tbl_histo_bc.item(row, 1).text() if self.tbl_histo_bc.item(row, 1) else ''
+            objet = self.tbl_histo_bc.item(row, 2).text() if self.tbl_histo_bc.item(row, 2) else ''
+            QMessageBox.information(self, "BC " + str(bc_id),
+                "Num BC : " + num + "\nObjet : " + objet)
     def _new_ligne(self):
         if not self.svc:
             return
@@ -777,69 +975,279 @@ class BudgetV5View(QWidget):
         w = QWidget()
         layout = QVBoxLayout(w)
 
-        grp = QGroupBox("Générer le budget N+1 à partir de l'historique")
-        grp.setStyleSheet("QGroupBox { font-weight: bold; padding: 12px; }")
+        # ── Paramètres ───────────────────────────────────────────────────────
+        grp = QGroupBox("Parametres de generation N+1")
+        grp.setStyleSheet("QGroupBox { font-weight: bold; padding: 10px; }")
         form = QFormLayout(grp)
 
         self.combo_entite_n1 = QComboBox()
-        self.combo_entite_n1.addItem("Toutes les entités", None)
-        form.addRow("Entité :", self.combo_entite_n1)
+        self.combo_entite_n1.addItem("Toutes les entites", None)
+        form.addRow("Entite :", self.combo_entite_n1)
 
+        row_ex = QHBoxLayout()
         self.spin_source = QSpinBox()
         self.spin_source.setRange(2020, 2035)
         self.spin_source.setValue(datetime.now().year)
-        form.addRow("Exercice source (N) :", self.spin_source)
-
+        row_ex.addWidget(QLabel("Source (N) :"))
+        row_ex.addWidget(self.spin_source)
+        row_ex.addWidget(QLabel("   Cible (N+1) :"))
         self.spin_cible = QSpinBox()
         self.spin_cible.setRange(2021, 2036)
         self.spin_cible.setValue(datetime.now().year + 1)
-        form.addRow("Exercice cible (N+1) :", self.spin_cible)
+        row_ex.addWidget(self.spin_cible)
+        row_ex.addStretch()
+        form.addRow(row_ex)
 
-        info = QLabel(
-            "ℹ️  Ce générateur copie les lignes de l'exercice source vers N+1\n"
-            "et y ajoute automatiquement les contrats de maintenance reconductibles."
-        )
-        info.setStyleSheet("color: #7f8c8d; font-style: italic;")
-        info.setWordWrap(True)
-        form.addRow(info)
-
-        btn_gen = QPushButton("🚀 Générer budget N+1")
-        btn_gen.setStyleSheet(
-            "background-color: #8e44ad; color: white; font-weight: bold;"
-            "padding: 10px 24px; font-size: 14px;")
-        btn_gen.clicked.connect(self._generer_n1)
-        form.addRow(btn_gen)
+        btn_apercu = QPushButton("🔍 Calculer apercu N+1")
+        btn_apercu.setStyleSheet(
+            "background:#2980b9;color:white;font-weight:bold;padding:8px 20px;")
+        btn_apercu.clicked.connect(self._charger_apercu_n1)
+        form.addRow(btn_apercu)
 
         layout.addWidget(grp)
-        layout.addStretch()
+
+        # ── Tableau aperçu ────────────────────────────────────────────────────
+        lbl_apercu = QLabel("Apercu des lignes qui seront generees (modifiez le montant N+1 avant de valider) :")
+        lbl_apercu.setStyleSheet("font-weight:bold; padding:6px 0;")
+        layout.addWidget(lbl_apercu)
+
+        self.tbl_n1 = QTableWidget(0, 9)
+        self.tbl_n1.setHorizontalHeaderLabels([
+            "Nature", "Libelle", "Application / Projet",
+            "Vote N", "Consomme N", "Taux %", "Solde N",
+            "Suggestion N+1", "Note"
+        ])
+        hdr = self.tbl_n1.horizontalHeader()
+        hdr.setSectionResizeMode(QHeaderView.Interactive)
+        hdr.setSectionResizeMode(1, QHeaderView.Stretch)
+        hdr.setSectionResizeMode(8, QHeaderView.Stretch)
+        self.tbl_n1.setColumnWidth(0, 130)
+        self.tbl_n1.setColumnWidth(2, 150)
+        self.tbl_n1.setColumnWidth(3, 100)
+        self.tbl_n1.setColumnWidth(4, 110)
+        self.tbl_n1.setColumnWidth(5, 70)
+        self.tbl_n1.setColumnWidth(6, 100)
+        self.tbl_n1.setColumnWidth(7, 110)
+        self.tbl_n1.setAlternatingRowColors(True)
+        self.tbl_n1.setSelectionBehavior(QTableWidget.SelectRows)
+        # Colonne 7 (Suggestion N+1) est editable, les autres non
+        layout.addWidget(self.tbl_n1)
+
+        # Legende
+        leg = QHBoxLayout()
+        for couleur, texte in [('#c0392b','Depassement (solde negatif)'),
+                                ('#e67e22','Taux > 90%'),
+                                ('#27ae60','Taux < 30% (sous-consomme)')]:
+            lbl = QLabel(f"■ {texte}")
+            lbl.setStyleSheet(f"color:{couleur}; font-size:11px;")
+            leg.addWidget(lbl)
+        leg.addStretch()
+        layout.addLayout(leg)
+
+        # Barre totaux + bouton generer
+        bottom = QHBoxLayout()
+        self.lbl_n1_totaux = QLabel("")
+        self.lbl_n1_totaux.setStyleSheet(
+            "font-weight:bold; color:#f39c12; padding:4px 8px;"
+            "background:#1a252f; border-radius:3px;")
+        bottom.addWidget(self.lbl_n1_totaux)
+        bottom.addStretch()
+
+        btn_gen = QPushButton("🚀 Generer budget N+1")
+        btn_gen.setStyleSheet(
+            "background:#8e44ad;color:white;font-weight:bold;"
+            "padding:10px 28px;font-size:14px;")
+        btn_gen.clicked.connect(self._generer_n1)
+        bottom.addWidget(btn_gen)
+        layout.addLayout(bottom)
+
+        # Stocker les données aperçu
+        self._apercu_n1_data = []
         return w
+
+    def _charger_apercu_n1(self):
+        """Charge et affiche l apercu des lignes N+1."""
+        if not self.svc:
+            return
+        entite_id = self.combo_entite_n1.currentData()
+        src   = self.spin_source.value()
+        cible = self.spin_cible.value()
+
+        self.tbl_n1.setRowCount(0)
+        self._apercu_n1_data = []
+
+        COULEURS_ALERTE = {
+            'depasse':   '#c0392b',
+            'critique':  '#e67e22',
+            'sous':      '#27ae60',
+            'normal':    None,
+        }
+
+        try:
+            entites = self.svc.get_entites()
+            total_suggestion = 0.0
+            total_vote_n = 0.0
+
+            for ent in entites:
+                if entite_id and ent['id'] != entite_id:
+                    continue
+                lignes = self.svc.get_apercu_n1(ent['id'], src, cible)
+                for lg in lignes:
+                    r = self.tbl_n1.rowCount()
+                    self.tbl_n1.insertRow(r)
+
+                    vote    = float(lg.get('vote_n') or 0)
+                    engage  = float(lg.get('engage_n') or 0)
+                    solde   = float(lg.get('solde_n') or 0)
+                    taux    = float(lg.get('taux_n') or 0)
+                    sugg    = float(lg.get('suggestion') or 0)
+                    total_vote_n     += vote
+                    total_suggestion += sugg
+
+                    # Couleur de la ligne
+                    if solde < 0:
+                        bg = QColor('#5c1010')
+                        cat = 'depasse'
+                    elif taux > 90:
+                        bg = QColor('#5c3a10')
+                        cat = 'critique'
+                    elif taux < 30 and vote > 0:
+                        bg = QColor('#0f3d1e')
+                        cat = 'sous'
+                    else:
+                        bg = None
+                        cat = 'normal'
+
+                    def cell(txt, editable=False, align=None):
+                        it = QTableWidgetItem(str(txt))
+                        if not editable:
+                            it.setFlags(it.flags() & ~Qt.ItemIsEditable)
+                        if align:
+                            it.setTextAlignment(align)
+                        if bg:
+                            it.setBackground(bg)
+                        return it
+
+                    nat_item = cell(lg.get('nature', ''))
+                    if lg.get('source') == 'PROJET':
+                        nat_item.setForeground(QColor('#9b59b6'))
+                    self.tbl_n1.setItem(r, 0, nat_item)
+                    self.tbl_n1.setItem(r, 1, cell(lg.get('libelle', '')))
+                    appli = lg.get('application_nom') or lg.get('projet_nom') or ''
+                    self.tbl_n1.setItem(r, 2, cell(appli))
+                    self.tbl_n1.setItem(r, 3, cell(f"{vote:,.0f} EUR",
+                        align=Qt.AlignRight|Qt.AlignVCenter))
+                    eng_item = cell(f"{engage:,.0f} EUR",
+                        align=Qt.AlignRight|Qt.AlignVCenter)
+                    if taux > 90:
+                        eng_item.setForeground(QColor('#e74c3c'))
+                    self.tbl_n1.setItem(r, 4, eng_item)
+
+                    taux_item = cell(f"{taux:.0f} %",
+                        align=Qt.AlignCenter)
+                    if taux > 90:
+                        taux_item.setForeground(QColor('#e74c3c'))
+                    elif taux < 30 and vote > 0:
+                        taux_item.setForeground(QColor('#2ecc71'))
+                    self.tbl_n1.setItem(r, 5, taux_item)
+
+                    solde_item = cell(f"{solde:,.0f} EUR",
+                        align=Qt.AlignRight|Qt.AlignVCenter)
+                    if solde < 0:
+                        solde_item.setForeground(QColor('#ff6b6b'))
+                    self.tbl_n1.setItem(r, 6, solde_item)
+
+                    # Suggestion N+1 : editable
+                    sugg_item = QTableWidgetItem(f"{sugg:,.2f}")
+                    sugg_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    sugg_item.setBackground(QColor('#1a3a52'))
+                    sugg_item.setForeground(QColor('#f39c12'))
+                    self.tbl_n1.setItem(r, 7, sugg_item)
+
+                    self.tbl_n1.setItem(r, 8, cell(lg.get('raison', '')))
+
+                    # Tooltip sur la note complete
+                    for c in range(9):
+                        it = self.tbl_n1.item(r, c)
+                        if it:
+                            it.setToolTip(lg.get('note_generee', ''))
+
+                    self._apercu_n1_data.append(lg)
+
+            self.lbl_n1_totaux.setText(
+                f"  {self.tbl_n1.rowCount()} lignes   |   "
+                f"  Total vote N : {total_vote_n:,.0f} EUR   |   "
+                f"  Total suggere N+1 : {total_suggestion:,.0f} EUR  "
+            )
+
+        except Exception as e:
+            import traceback
+            QMessageBox.critical(self, "Erreur apercu", str(e))
 
     def _generer_n1(self):
         if not self.svc:
             return
         entite_id = self.combo_entite_n1.currentData()
-        src = self.spin_source.value()
+        src   = self.spin_source.value()
         cible = self.spin_cible.value()
 
-        reply = QMessageBox.question(self, "Confirmer",
-            f"Générer le budget {cible} à partir de {src} ?\n\n"
-            "Les lignes existantes ne seront pas écrasées.",
+        # Verifier qu un apercu a ete calcule
+        if not self._apercu_n1_data:
+            rep = QMessageBox.question(self, "Apercu manquant",
+                "Aucun apercu n a ete calcule.\n"
+                "Voulez-vous generer directement avec les montants suggeres ?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if rep != QMessageBox.Yes:
+                return
+            self._charger_apercu_n1()
+            if not self._apercu_n1_data:
+                QMessageBox.warning(self, "Aucune donnee",
+                    "Aucune ligne trouvee pour l exercice source " + str(src))
+                return
+
+        # Recuperer les montants modifies depuis le tableau
+        lignes_validees = []
+        for r in range(self.tbl_n1.rowCount()):
+            if r >= len(self._apercu_n1_data):
+                break
+            lg = dict(self._apercu_n1_data[r])
+            sugg_item = self.tbl_n1.item(r, 7)
+            try:
+                lg['montant_prevu_n1'] = float(
+                    (sugg_item.text() if sugg_item else '0').replace(',', '').replace(' EUR', ''))
+            except Exception:
+                lg['montant_prevu_n1'] = lg.get('suggestion', 0)
+            lg['note'] = lg.get('note_generee', '')
+            lignes_validees.append(lg)
+
+        nb_total = 0
+        total_budget = sum(l['montant_prevu_n1'] for l in lignes_validees)
+
+        reply = QMessageBox.question(self, "Confirmer la generation",
+            f"Generation budget {cible} a partir de {src}\n\n"
+            f"{len(lignes_validees)} ligne(s) | Total : {total_budget:,.0f} EUR\n\n"
+            "Les lignes existantes ne seront pas ecrasees.\n"
+            "Confirmer ?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply != QMessageBox.Yes:
             return
 
         try:
             entites = self.svc.get_entites()
-            nb_total = 0
             for ent in entites:
                 if entite_id and ent['id'] != entite_id:
                     continue
-                nb = self.svc.preparer_budget_n1(ent['id'], src, cible)
+                lignes_ent = [l for l in lignes_validees
+                              if not entite_id or True]
+                nb = self.svc.preparer_budget_n1(
+                    ent['id'], src, cible, lignes_validees=lignes_ent)
                 nb_total += nb
 
-            QMessageBox.information(self, "Génération terminée",
-                f"✅ {nb_total} ligne(s) créée(s) pour le budget {cible}.\n\n"
-                f"Allez dans l'onglet « Lignes budgétaires » pour les consulter et ajuster.")
+            QMessageBox.information(self, "Generation terminee",
+                f"{nb_total} ligne(s) creee(s) pour le budget {cible}.\n\n"
+                f"Allez dans l onglet Lignes budgetaires pour les consulter.")
+            self._apercu_n1_data = []
+            self.tbl_n1.setRowCount(0)
             self.load_all()
         except Exception as e:
             QMessageBox.critical(self, "Erreur", str(e))

@@ -189,6 +189,7 @@ class ProjetDialog(QDialog):
         self.date_fin_reelle.setDate(QDate.currentDate())
         self.date_fin_reelle.setEnabled(False)
         self.chk_termine.toggled.connect(self.date_fin_reelle.setEnabled)
+        self.chk_termine.toggled.connect(self._on_termine_toggled)
         form.addRow("Date fin réelle:", self.date_fin_reelle)
         
         # Avancement
@@ -821,6 +822,11 @@ class ProjetDialog(QDialog):
                 self.date_fin_reelle.setDate(QDate.fromString(safe_get(self.projet, 'date_fin_reelle')[:10], "yyyy-MM-dd"))
                 self.chk_termine.setChecked(True)
                 self.date_fin_reelle.setEnabled(True)
+            elif safe_get(self.projet, 'statut') == 'TERMINE':
+                # Projet marque TERMINE sans date reelle -> cocher quand meme
+                self.chk_termine.setChecked(True)
+                self.date_fin_reelle.setEnabled(True)
+                self.avancement_spin.setValue(100)
             
             self.avancement_spin.setValue(safe_get(self.projet, 'avancement', 0) or 0)
             
@@ -956,6 +962,20 @@ class ProjetDialog(QDialog):
             logger.error(f"Erreur chargement projet: {e}")
             QMessageBox.warning(self, "Erreur", f"Impossible de charger le projet:\n{e}")
     
+    def _on_termine_toggled(self, checked):
+        """Synchronise statut combo + avancement quand on coche/decoche Projet termine."""
+        if checked:
+            idx = self.statut_combo.findText('TERMINE')
+            if idx >= 0:
+                self.statut_combo.setCurrentIndex(idx)
+            self.avancement_spin.setValue(100)
+        else:
+            # Si on decoche, repasser a ACTIF seulement si le statut etait TERMINE
+            if self.statut_combo.currentText() == 'TERMINE':
+                idx = self.statut_combo.findText('ACTIF')
+                if idx >= 0:
+                    self.statut_combo.setCurrentIndex(idx)
+
     def _exporter_fiche(self):
         """Génère et ouvre la fiche projet Word."""
         import os, sys
@@ -1038,11 +1058,21 @@ class ProjetDialog(QDialog):
                 'budget_actuel': self.budget_actuel_spin.value(),
             }
             
-            # Date fin réelle si définie
+            # Date fin reelle + statut + avancement si termine
             if self.chk_termine.isChecked():
                 data['date_fin_reelle'] = self.date_fin_reelle.date().toString("yyyy-MM-dd")
+                data['statut']          = 'TERMINE'
+                data['avancement']      = 100
+                # Mettre a jour le combo statut pour coherence visuelle
+                idx = self.statut_combo.findText('TERMINE')
+                if idx >= 0:
+                    self.statut_combo.setCurrentIndex(idx)
+                self.avancement_spin.setValue(100)
             else:
                 data['date_fin_reelle'] = None
+                # Si le statut etait TERMINE et qu on decoche, repasser en ACTIF
+                if data.get('statut') == 'TERMINE':
+                    data['statut'] = 'ACTIF' 
             
             # AP
             # Ligne budgétaire V5

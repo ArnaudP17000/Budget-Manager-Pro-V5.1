@@ -427,12 +427,143 @@ class BudgetV5Service:
     # PRÉPARATION BUDGET N+1
     # =========================================================================
 
-    def preparer_budget_n1(self, entite_id, exercice_source, exercice_cible):
+    def get_apercu_n1(self, entite_id, exercice_source, exercice_cible):
+        """
+        Calcule l apercu des lignes qui seront generees pour N+1.
+        Retourne une liste de dicts avec toutes les infos pour affichage.
+        """
+        conn = self.db.get_connection()
+        cur  = conn.cursor()
+        lignes_apercu = []
+
+        for nature in ('FONCTIONNEMENT', 'INVESTISSEMENT'):
+            lignes_src = cur.execute("""
+                SELECT lb.*,
+                    COALESCE(a.nom, '') AS application_nom,
+                    COALESCE(p.code || ' - ' || p.nom, '') AS projet_nom
+                FROM lignes_budgetaires lb
+                JOIN budgets_annuels ba ON ba.id=lb.budget_id
+                LEFT JOIN applications a ON a.id=lb.application_id
+                LEFT JOIN projets p ON p.id=lb.projet_id
+                WHERE ba.entite_id=? AND ba.exercice=? AND ba.nature=?
+            """, (entite_id, exercice_source, nature)).fetchall()
+
+            for src in lignes_src:
+                src = dict(src)
+                vote     = float(src.get('montant_vote') or 0)
+                engage   = float(src.get('montant_engage') or 0)
+                paye     = float(src.get('montant_paye') or 0)
+                solde    = float(src.get('montant_solde') or 0)
+                taux     = (engage / vote * 100) if vote > 0 else 0
+
+                # Compter les BC lies
+                nb_bc = (cur.execute(
+                    "SELECT COUNT(*) FROM bons_commande WHERE ligne_budgetaire_id=?",
+                    (src['id'],)).fetchone() or [0])[0]
+
+                # Calcul suggestion N+1
+                if solde < 0:
+                    # Depassement : voté + depassement + 10% marge
+                    suggestion = engage * 1.10
+                    raison = 'Depassement N -> +10% marge'
+                elif taux > 90:
+                    # Tres consomme : augmenter de 15%
+                    suggestion = vote * 1.15
+                    raison = 'Taux >90% -> +15%'
+                elif taux < 30 and vote > 0:
+                    # Peu consomme : reduire de 20%
+                    suggestion = vote * 0.80
+                    raison = 'Taux <30% -> -20%'
+                else:
+                    # Normal : reconduire le vote
+                    suggestion = vote if vote > 0 else float(src.get('montant_prevu') or 0)
+                    raison = 'Reconduction'
+
+                # Note enrichie
+                note_parts = [f"Source : {exercice_source}"]
+                note_parts.append(f"Vote N : {vote:,.0f} EUR")
+                note_parts.append(f"Consomme N : {engage:,.0f} EUR ({taux:.0f}%)")
+                if solde < 0:
+                    note_parts.append(f"DEPASSEMENT : {abs(solde):,.0f} EUR")
+                note_parts.append(f"Paye N : {paye:,.0f} EUR")
+                note_parts.append(f"BC lies : {nb_bc}")
+                note_parts.append(f"Suggestion : {raison}")
+                note = ' | '.join(note_parts)
+
+                lignes_apercu.append({
+                    'libelle':       src['libelle'],
+                    'nature':        nature,
+                    'vote_n':        vote,
+                    'engage_n':      engage,
+                    'paye_n':        paye,
+                    'solde_n':       solde,
+                    'taux_n':        taux,
+                    'nb_bc':         nb_bc,
+                    'suggestion':    round(suggestion, 2),
+                    'raison':        raison,
+                    'note_generee':  note,
+                    'application_nom': src.get('application_nom', ''),
+                    'projet_nom':    src.get('projet_nom', ''),
+                    'application_id': src.get('application_id'),
+                    'projet_id':     src.get('projet_id'),
+                    'seuil_alerte_pct': src.get('seuil_alerte_pct', 80),
+                    'fournisseur_id': src.get('fournisseur_id'),
+                    'source':        'LIGNE',
+                    'alerte':        solde < 0 or taux > 90,
+                })
+
+            # Projets actifs lies a cette entite
+            projets_actifs = cur.execute("""
+                SELECT p.*, e.code AS entite_code
+                FROM projets p
+                JOIN entites e ON e.id = ?
+                WHERE p.statut IN ('ACTIF', 'EN_COURS', 'PLANIFIE')
+                  AND p.statut != 'TERMINE'
+            """, (entite_id,)).fetchall()
+
+            for proj in projets_actifs:
+                proj = dict(proj)
+                budget_p = float(proj.get('montant_prevu') or proj.get('budget_initial') or 0)
+                engage_p = float(proj.get('montant_engage') or 0)
+                restant  = budget_p - engage_p
+                if restant <= 0:
+                    continue
+                libelle = f"Projet {proj.get('code','')} - {proj.get('nom','')[:50]}"
+                # Eviter doublon avec lignes existantes
+                if any(l['libelle'] == libelle for l in lignes_apercu):
+                    continue
+                note = (f"Projet actif | Budget prevu : {budget_p:,.0f} EUR | "
+                        f"Engage : {engage_p:,.0f} EUR | Restant : {restant:,.0f} EUR")
+                lignes_apercu.append({
+                    'libelle':       libelle,
+                    'nature':        nature,
+                    'vote_n':        budget_p,
+                    'engage_n':      engage_p,
+                    'paye_n':        0,
+                    'solde_n':       restant,
+                    'taux_n':        (engage_p/budget_p*100) if budget_p > 0 else 0,
+                    'nb_bc':         0,
+                    'suggestion':    round(restant, 2),
+                    'raison':        'Projet actif N+1',
+                    'note_generee':  note,
+                    'application_id': proj.get('application_id'),
+                    'projet_id':     proj.get('id'),
+                    'application_nom': '',
+                    'projet_nom':    proj.get('nom', ''),
+                    'seuil_alerte_pct': 80,
+                    'fournisseur_id': None,
+                    'source':        'PROJET',
+                    'alerte':        False,
+                })
+
+        return lignes_apercu
+
+    def preparer_budget_n1(self, entite_id, exercice_source, exercice_cible,
+                           lignes_validees=None):
         """
         Pré-remplit les budgets N+1 à partir de l'historique de l'année source.
-        Logique :
-          - Contrats de maintenance reconductibles → reconduire le montant
-          - Lignes sans contrat → copier montant_vote comme base
+        lignes_validees : liste de dicts avec 'libelle','nature','montant_prevu_n1','note'
+                          si None -> calcul automatique depuis get_apercu_n1
         Retourne le nb de lignes créées.
         """
         conn = None
@@ -440,9 +571,18 @@ class BudgetV5Service:
             conn = self.db.get_connection()
             cur  = conn.cursor()
             nb   = 0
+            now  = datetime.now().isoformat()
+
+            # Si lignes_validees non fourni -> calcul auto depuis apercu
+            if lignes_validees is None:
+                lignes_validees = self.get_apercu_n1(entite_id, exercice_source, exercice_cible)
+                # Convertir suggestion en montant_prevu_n1
+                for l in lignes_validees:
+                    l['montant_prevu_n1'] = l['suggestion']
+                    l['note'] = l['note_generee']
 
             for nature in ('FONCTIONNEMENT', 'INVESTISSEMENT'):
-                # Récupérer ou créer le budget cible
+                # Recuperer ou creer le budget cible
                 existing = cur.execute("""
                     SELECT id FROM budgets_annuels
                     WHERE entite_id=? AND exercice=? AND nature=?
@@ -455,44 +595,36 @@ class BudgetV5Service:
                         INSERT INTO budgets_annuels
                             (entite_id, exercice, nature, statut, date_creation, date_maj)
                         VALUES (?, ?, ?, 'EN_PREPARATION', ?, ?)
-                    """, (entite_id, exercice_cible, nature,
-                          datetime.now().isoformat(), datetime.now().isoformat()))
+                    """, (entite_id, exercice_cible, nature, now, now))
                     budget_cible_id = cur.lastrowid
 
-                # Lignes de l'exercice source
-                lignes_src = cur.execute("""
-                    SELECT lb.* FROM lignes_budgetaires lb
-                    JOIN budgets_annuels ba ON ba.id=lb.budget_id
-                    WHERE ba.entite_id=? AND ba.exercice=? AND ba.nature=?
-                """, (entite_id, exercice_source, nature)).fetchall()
+                lignes_nature = [l for l in lignes_validees if l.get('nature') == nature]
 
-                for src in lignes_src:
-                    src = dict(src)
-                    # Vérifier si une ligne similaire existe déjà dans le budget cible
-                    already = cur.execute("""
-                        SELECT id FROM lignes_budgetaires
-                        WHERE budget_id=? AND libelle=?
-                    """, (budget_cible_id, src['libelle'])).fetchone()
+                for lg in lignes_nature:
+                    libelle = lg['libelle']
+                    already = cur.execute(
+                        "SELECT id FROM lignes_budgetaires WHERE budget_id=? AND libelle=?",
+                        (budget_cible_id, libelle)).fetchone()
                     if already:
                         continue
 
-                    # Base de prévision N+1 = montant voté N (ou prévu si pas encore voté)
-                    base = src['montant_vote'] if src['montant_vote'] > 0 else src['montant_prevu']
-
+                    montant = float(lg.get('montant_prevu_n1') or lg.get('suggestion') or 0)
                     cur.execute("""
                         INSERT INTO lignes_budgetaires
                             (budget_id, libelle, application_id, projet_id,
-                             montant_prevu, nature, seuil_alerte_pct, note,
+                             fournisseur_id, montant_prevu, montant_prevu_n1,
+                             nature, seuil_alerte_pct, note,
                              statut, date_creation, date_maj)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIF', ?, ?)
-                    """, (budget_cible_id, src['libelle'],
-                          src.get('application_id'), src.get('projet_id'),
-                          base, nature, src.get('seuil_alerte_pct', 80),
-                          f"Copié depuis {exercice_source}",
-                          datetime.now().isoformat(), datetime.now().isoformat()))
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIF', ?, ?)
+                    """, (budget_cible_id, libelle,
+                          lg.get('application_id'), lg.get('projet_id'),
+                          lg.get('fournisseur_id'), montant, montant,
+                          nature, lg.get('seuil_alerte_pct', 80),
+                          lg.get('note', f"Genere depuis {exercice_source}"),
+                          now, now))
                     nb += 1
 
-                # Contrats de maintenance actifs → ajouter si pas encore dans les lignes
+                # Contrats de maintenance actifs non encore inclus
                 contrats_maint = cur.execute("""
                     SELECT c.*, f.nom as fournisseur_nom FROM contrats c
                     JOIN fournisseurs f ON f.id=c.fournisseur_id
@@ -504,7 +636,7 @@ class BudgetV5Service:
 
                 for ct in contrats_maint:
                     ct = dict(ct)
-                    libelle = f"Maintenance {ct['fournisseur_nom']} – {ct['objet'][:40]}"
+                    libelle = f"Maintenance {ct['fournisseur_nom']} - {ct['objet'][:40]}"
                     already = cur.execute(
                         "SELECT id FROM lignes_budgetaires WHERE budget_id=? AND libelle=?",
                         (budget_cible_id, libelle)).fetchone()
@@ -513,22 +645,22 @@ class BudgetV5Service:
                     cur.execute("""
                         INSERT INTO lignes_budgetaires
                             (budget_id, libelle, application_id,
-                             montant_prevu, nature, note, statut,
-                             date_creation, date_maj)
-                        VALUES (?, ?, ?, ?, ?, ?, 'ACTIF', ?, ?)
+                             montant_prevu, montant_prevu_n1, nature,
+                             note, statut, date_creation, date_maj)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIF', ?, ?)
                     """, (budget_cible_id, libelle, ct.get('application_id'),
-                          ct['montant_ht'], nature,
+                          ct['montant_ht'], ct['montant_ht'], nature,
                           f"Reconduction contrat {ct['numero_contrat']}",
-                          datetime.now().isoformat(), datetime.now().isoformat()))
+                          now, now))
                     nb += 1
 
             conn.commit()
-            logger.info(f"Préparation N+1 : {nb} lignes créées pour exercice {exercice_cible}")
+            logger.info("Preparation N+1 : %d lignes creees pour %s", nb, exercice_cible)
             return nb
 
         except Exception as e:
             if conn: conn.rollback()
-            logger.error(f"Erreur préparation N+1 : {e}", exc_info=True)
+            logger.error("Erreur preparation N+1 : %s", e, exc_info=True)
             raise
 
     # =========================================================================

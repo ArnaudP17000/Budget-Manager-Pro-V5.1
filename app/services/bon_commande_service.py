@@ -108,7 +108,7 @@ class BonCommandeService:
             LEFT JOIN applications a ON a.id = bc.application_id
             WHERE bc.id=?
         """, (bc_id,))
-        return _d(row)
+        return _d(row) if row else None
 
     def get_stats(self):
         rows = self.db.fetch_all("""
@@ -167,10 +167,12 @@ class BonCommandeService:
         bc = self.get_bon_commande_by_id(bc_id)
         if not bc:
             return {'ok': False, 'message': 'BC introuvable'}
-        if bc.get('statut') == 'IMPUTE':
-            return {'ok': False, 'message': 'Impossible de supprimer un BC imputé'}
+        if bc.get('statut') in ('IMPUTE', 'SOLDE'):
+            return {'ok': False, 'message':
+                f"Impossible de supprimer un BC {bc.get('statut')} — "
+                f"il est impute sur une ligne budgetaire."}
         self.db.delete('bons_commande', 'id=?', (bc_id,))
-        return {'ok': True, 'message': 'BC supprimé'}
+        return {'ok': True, 'message': 'BC supprime'}
 
     # ── Vérification solde contrat (amélioration #1) ───────────────────────
 
@@ -253,22 +255,21 @@ class BonCommandeService:
                 bc['statut'], 'VALIDE')
         return {'ok': True, 'message': 'BC validé'}
 
-    def imputer_bon_commande(self, bc_id, ligne_budgetaire_id=None):
-        """Imputation V5 : sur ligne budgétaire."""
+    def imputer_bon_commande(self, bc_id, ligne_budgetaire_id=None, bypass_solde=False):
+        """Imputation V5 : sur ligne budgetaire. bypass_solde=True pour forcer meme si solde insuffisant."""
         bc = self.get_bon_commande_by_id(bc_id)
         if not bc:
             return {'ok': False, 'message': 'BC introuvable'}
         if bc['statut'] != 'VALIDE':
-            return {'ok': False, 'message': f"Le BC doit être VALIDE (statut : {bc['statut']})"}
+            return {'ok': False, 'message': f"Le BC doit etre VALIDE (statut : {bc['statut']})"}
 
-        # Utiliser la ligne du BC ou celle passée en paramètre
         lid = ligne_budgetaire_id or bc.get('ligne_budgetaire_id')
         if not lid:
-            return {'ok': False, 'message': 'Aucune ligne budgétaire rattachée'}
+            return {'ok': False, 'message': 'Aucune ligne budgetaire rattachee'}
 
         try:
             from app.services.budget_v5_service import budget_v5_service
-            result = budget_v5_service.imputer_bc_sur_ligne(bc_id, lid)
+            result = budget_v5_service.imputer_bc_sur_ligne(bc_id, lid, bypass_solde=bypass_solde)
             if result.get('ok'):
                 audit = _get_audit()
                 if audit:
