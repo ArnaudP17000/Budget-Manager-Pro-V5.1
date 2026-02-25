@@ -148,11 +148,17 @@ ALTER_SQL = [
     "ALTER TABLE projets ADD COLUMN gains TEXT",
     "ALTER TABLE projets ADD COLUMN contraintes TEXT",
     "ALTER TABLE projets ADD COLUMN solutions TEXT",
+    # --- projets : 6 contraintes + triangle d or ---
+    "ALTER TABLE projets ADD COLUMN registre_risques TEXT",
+    "ALTER TABLE projets ADD COLUMN contraintes_6axes TEXT",
+    "ALTER TABLE projets ADD COLUMN triangle_tensions TEXT",
+    "ALTER TABLE projets ADD COLUMN arbitrage TEXT",
     # --- projet_membres : coordonnées acteurs ---
     "ALTER TABLE projet_membres ADD COLUMN fonction TEXT",
     "ALTER TABLE projet_membres ADD COLUMN email TEXT",
     "ALTER TABLE projet_membres ADD COLUMN telephone TEXT",
     "ALTER TABLE projet_membres ADD COLUMN role_projet TEXT",
+    "ALTER TABLE projet_membres ADD COLUMN role TEXT",
     # --- entites ---
     "ALTER TABLE entites ADD COLUMN statut TEXT DEFAULT 'ACTIF'",
     "ALTER TABLE entites ADD COLUMN actif INTEGER DEFAULT 1",

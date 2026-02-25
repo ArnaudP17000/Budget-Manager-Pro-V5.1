@@ -447,161 +447,21 @@ def generer_fiche_projet(data: dict, output_path: str) -> str:
         _build_row(t, [_lbl(role), _val(nom, WHITE), _val(fn, WHITE), _val(email, PINK)])
     br()
 
-    # ── 6. SOLUTIONS & CONTRAINTES (texte libre) ─────────────────────────────
+    # ── 6. SOLUTIONS & CONTRAINTES ────────────────────────────────────────────
     t = _make_table(doc, CW4)
     _build_row(t, [_sec('6. SOLUTIONS & CONTRAINTES')])
-    _build_row(t, [_sub('Ressources MOE disponibles — Solutions envisagees')])
+    _build_row(t, [_sub('Ressources MOE disponibles — Solutions envisagées')])
     _build_row(t, [dict(text=p.get('solutions', ''), fill=PINK, size=8, span=4,
                         height=max(600, 200 + 80 * len((p.get('solutions') or '').split('\n'))))])
-    _build_row(t, [_sub('Contraintes techniques / reglementaires / RGPD')])
+    _build_row(t, [_sub('Contraintes techniques / réglementaires / RGPD')])
     _build_row(t, [dict(text=p.get('contraintes', ''), fill=PINK, size=8, span=4,
                         height=max(500, 200 + 80 * len((p.get('contraintes') or '').split('\n'))))])
-    br()
-
-    # ── 6b. LES 6 CONTRAINTES PROJET ─────────────────────────────────────────
-    import json as _json
-    ctr_data = {}
-    ctr_raw = p.get('contraintes_6axes')
-    if ctr_raw:
-        try:
-            ctr_data = _json.loads(ctr_raw) if isinstance(ctr_raw, str) else (ctr_raw or {})
-        except Exception:
-            pass
-
-    t = _make_table(doc, CW4)
-    _build_row(t, [_sec('6b. LES 6 CONTRAINTES PROJET')])
-    _build_row(t, [_sub('Les 6 contraintes sont interconnectees — modifier l une impacte les autres.', span=4)])
-
-    AXES_6 = [
-        ('portee_desc',      'Portee',     'Perimetre, livrables, fonctionnalites incluses'),
-        ('couts_desc',       'Couts',      'Budget global, salaires, equipements, licences'),
-        ('delais_desc',      'Delais',     'Calendrier, jalons, phases, dates cles'),
-        ('ressources_desc',  'Ressources', 'Equipes, competences, equipements, logiciels'),
-        ('qualite_desc',     'Qualite',    'Criteres d acceptation, niveaux de service'),
-        ('risques_proj_desc','Risques',    'Evenements imprevisibles pouvant impacter le projet'),
-    ]
-    # 2 colonnes x 3 lignes
-    for i in range(0, len(AXES_6), 2):
-        row_cells = []
-        for j in range(2):
-            if i + j < len(AXES_6):
-                attr, label, hint = AXES_6[i + j]
-                val = ctr_data.get(attr, '') or ''
-                txt = f"{label}\n{val if val else hint}"
-                row_cells.append(dict(text=txt, fill=PINK if val else GRAY4,
-                                      size=8, span=2, height=max(400, 150 + 60 * len(val.split('\n')))))
-            else:
-                row_cells.append(_empty(span=2, h=400))
-        _build_row(t, row_cells)
-    br()
-
-    # ── 6c. TRIANGLE D OR ─────────────────────────────────────────────────────
-    tri_data = {}
-    tri_raw = p.get('triangle_tensions')
-    if tri_raw:
-        try:
-            tri_data = _json.loads(tri_raw) if isinstance(tri_raw, str) else (tri_raw or {})
-        except Exception:
-            pass
-
-    t = _make_table(doc, CW4)
-    _build_row(t, [_sec('6c. TRIANGLE D OR — PORTEE / COUTS / DELAIS')])
-    _build_row(t, [_sub('Niveau de tension sur chaque axe (1 = sous controle, 5 = tres tendu)', span=4)])
-
-    NIVEAUX = {1: 'Faible', 2: 'Modere', 3: 'Modere', 4: 'Eleve', 5: 'Critique'}
-    COULEURS_TRI = {1: '27AE60', 2: '27AE60', 3: 'F39C12', 4: 'E67E22', 5: 'C0392B'}
-
-    axes_tri = [
-        ('tension_portee', 'Portee',  'Risque de derive du perimetre (scope creep)'),
-        ('tension_couts',  'Couts',   'Pression sur le budget disponible'),
-        ('tension_delais', 'Delais',  'Pression sur le calendrier'),
-    ]
-    _build_row(t, [_chdr('Axe'), _chdr('Tension (1-5)'), _chdr('Niveau'), _chdr('Interpretation')])
-    for attr, label, desc in axes_tri:
-        v = int(tri_data.get(attr, 3))
-        col = COULEURS_TRI.get(v, 'F39C12')
-        niv = NIVEAUX.get(v, 'Modere')
-        barres = '[' + '|' * v + ' ' * (5 - v) + ']'
-        _build_row(t, [_lbl(label),
-                       dict(text=f"{v}/5  {barres}", fill='#' + col,
-                            bold=True, size=9, color='FFFFFF'),
-                       _val(niv, PINK),
-                       dict(text=desc, fill=WHITE, size=8)])
-
-    total_tri = sum(int(tri_data.get(a, 3)) for a, _, _ in axes_tri)
-    if total_tri >= 13:
-        alerte_tri = 'ALERTE : Triangle tres tendu — arbitrage urgent necessaire !'
-        fill_tri = 'C0392B'
-    elif total_tri >= 10:
-        alerte_tri = 'Attention : tensions elevees sur certains axes — surveiller de pres.'
-        fill_tri = 'E67E22'
-    else:
-        alerte_tri = 'Triangle equilibre — les trois axes sont sous controle.'
-        fill_tri = '27AE60'
-    _build_row(t, [dict(text=alerte_tri, fill='#' + fill_tri,
-                        bold=True, size=9, span=4, color='FFFFFF')])
-
-    arbitrage = p.get('arbitrage', '')
-    if arbitrage:
-        _build_row(t, [_sub('Strategie d arbitrage', span=4)])
-        _build_row(t, [dict(text=arbitrage, fill=PINK, size=8, span=4,
-                            height=max(400, 150 + 60 * len(arbitrage.split('\n'))))])
-    br()
-
-    # ── 6d. REGISTRE DES RISQUES ──────────────────────────────────────────────
-    risques_list = []
-    rsk_raw = p.get('registre_risques')
-    if rsk_raw:
-        try:
-            risques_list = _json.loads(rsk_raw) if isinstance(rsk_raw, str) else (rsk_raw or [])
-        except Exception:
-            pass
-
-    t = _make_table(doc, [3800, 1400, 800, 700, 700, 3000, 1200])
-    _build_row(t, [_sec('6d. REGISTRE DES RISQUES', span=7)])
-    _build_row(t, [_chdr('Description'), _chdr('Categorie'), _chdr('Proba'),
-                   _chdr('Impact'), _chdr('Crit.'), _chdr('Action corrective'), _chdr('Statut')])
-
-    CRIT_FILL = {
-        'critique': 'C0392B', 'eleve': 'E67E22',
-        'modere': 'F1C40F', 'faible': '27AE60'
-    }
-
-    if risques_list:
-        risques_sorted = sorted(risques_list,
-            key=lambda x: int(x.get('criticite', 0)), reverse=True)
-        for i, rsk in enumerate(risques_sorted):
-            crit = int(rsk.get('criticite', 0))
-            if crit >= 12:   niv, fc = 'Critique', 'C0392B'
-            elif crit >= 6:  niv, fc = 'Eleve',    'E67E22'
-            elif crit >= 3:  niv, fc = 'Modere',   'F1C40F'
-            else:             niv, fc = 'Faible',   '27AE60'
-            bg = GRAY4 if i % 2 else WHITE
-            _build_row(t, [
-                dict(text=rsk.get('description', ''), fill=bg, size=8),
-                dict(text=rsk.get('categorie', ''),   fill=bg, size=8),
-                dict(text=str(rsk.get('probabilite', '')), fill=bg, size=8, align='center'),
-                dict(text=str(rsk.get('impact', '')),      fill=bg, size=8, align='center'),
-                dict(text=str(crit), fill='#' + fc, bold=True, size=9,
-                     color='FFFFFF', align='center'),
-                dict(text=rsk.get('action', ''), fill=bg, size=8),
-                dict(text=rsk.get('statut', ''), fill=PINK, size=8, align='center'),
-            ])
-    else:
-        _build_row(t, [dict(text='Aucun risque enregistre dans le registre.',
-                            fill=WHITE, size=8, span=7, height=400)])
-
-    # Synthese criticite
-    if risques_list:
-        nb_crit  = sum(1 for r in risques_list if int(r.get('criticite',0)) >= 12)
-        nb_eleve = sum(1 for r in risques_list if 6 <= int(r.get('criticite',0)) < 12)
-        nb_tot   = len(risques_list)
-        synthese = (f"Total : {nb_tot} risque(s)   |   "
-                    f"Critiques (>=12) : {nb_crit}   |   "
-                    f"Eleves (6-11) : {nb_eleve}")
-        fill_s = 'C0392B' if nb_crit > 0 else ('E67E22' if nb_eleve > 0 else '27AE60')
-        _build_row(t, [dict(text=synthese, fill='#' + fill_s, bold=True,
-                            size=8, span=7, color='FFFFFF')])
+    _build_row(t, [_sub('Solutions envisagées', span=2, fill=GRAY1),
+                   _sub('Durée prévisible d\'exploitation', span=2, fill=GRAY1)])
+    _build_row(t, [_sub('Organisationnelles (calendrier, conduite du changement)',
+                         span=2, fill=GRAY2),
+                   _sub('Techniques', span=2, fill=GRAY2)])
+    _build_row(t, [_empty(span=2, h=500), _empty(span=2, h=500)])
     br()
 
     # ── 7. VALIDATION & SIGNATURES ────────────────────────────────────────────
@@ -727,7 +587,7 @@ def generer_fiche_depuis_id(projet_id: int, output_dir: str = None, extra: dict 
     try:
         try:
             rows = db_service.fetch_all(
-                "SELECT COALESCE(pm.role_projet, '') AS role, COALESCE(c.nom||' '||COALESCE(c.prenom,''), u.nom) AS nom, "
+                "SELECT COALESCE(pm.role_projet, pm.role, '') AS role, COALESCE(c.nom||' '||COALESCE(c.prenom,''), u.nom) AS nom, "
                 "COALESCE(c.fonction, '') AS fonction, COALESCE(c.email, '') AS email "
                 "FROM projet_membres pm "
                 "LEFT JOIN contacts c ON c.id=pm.contact_id "
@@ -799,11 +659,6 @@ def generer_fiche_depuis_id(projet_id: int, output_dir: str = None, extra: dict 
         'solutions':          sg('solutions'),
         'taches':             taches,
         'contacts':           contacts,
-        # Nouvelles données : registre risques, 6 contraintes, triangle d or
-        'registre_risques':   sg('registre_risques'),
-        'contraintes_6axes':  sg('contraintes_6axes'),
-        'triangle_tensions':  sg('triangle_tensions'),
-        'arbitrage':          sg('arbitrage'),
     }
 
     # Fusionner les données extra venant du dialog (acteurs détail, coûts, financement)
@@ -816,39 +671,6 @@ def generer_fiche_depuis_id(projet_id: int, output_dir: str = None, extra: dict 
             data['financement'] = extra['financement']
 
     code = sg('code', f'PRJ{projet_id}')
-    # Dossier de sortie : data/exports/ (accessible sans droits admin)
-    # Fallback : Bureau utilisateur si data/exports inaccessible
-    if output_dir:
-        out_dir = output_dir
-    else:
-        # Chercher data/exports relatif à la racine du projet
-        racine = Path(__file__).parent.parent.parent
-        exports = racine / 'data' / 'exports'
-        try:
-            exports.mkdir(parents=True, exist_ok=True)
-            # Tester l ecriture
-            test_f = exports / '.write_test'
-            test_f.touch()
-            test_f.unlink()
-            out_dir = str(exports)
-        except Exception:
-            # Fallback : Bureau de l utilisateur
-            import os as _os
-            bureau = Path(_os.path.expanduser('~')) / 'Desktop'
-            bureau.mkdir(exist_ok=True)
-            out_dir = str(bureau)
-
+    out_dir = output_dir or str(Path(__file__).parent.parent.parent)
     out_path = os.path.join(out_dir, f"fiche_projet_{code}.docx")
-
-    # Si le fichier est deja ouvert (Permission denied), generer avec timestamp
-    if os.path.exists(out_path):
-        try:
-            import tempfile
-            with open(out_path, 'a'):
-                pass
-        except PermissionError:
-            from datetime import datetime as _dt
-            stamp = _dt.now().strftime('%H%M%S')
-            out_path = os.path.join(out_dir, f"fiche_projet_{code}_{stamp}.docx")
-
     return generer_fiche_projet(data, out_path)

@@ -9,9 +9,11 @@ from PyQt5.QtWidgets import (
     QPushButton, QMessageBox, QLabel, QTabWidget, QWidget, QDialogButtonBox,
     QListWidget, QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView,
     QFileDialog, QInputDialog, QListWidgetItem,
-    QCheckBox
+    QCheckBox, QSplitter, QProgressBar, QGroupBox, QScrollArea, QGridLayout,
+    QSizePolicy, QFrame
 )
-from PyQt5.QtCore import QDate, Qt
+from PyQt5.QtCore import QDate, Qt, QSize
+from PyQt5.QtGui import QColor, QFont, QBrush
 from app.services.database_service import db_service
 from app.services.projet_service import projet_service
 from app.ui.dialogs.document_dialog import DocumentDialog
@@ -217,57 +219,426 @@ class ProjetDialog(QDialog):
         return widget
     
     def create_opportunite_tab(self):
-        """Crée l'onglet Opportunité — objectifs, risques, gains, solutions."""
+        """Onglet Opportunite — objectifs, risques, gains, solutions + registre risques."""
         widget = QWidget()
-        layout = QVBoxLayout(widget)
+        main_layout = QVBoxLayout(widget)
+
+        # Sous-onglets : Contexte | Registre risques | Contraintes 6 axes | Triangle d or
+        sub_tabs = QTabWidget()
+        sub_tabs.setStyleSheet(
+            "QTabBar::tab { padding: 5px 12px; font-size: 11px; }"
+        )
+        main_layout.addWidget(sub_tabs)
+
+        # ── Sous-onglet 1 : Contexte (champs texte existants) ──────────────
+        ctx = QWidget()
+        ctx_layout = QVBoxLayout(ctx)
         form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 
-        # Objectifs métier
         self.objectifs_edit = QTextEdit()
-        self.objectifs_edit.setPlaceholderText(
-            "Quels sont les objectifs métier opérationnels du projet ?")
-        self.objectifs_edit.setMinimumHeight(80)
-        form.addRow("Objectifs métier:", self.objectifs_edit)
+        self.objectifs_edit.setPlaceholderText("Objectifs metier operationnels du projet...")
+        self.objectifs_edit.setMinimumHeight(70)
+        form.addRow("Objectifs metier:", self.objectifs_edit)
 
-        # Enjeux stratégiques
         self.enjeux_edit = QTextEdit()
-        self.enjeux_edit.setPlaceholderText(
-            "À quels enjeux stratégiques de l'établissement ce projet concourt-il ?")
-        self.enjeux_edit.setMinimumHeight(60)
-        form.addRow("Enjeux stratégiques:", self.enjeux_edit)
+        self.enjeux_edit.setPlaceholderText("Enjeux strategiques de l etablissement...")
+        self.enjeux_edit.setMinimumHeight(55)
+        form.addRow("Enjeux strategiques:", self.enjeux_edit)
 
-        # Risques
+        self.gains_edit = QTextEdit()
+        self.gains_edit.setPlaceholderText("Gains qualitatifs et benefices attendus...")
+        self.gains_edit.setMinimumHeight(55)
+        form.addRow("Gains / Benefices:", self.gains_edit)
+
         self.risques_edit = QTextEdit()
-        self.risques_edit.setPlaceholderText(
-            "Principaux risques identifiés à NE PAS faire le projet ?")
-        self.risques_edit.setMinimumHeight(70)
+        self.risques_edit.setPlaceholderText("Risques a NE PAS faire le projet...")
+        self.risques_edit.setMinimumHeight(55)
         form.addRow("Risques / Freins:", self.risques_edit)
 
-        # Gains qualitatifs
-        self.gains_edit = QTextEdit()
-        self.gains_edit.setPlaceholderText(
-            "Gains qualitatifs et bénéfices attendus...")
-        self.gains_edit.setMinimumHeight(70)
-        form.addRow("Gains / Bénéfices:", self.gains_edit)
-
-        # Contraintes techniques / RGPD
         self.contraintes_edit = QTextEdit()
-        self.contraintes_edit.setPlaceholderText(
-            "Contraintes techniques, réglementaires ou RGPD...")
-        self.contraintes_edit.setMinimumHeight(60)
+        self.contraintes_edit.setPlaceholderText("Contraintes techniques, reglementaires, RGPD...")
+        self.contraintes_edit.setMinimumHeight(50)
         form.addRow("Contraintes:", self.contraintes_edit)
 
-        # Solutions envisagées
         self.solutions_edit = QTextEdit()
-        self.solutions_edit.setPlaceholderText(
-            "Solutions organisationnelles et techniques envisagées...")
-        self.solutions_edit.setMinimumHeight(60)
+        self.solutions_edit.setPlaceholderText("Solutions organisationnelles et techniques...")
+        self.solutions_edit.setMinimumHeight(50)
         form.addRow("Solutions:", self.solutions_edit)
 
-        layout.addLayout(form)
-        layout.addStretch()
+        ctx_layout.addLayout(form)
+        sub_tabs.addTab(ctx, "📝 Contexte")
+
+        # ── Sous-onglet 2 : Registre des risques ───────────────────────────
+        rsk = QWidget()
+        rsk_layout = QVBoxLayout(rsk)
+
+        # Barre d outils
+        rsk_toolbar = QHBoxLayout()
+        btn_add_risk = QPushButton("➕ Ajouter risque")
+        btn_add_risk.setStyleSheet(
+            "background:#27ae60;color:white;font-weight:bold;padding:5px 12px;")
+        btn_add_risk.clicked.connect(self._add_risque_row)
+        rsk_toolbar.addWidget(btn_add_risk)
+
+        btn_del_risk = QPushButton("🗑️ Supprimer")
+        btn_del_risk.setStyleSheet(
+            "background:#e74c3c;color:white;font-weight:bold;padding:5px 12px;")
+        btn_del_risk.clicked.connect(self._del_risque_row)
+        rsk_toolbar.addWidget(btn_del_risk)
+        rsk_toolbar.addStretch()
+
+        lbl_legende = QLabel(
+            "  🔴 Critique (>=12)   🟠 Eleve (6-11)   🟡 Modere (3-5)   🟢 Faible (1-2)")
+        lbl_legende.setStyleSheet("color:#95a5a6; font-size:11px;")
+        rsk_toolbar.addWidget(lbl_legende)
+        rsk_layout.addLayout(rsk_toolbar)
+
+        # Tableau registre des risques
+        self.tbl_risques = QTableWidget(0, 7)
+        self.tbl_risques.setHorizontalHeaderLabels([
+            "Description du risque",
+            "Categorie",
+            "Proba (1-4)",
+            "Impact (1-4)",
+            "Criticite (P x I)",
+            "Action corrective",
+            "Statut"
+        ])
+        hdr_r = self.tbl_risques.horizontalHeader()
+        hdr_r.setSectionResizeMode(0, QHeaderView.Stretch)
+        hdr_r.setSectionResizeMode(5, QHeaderView.Stretch)
+        self.tbl_risques.setColumnWidth(1, 110)
+        self.tbl_risques.setColumnWidth(2, 80)
+        self.tbl_risques.setColumnWidth(3, 70)
+        self.tbl_risques.setColumnWidth(4, 75)
+        self.tbl_risques.setColumnWidth(6, 90)
+        self.tbl_risques.setAlternatingRowColors(True)
+        self.tbl_risques.itemChanged.connect(self._update_criticite)
+        rsk_layout.addWidget(self.tbl_risques)
+        sub_tabs.addTab(rsk, "⚠️ Registre risques")
+
+        # ── Sous-onglet 3 : Les 6 contraintes ──────────────────────────────
+        ctr = QWidget()
+        ctr_layout = QVBoxLayout(ctr)
+
+        lbl_intro = QLabel(
+            "Les 6 contraintes sont interconnectees — modifier l une impacte les autres.")
+        lbl_intro.setStyleSheet(
+            "color:#3498db; font-style:italic; padding:4px 0; font-size:12px;")
+        ctr_layout.addWidget(lbl_intro)
+
+        grid = QGridLayout()
+        grid.setSpacing(8)
+
+        CONTRAINTES_DEF = [
+            ("🎯 Portee",         "portee_desc",
+             "Perimetre, livrables, fonctionnalites incluses. Une portee large = plus de temps et de budget."),
+            ("💰 Couts",          "couts_desc",
+             "Budget global, salaires, equipements, licences. Ressources financieres."),
+            ("⏱ Delais",          "delais_desc",
+             "Calendrier, jalons, phases, dates cles. Toute modification impacte les autres."),
+            ("⚡ Ressources",      "ressources_desc",
+             "Equipes, competences, equipements, logiciels. Mauvaise allocation = retards."),
+            ("🔍 Qualite",        "qualite_desc",
+             "Criteres d acceptation, niveaux de service. Influencee par toutes les contraintes."),
+            ("🎲 Risques projets","risques_proj_desc",
+             "Evenements imprevisibles pouvant impacter le projet. Voir registre des risques."),
+        ]
+
+        self._contraintes_edits = {}
+        for i, (label, attr, placeholder) in enumerate(CONTRAINTES_DEF):
+            grp = QGroupBox(label)
+            grp.setStyleSheet(
+                "QGroupBox { font-weight:bold; border:1px solid #34495e;"
+                "border-radius:4px; margin-top:8px; padding:6px; }"
+                "QGroupBox::title { subcontrol-origin:margin; left:8px; color:#3498db; }")
+            g_layout = QVBoxLayout(grp)
+            edit = QTextEdit()
+            edit.setPlaceholderText(placeholder)
+            edit.setMinimumHeight(60)
+            edit.setMaximumHeight(80)
+            g_layout.addWidget(edit)
+            self._contraintes_edits[attr] = edit
+            grid.addWidget(grp, i // 2, i % 2)
+
+        ctr_layout.addLayout(grid)
+        sub_tabs.addTab(ctr, "🔗 6 Contraintes")
+
+        # ── Sous-onglet 4 : Triangle d or ──────────────────────────────────
+        tri = QWidget()
+        tri_layout = QVBoxLayout(tri)
+
+        lbl_tri = QLabel("Triangle d or : Portee / Couts / Delais")
+        lbl_tri.setStyleSheet(
+            "font-size:14px; font-weight:bold; color:#f39c12; padding:6px 0;")
+        tri_layout.addWidget(lbl_tri)
+
+        lbl_tri_desc = QLabel(
+            "Toucher a l un impose de reajuster les deux autres pour garder l equilibre. "
+            "Evaluez la tension sur chaque axe : 1 = sous controle, 5 = tres tendu.")
+        lbl_tri_desc.setStyleSheet("color:#95a5a6; font-size:11px;")
+        lbl_tri_desc.setWordWrap(True)
+        tri_layout.addWidget(lbl_tri_desc)
+
+        tri_grid = QGridLayout()
+        tri_grid.setSpacing(12)
+
+        TRIANGLE_AXES = [
+            ("🎯 Portee",  "tension_portee",
+             "Risque de derive du perimetre (scope creep) ?"),
+            ("💰 Couts",   "tension_couts",
+             "Pression sur le budget disponible ?"),
+            ("⏱ Delais",  "tension_delais",
+             "Pression sur le calendrier ?"),
+        ]
+        self._tension_spins = {}
+        for col, (label, attr, tooltip) in enumerate(TRIANGLE_AXES):
+            box = QGroupBox(label)
+            box.setStyleSheet(
+                "QGroupBox { font-weight:bold; border:2px solid #f39c12;"
+                "border-radius:6px; margin-top:10px; padding:10px; }"
+                "QGroupBox::title { color:#f39c12; subcontrol-origin:margin; left:10px; }")
+            b_lay = QVBoxLayout(box)
+
+            spin = QSpinBox()
+            spin.setRange(1, 5)
+            spin.setValue(3)
+            spin.setToolTip(tooltip)
+            spin.setStyleSheet(
+                "QSpinBox { font-size:20px; font-weight:bold; padding:4px;"
+                "min-width:60px; text-align:center; }")
+            spin.valueChanged.connect(self._update_triangle_display)
+            b_lay.addWidget(spin, alignment=Qt.AlignCenter)
+
+            bar = QProgressBar()
+            bar.setRange(1, 5)
+            bar.setValue(3)
+            bar.setTextVisible(False)
+            bar.setMaximumHeight(12)
+            bar.setStyleSheet(
+                "QProgressBar { border:1px solid #555; border-radius:3px; }"
+                "QProgressBar::chunk { background:#f39c12; border-radius:3px; }")
+            b_lay.addWidget(bar)
+
+            lbl_hint = QLabel(tooltip)
+            lbl_hint.setStyleSheet("color:#7f8c8d; font-size:10px;")
+            lbl_hint.setWordWrap(True)
+            b_lay.addWidget(lbl_hint)
+
+            self._tension_spins[attr] = (spin, bar)
+            tri_grid.addWidget(box, 0, col)
+
+        tri_layout.addLayout(tri_grid)
+
+        # Zone d alerte triangle
+        self.lbl_triangle_alerte = QLabel("")
+        self.lbl_triangle_alerte.setStyleSheet(
+            "font-size:12px; padding:8px; border-radius:4px; margin-top:8px;")
+        self.lbl_triangle_alerte.setWordWrap(True)
+        tri_layout.addWidget(self.lbl_triangle_alerte)
+
+        # Arbitrage
+        arb_grp = QGroupBox("Strategie d arbitrage")
+        arb_lay = QVBoxLayout(arb_grp)
+        self.arbitrage_edit = QTextEdit()
+        self.arbitrage_edit.setPlaceholderText(
+            "Si les delais sont serres, quelle concession est acceptable ? "
+            "Reduire la portee ? Augmenter le budget ? Phaser les livrables ?...")
+        self.arbitrage_edit.setMinimumHeight(70)
+        arb_lay.addWidget(self.arbitrage_edit)
+        tri_layout.addWidget(arb_grp)
+        tri_layout.addStretch()
+        sub_tabs.addTab(tri, "🔺 Triangle d or")
+
+        self._update_triangle_display()
         return widget
+
+    # ── Méthodes Registre des risques ────────────────────────────────────────
+
+    def _add_risque_row(self, data=None):
+        """Ajoute une ligne dans le registre des risques."""
+        r = self.tbl_risques.rowCount()
+        self.tbl_risques.insertRow(r)
+
+        # Description
+        desc = QTableWidgetItem(data.get('description', '') if data else '')
+        self.tbl_risques.setItem(r, 0, desc)
+
+        # Categorie (combo)
+        cat_combo = QComboBox()
+        for c in ['Planning', 'Budget', 'Technique', 'Ressources',
+                  'Qualite', 'Perimetre', 'Organisationnel', 'Autre']:
+            cat_combo.addItem(c)
+        if data:
+            idx = cat_combo.findText(data.get('categorie', ''))
+            if idx >= 0:
+                cat_combo.setCurrentIndex(idx)
+        self.tbl_risques.setCellWidget(r, 1, cat_combo)
+
+        # Probabilite (1-4)
+        prob_spin = QSpinBox()
+        prob_spin.setRange(1, 4)
+        prob_spin.setValue(int(data.get('probabilite', 2)) if data else 2)
+        prob_spin.valueChanged.connect(lambda v, row=r: self._recalc_criticite(row))
+        self.tbl_risques.setCellWidget(r, 2, prob_spin)
+
+        # Impact (1-4)
+        imp_spin = QSpinBox()
+        imp_spin.setRange(1, 4)
+        imp_spin.setValue(int(data.get('impact', 2)) if data else 2)
+        imp_spin.valueChanged.connect(lambda v, row=r: self._recalc_criticite(row))
+        self.tbl_risques.setCellWidget(r, 3, imp_spin)
+
+        # Criticite (calculee)
+        crit_item = QTableWidgetItem('')
+        crit_item.setFlags(crit_item.flags() & ~Qt.ItemIsEditable)
+        crit_item.setTextAlignment(Qt.AlignCenter)
+        self.tbl_risques.setItem(r, 4, crit_item)
+
+        # Action corrective
+        action = QTableWidgetItem(data.get('action', '') if data else '')
+        self.tbl_risques.setItem(r, 5, action)
+
+        # Statut (combo)
+        statut_combo = QComboBox()
+        for s in ['Identifie', 'En cours', 'Surveille', 'Resolu', 'Accepte']:
+            statut_combo.addItem(s)
+        if data:
+            idx = statut_combo.findText(data.get('statut', ''))
+            if idx >= 0:
+                statut_combo.setCurrentIndex(idx)
+        self.tbl_risques.setCellWidget(r, 6, statut_combo)
+
+        self._recalc_criticite(r)
+
+    def _del_risque_row(self):
+        row = self.tbl_risques.currentRow()
+        if row >= 0:
+            self.tbl_risques.removeRow(row)
+
+    def _update_criticite(self, item):
+        pass  # Geree par _recalc_criticite via spinbox
+
+    def _recalc_criticite(self, row):
+        """Recalcule criticite = probabilite x impact et colorie la cellule."""
+        try:
+            prob_w = self.tbl_risques.cellWidget(row, 2)
+            imp_w  = self.tbl_risques.cellWidget(row, 3)
+            if not prob_w or not imp_w:
+                return
+            crit = prob_w.value() * imp_w.value()
+            item = self.tbl_risques.item(row, 4)
+            if not item:
+                item = QTableWidgetItem()
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                item.setTextAlignment(Qt.AlignCenter)
+                self.tbl_risques.setItem(row, 4, item)
+            item.setText(str(crit))
+            if crit >= 12:
+                item.setBackground(QBrush(QColor('#c0392b')))
+                item.setForeground(QBrush(QColor('white')))
+            elif crit >= 6:
+                item.setBackground(QBrush(QColor('#e67e22')))
+                item.setForeground(QBrush(QColor('white')))
+            elif crit >= 3:
+                item.setBackground(QBrush(QColor('#f1c40f')))
+                item.setForeground(QBrush(QColor('#2c3e50')))
+            else:
+                item.setBackground(QBrush(QColor('#27ae60')))
+                item.setForeground(QBrush(QColor('white')))
+        except Exception:
+            pass
+
+    def _get_risques_data(self):
+        """Exporte le registre des risques en liste de dicts."""
+        result = []
+        for r in range(self.tbl_risques.rowCount()):
+            prob_w  = self.tbl_risques.cellWidget(r, 2)
+            imp_w   = self.tbl_risques.cellWidget(r, 3)
+            cat_w   = self.tbl_risques.cellWidget(r, 1)
+            stat_w  = self.tbl_risques.cellWidget(r, 6)
+            desc    = self.tbl_risques.item(r, 0)
+            action  = self.tbl_risques.item(r, 5)
+            if desc and desc.text().strip():
+                result.append({
+                    'description':  desc.text().strip(),
+                    'categorie':    cat_w.currentText() if cat_w else '',
+                    'probabilite':  prob_w.value() if prob_w else 2,
+                    'impact':       imp_w.value() if imp_w else 2,
+                    'criticite':    (prob_w.value() * imp_w.value()) if (prob_w and imp_w) else 4,
+                    'action':       action.text().strip() if action else '',
+                    'statut':       stat_w.currentText() if stat_w else 'Identifie',
+                })
+        return result
+
+    def _load_risques_data(self, risques_json):
+        """Charge le registre des risques depuis JSON stocke."""
+        import json
+        if not risques_json:
+            return
+        try:
+            risques = json.loads(risques_json) if isinstance(risques_json, str) else risques_json
+            for r in risques:
+                self._add_risque_row(r)
+        except Exception as e:
+            logger.warning("Chargement registre risques : %s", e)
+
+    # ── Méthodes Triangle d or ─────────────────────────────────────────────
+
+    def _update_triangle_display(self):
+        """Met a jour les barres et l alerte du triangle d or."""
+        try:
+            vals = {}
+            for attr, (spin, bar) in self._tension_spins.items():
+                v = spin.value()
+                vals[attr] = v
+                bar.setValue(v)
+                if v >= 4:
+                    bar.setStyleSheet(
+                        "QProgressBar::chunk { background:#e74c3c; } "
+                        "QProgressBar { border:1px solid #555; border-radius:3px; }")
+                elif v >= 3:
+                    bar.setStyleSheet(
+                        "QProgressBar::chunk { background:#f39c12; } "
+                        "QProgressBar { border:1px solid #555; border-radius:3px; }")
+                else:
+                    bar.setStyleSheet(
+                        "QProgressBar::chunk { background:#27ae60; } "
+                        "QProgressBar { border:1px solid #555; border-radius:3px; }")
+
+            tensions_elevees = [k.replace('tension_', '').capitalize()
+                                for k, v in vals.items() if v >= 4]
+            total = sum(vals.values())
+
+            if total >= 13:
+                msg = ("🔴 ALERTE : Triangle d or tres tendu sur tous les axes ! "
+                       "Un arbitrage urgent est necessaire.")
+                style = "background:#5c1010; color:#ff6b6b; border:1px solid #c0392b;"
+            elif tensions_elevees:
+                axes = ', '.join(tensions_elevees)
+                msg = (f"🟠 Tension elevee sur : {axes}. "
+                       "Envisagez un arbitrage sur les axes concernes.")
+                style = "background:#5c3a10; color:#f39c12; border:1px solid #e67e22;"
+            else:
+                msg = "🟢 Triangle equilibre — les trois axes sont sous controle."
+                style = "background:#0f3d1e; color:#2ecc71; border:1px solid #27ae60;"
+
+            self.lbl_triangle_alerte.setText(msg)
+            self.lbl_triangle_alerte.setStyleSheet(
+                f"font-size:12px; padding:8px; border-radius:4px; margin-top:8px; {style}")
+        except Exception:
+            pass
+
+    def _get_contraintes_data(self):
+        """Exporte les 6 contraintes en dict."""
+        return {attr: edit.toPlainText().strip()
+                for attr, edit in self._contraintes_edits.items()}
+
+    def _get_triangle_data(self):
+        """Exporte les valeurs de tension du triangle."""
+        return {attr: spin.value()
+                for attr, (spin, bar) in self._tension_spins.items()}
 
     def create_budget_tab(self):
         """Crée l'onglet Budget — V5 (lignes budgétaires)."""
@@ -837,13 +1208,40 @@ class ProjetDialog(QDialog):
                         self.service_combo.setCurrentIndex(i)
                         break
             
-            # Onglet Opportunité
+            # Onglet Opportunite — champs contexte
             self.objectifs_edit.setPlainText(safe_get(self.projet, 'objectifs', '') or '')
             self.enjeux_edit.setPlainText(safe_get(self.projet, 'enjeux', '') or '')
             self.risques_edit.setPlainText(safe_get(self.projet, 'risques', '') or '')
             self.gains_edit.setPlainText(safe_get(self.projet, 'gains', '') or '')
             self.contraintes_edit.setPlainText(safe_get(self.projet, 'contraintes', '') or '')
             self.solutions_edit.setPlainText(safe_get(self.projet, 'solutions', '') or '')
+
+            # Registre des risques (JSON)
+            self._load_risques_data(safe_get(self.projet, 'registre_risques'))
+
+            # 6 contraintes
+            import json
+            ctr_json = safe_get(self.projet, 'contraintes_6axes')
+            if ctr_json:
+                try:
+                    ctr_data = json.loads(ctr_json) if isinstance(ctr_json, str) else ctr_json
+                    for attr, edit in self._contraintes_edits.items():
+                        edit.setPlainText(ctr_data.get(attr, ''))
+                except Exception:
+                    pass
+
+            # Triangle d or
+            tri_json = safe_get(self.projet, 'triangle_tensions')
+            if tri_json:
+                try:
+                    tri_data = json.loads(tri_json) if isinstance(tri_json, str) else tri_json
+                    for attr, (spin, bar) in self._tension_spins.items():
+                        spin.setValue(int(tri_data.get(attr, 3)))
+                except Exception:
+                    pass
+
+            # Arbitrage
+            self.arbitrage_edit.setPlainText(safe_get(self.projet, 'arbitrage', '') or '')
 
             # Onglet Budget
             self.budget_initial_spin.setValue(float(safe_get(self.projet, 'budget_initial', 0) or 0))
@@ -1053,6 +1451,13 @@ class ProjetDialog(QDialog):
                 'gains':       self.gains_edit.toPlainText().strip() or None,
                 'contraintes': self.contraintes_edit.toPlainText().strip() or None,
                 'solutions':   self.solutions_edit.toPlainText().strip() or None,
+                'registre_risques':  __import__('json').dumps(
+                    self._get_risques_data(), ensure_ascii=False),
+                'contraintes_6axes': __import__('json').dumps(
+                    self._get_contraintes_data(), ensure_ascii=False),
+                'triangle_tensions': __import__('json').dumps(
+                    self._get_triangle_data(), ensure_ascii=False),
+                'arbitrage':   self.arbitrage_edit.toPlainText().strip() or None,
                 'budget_initial': self.budget_initial_spin.value(),
                 'budget_estime': self.budget_estime_spin.value(),
                 'budget_actuel': self.budget_actuel_spin.value(),

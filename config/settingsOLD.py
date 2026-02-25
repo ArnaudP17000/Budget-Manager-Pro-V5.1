@@ -2,27 +2,12 @@
 Configuration globale de l'application Budget Manager Pro.
 """
 import os
-import sys
 from pathlib import Path
 
-# --- Compatibilité PyInstaller ---
-# Quand l'app tourne depuis un .exe, sys.frozen est défini
-# La BDD doit être à côté du .exe, pas à l'intérieur
-if getattr(sys, 'frozen', False):
-    # Mode .exe : on se place à côté du .exe
-    BASE_DIR = Path(sys.executable).resolve().parent
-else:
-    # Mode script Python classique
-    BASE_DIR = Path(__file__).resolve().parent.parent
-
+# Chemins
+BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 CONFIG_DIR = BASE_DIR / "config"
-
-# Création automatique des dossiers si absents
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-(BASE_DIR / "backups").mkdir(parents=True, exist_ok=True)
-(BASE_DIR / "logs").mkdir(parents=True, exist_ok=True)
-(DATA_DIR / "exports").mkdir(parents=True, exist_ok=True)
 
 # Base de données
 DATABASE_PATH = DATA_DIR / "budget_manager.db"
@@ -53,4 +38,4 @@ DATETIME_FORMAT = "%d/%m/%Y %H:%M"
 
 # Logging
 LOG_LEVEL = "INFO"
-LOG_FILE = BASE_DIR / "logs" / "app.log"
+LOG_FILE = DATA_DIR / "app.log"

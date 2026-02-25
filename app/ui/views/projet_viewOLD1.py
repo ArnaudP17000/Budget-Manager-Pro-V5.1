@@ -5,11 +5,10 @@ import logging
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLabel, QComboBox, QLineEdit, QGroupBox, QMessageBox,
-    QHeaderView, QProgressBar, QFrame, QSplitter, QDialog, QScrollArea,
-    QGridLayout, QTextEdit, QDialogButtonBox
+    QHeaderView, QProgressBar, QFrame
 )
-from PyQt5.QtCore import Qt, QTimer, QSize
-from PyQt5.QtGui import QColor, QBrush, QFont
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QColor, QBrush
 from app.services.projet_service import projet_service
 from app.ui.dialogs.projet_dialog import ProjetDialog
 
@@ -34,32 +33,28 @@ class ProjetView(QWidget):
         QTimer.singleShot(100, self.load_projets)
     
     def init_ui(self):
-        """Initialise l interface utilisateur avec tableau de bord 6 contraintes."""
+        """Initialise l'interface utilisateur."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
-
-        title_label = QLabel("Gestion des Projets")
+        
+        # Titre
+        title_label = QLabel("📁 Gestion des Projets")
         title_label.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
         layout.addWidget(title_label)
-
+        
+        # Filtres
         filters_group = self.create_filters()
         layout.addWidget(filters_group)
-
+        
+        # KPI
         kpi_group = self.create_kpi()
         layout.addWidget(kpi_group)
-
-        # Splitter : tableau (gauche) + tableau de bord contraintes (droite)
-        splitter = QSplitter(Qt.Horizontal)
-
-        # Tableau projets
-        table_widget = QWidget()
-        table_layout = QVBoxLayout(table_widget)
-        table_layout.setContentsMargins(0, 0, 0, 0)
-
+        
+        # Tableau
         self.table = QTableWidget()
         self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels([
-            "Code", "Nom", "Budget", "Debut", "Fin prevue",
+            "Code", "Nom", "Budget Initial", "Date Début", "Date Fin",
             "Statut", "Avancement", "Responsable"
         ])
         self.table.horizontalHeader().setStretchLastSection(True)
@@ -69,235 +64,11 @@ class ProjetView(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSortingEnabled(True)
         self.table.doubleClicked.connect(self.edit_projet)
-        self.table.itemSelectionChanged.connect(self._on_projet_selected)
-        table_layout.addWidget(self.table)
-
+        layout.addWidget(self.table)
+        
+        # Boutons d'action
         buttons_layout = self.create_action_buttons()
-        table_layout.addLayout(buttons_layout)
-        splitter.addWidget(table_widget)
-
-        # Panneau tableau de bord contraintes (droite)
-        self.panel_contraintes = self._build_panel_contraintes()
-        splitter.addWidget(self.panel_contraintes)
-        splitter.setSizes([900, 380])
-
-        layout.addWidget(splitter)
-
-    def _build_panel_contraintes(self):
-        """Panneau lateral : tableau de bord des 6 contraintes du projet selectionne."""
-        panel = QFrame()
-        panel.setStyleSheet(
-            "QFrame { background:#1a252f; border-left:2px solid #2c3e50; }")
-        vbox = QVBoxLayout(panel)
-        vbox.setContentsMargins(8, 8, 8, 8)
-
-        self.lbl_ctr_titre = QLabel("Selectionnez un projet")
-        self.lbl_ctr_titre.setStyleSheet(
-            "font-weight:bold; font-size:13px; color:#ecf0f1;"
-            "background:#2c3e50; padding:8px; border-radius:4px;")
-        self.lbl_ctr_titre.setWordWrap(True)
-        vbox.addWidget(self.lbl_ctr_titre)
-
-        # Triangle d or — 3 jauges
-        tri_grp = QGroupBox("Triangle d or")
-        tri_grp.setStyleSheet(
-            "QGroupBox { color:#f39c12; font-weight:bold; border:1px solid #f39c12;"
-            "border-radius:4px; margin-top:8px; padding:6px; }"
-            "QGroupBox::title { subcontrol-origin:margin; left:8px; }")
-        tri_lay = QGridLayout(tri_grp)
-        tri_lay.setSpacing(4)
-
-        self._tri_bars = {}
-        for i, (attr, label) in enumerate([
-            ('tension_portee', 'Portee'),
-            ('tension_couts',  'Couts'),
-            ('tension_delais', 'Delais'),
-        ]):
-            lbl = QLabel(label)
-            lbl.setStyleSheet("color:#ecf0f1; font-size:11px;")
-            bar = QProgressBar()
-            bar.setRange(1, 5)
-            bar.setValue(3)
-            bar.setMaximumHeight(14)
-            bar.setTextVisible(False)
-            tri_lay.addWidget(lbl, i, 0)
-            tri_lay.addWidget(bar, i, 1)
-            self._tri_bars[attr] = bar
-
-        self.lbl_triangle_synthese = QLabel("")
-        self.lbl_triangle_synthese.setStyleSheet(
-            "font-size:11px; color:#f39c12; padding:3px;")
-        self.lbl_triangle_synthese.setWordWrap(True)
-        tri_lay.addWidget(self.lbl_triangle_synthese, 3, 0, 1, 2)
-        vbox.addWidget(tri_grp)
-
-        # Risques critiques
-        rsk_grp = QGroupBox("Risques critiques")
-        rsk_grp.setStyleSheet(
-            "QGroupBox { color:#e74c3c; font-weight:bold; border:1px solid #e74c3c;"
-            "border-radius:4px; margin-top:8px; padding:6px; }"
-            "QGroupBox::title { subcontrol-origin:margin; left:8px; }")
-        rsk_lay = QVBoxLayout(rsk_grp)
-        self.tbl_risques_vue = QTableWidget(0, 3)
-        self.tbl_risques_vue.setHorizontalHeaderLabels(["Risque", "Crit.", "Statut"])
-        self.tbl_risques_vue.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.tbl_risques_vue.setColumnWidth(1, 45)
-        self.tbl_risques_vue.setColumnWidth(2, 75)
-        self.tbl_risques_vue.setMaximumHeight(140)
-        self.tbl_risques_vue.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tbl_risques_vue.setAlternatingRowColors(True)
-        rsk_lay.addWidget(self.tbl_risques_vue)
-        vbox.addWidget(rsk_grp)
-
-        # 6 contraintes
-        ctr_grp = QGroupBox("6 Contraintes")
-        ctr_grp.setStyleSheet(
-            "QGroupBox { color:#3498db; font-weight:bold; border:1px solid #3498db;"
-            "border-radius:4px; margin-top:8px; padding:6px; }"
-            "QGroupBox::title { subcontrol-origin:margin; left:8px; }")
-        ctr_lay = QGridLayout(ctr_grp)
-        ctr_lay.setSpacing(4)
-
-        AXES = [
-            ('portee_desc',      '🎯 Portee',    0, 0),
-            ('couts_desc',       '💰 Couts',     0, 1),
-            ('delais_desc',      '⏱ Delais',     1, 0),
-            ('ressources_desc',  '⚡ Ressources', 1, 1),
-            ('qualite_desc',     '🔍 Qualite',   2, 0),
-            ('risques_proj_desc','🎲 Risques',   2, 1),
-        ]
-        self._ctr_labels = {}
-        for attr, label, row, col in AXES:
-            box = QFrame()
-            box.setStyleSheet(
-                "QFrame { background:#1e2f3e; border:1px solid #2c3e50;"
-                "border-radius:3px; padding:3px; }")
-            b_lay = QVBoxLayout(box)
-            b_lay.setContentsMargins(4, 4, 4, 4)
-            b_lay.setSpacing(2)
-            lbl_title = QLabel(label)
-            lbl_title.setStyleSheet("font-weight:bold; font-size:10px; color:#3498db;")
-            lbl_val = QLabel("—")
-            lbl_val.setStyleSheet("font-size:10px; color:#bdc3c7;")
-            lbl_val.setWordWrap(True)
-            lbl_val.setMaximumHeight(36)
-            b_lay.addWidget(lbl_title)
-            b_lay.addWidget(lbl_val)
-            ctr_lay.addWidget(box, row, col)
-            self._ctr_labels[attr] = lbl_val
-
-        vbox.addWidget(ctr_grp)
-
-        btn_detail = QPushButton("✏️ Editer contraintes")
-        btn_detail.setStyleSheet(
-            "background:#8e44ad;color:white;font-weight:bold;padding:6px;")
-        btn_detail.clicked.connect(self.edit_projet)
-        vbox.addWidget(btn_detail)
-        vbox.addStretch()
-
-        return panel
-
-    def _on_projet_selected(self):
-        """Charge le tableau de bord des 6 contraintes pour le projet selectionne."""
-        row = self.table.currentRow()
-        if row < 0:
-            return
-        projet_id = self.table.item(row, 0).data(Qt.UserRole) if self.table.item(row, 0) else None
-        if not projet_id:
-            return
-        try:
-            projet = self.projet_service.get_by_id(projet_id)
-            if not projet:
-                return
-            self.lbl_ctr_titre.setText(
-                f"{safe_get(projet, 'code', '')} — {safe_get(projet, 'nom', '')}")
-
-            # Triangle d or
-            import json
-            tri_json = safe_get(projet, 'triangle_tensions')
-            tri_data = {}
-            if tri_json:
-                try:
-                    tri_data = json.loads(tri_json) if isinstance(tri_json, str) else tri_json
-                except Exception:
-                    pass
-
-            tensions = {}
-            for attr, bar in self._tri_bars.items():
-                v = int(tri_data.get(attr, 3))
-                tensions[attr] = v
-                bar.setValue(v)
-                if v >= 4:
-                    bar.setStyleSheet(
-                        "QProgressBar::chunk{background:#e74c3c;}"
-                        "QProgressBar{border:1px solid #555;border-radius:3px;}")
-                elif v >= 3:
-                    bar.setStyleSheet(
-                        "QProgressBar::chunk{background:#f39c12;}"
-                        "QProgressBar{border:1px solid #555;border-radius:3px;}")
-                else:
-                    bar.setStyleSheet(
-                        "QProgressBar::chunk{background:#27ae60;}"
-                        "QProgressBar{border:1px solid #555;border-radius:3px;}")
-
-            total_t = sum(tensions.values())
-            if total_t >= 13:
-                self.lbl_triangle_synthese.setText("🔴 Triangle tres tendu — arbitrage urgent !")
-            elif any(v >= 4 for v in tensions.values()):
-                axes = [a.replace('tension_','').capitalize()
-                        for a, v in tensions.items() if v >= 4]
-                self.lbl_triangle_synthese.setText(
-                    "🟠 Tension elevee : " + ', '.join(axes))
-            else:
-                self.lbl_triangle_synthese.setText("🟢 Triangle equilibre")
-
-            # Risques critiques
-            self.tbl_risques_vue.setRowCount(0)
-            rsk_json = safe_get(projet, 'registre_risques')
-            if rsk_json:
-                try:
-                    risques = json.loads(rsk_json) if isinstance(rsk_json, str) else rsk_json
-                    # Trier par criticite desc
-                    risques_sorted = sorted(risques,
-                        key=lambda x: int(x.get('criticite', 0)), reverse=True)
-                    for rsk in risques_sorted[:5]:  # Top 5
-                        r2 = self.tbl_risques_vue.rowCount()
-                        self.tbl_risques_vue.insertRow(r2)
-                        desc_item = QTableWidgetItem(
-                            (rsk.get('description') or '')[:40])
-                        self.tbl_risques_vue.setItem(r2, 0, desc_item)
-                        crit = int(rsk.get('criticite', 0))
-                        crit_item = QTableWidgetItem(str(crit))
-                        crit_item.setTextAlignment(Qt.AlignCenter)
-                        if crit >= 12:
-                            crit_item.setBackground(QBrush(QColor('#c0392b')))
-                            crit_item.setForeground(QBrush(QColor('white')))
-                        elif crit >= 6:
-                            crit_item.setBackground(QBrush(QColor('#e67e22')))
-                            crit_item.setForeground(QBrush(QColor('white')))
-                        else:
-                            crit_item.setBackground(QBrush(QColor('#27ae60')))
-                            crit_item.setForeground(QBrush(QColor('white')))
-                        self.tbl_risques_vue.setItem(r2, 1, crit_item)
-                        self.tbl_risques_vue.setItem(r2, 2, QTableWidgetItem(
-                            rsk.get('statut', '')))
-                except Exception:
-                    pass
-
-            # 6 contraintes
-            ctr_json = safe_get(projet, 'contraintes_6axes')
-            ctr_data = {}
-            if ctr_json:
-                try:
-                    ctr_data = json.loads(ctr_json) if isinstance(ctr_json, str) else ctr_json
-                except Exception:
-                    pass
-            for attr, lbl in self._ctr_labels.items():
-                val = ctr_data.get(attr, '') or ''
-                lbl.setText(val[:60] + '...' if len(val) > 60 else (val or '—'))
-
-        except Exception as e:
-            logger.error("Panneau contraintes : %s", e)
+        layout.addLayout(buttons_layout)
     
     def create_filters(self):
         """Crée la section des filtres."""

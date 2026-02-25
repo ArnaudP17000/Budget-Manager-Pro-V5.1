@@ -7,6 +7,11 @@ from app.services.database_service import db_service
 
 logger = logging.getLogger(__name__)
 
+def _d(row):
+    """Convertit sqlite3.Row en dict."""
+    if row is None: return None
+    return dict(row) if hasattr(row, 'keys') else row
+
 class TacheService:
     """Service pour gérer les tâches."""
     
@@ -68,7 +73,8 @@ class TacheService:
             query += "ELSE 5 END, "
             query += "t.date_echeance ASC NULLS LAST"
             
-            return self.db.fetch_all(query, params if params else None)
+            rows = self.db.fetch_all(query, params if params else None)
+            return [_d(r) for r in rows] if rows else []
         except Exception as e:
             logger.error(f"Erreur récupération tâches: {e}")
             raise
@@ -86,7 +92,7 @@ class TacheService:
         try:
             query = "SELECT * FROM taches WHERE id = ?"
             result = self.db.fetch_one(query, (tache_id,))
-            return result
+            return _d(result)
         except Exception as e:
             logger.error(f"Erreur récupération tâche {tache_id}: {e}")
             raise

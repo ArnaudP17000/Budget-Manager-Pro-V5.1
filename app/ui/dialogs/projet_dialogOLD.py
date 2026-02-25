@@ -22,7 +22,7 @@ def safe_get(row, key, default=None):
     try:
         val = row[key]
         return val if val is not None else default
-    except (KeyError, TypeError):
+    except (KeyError, TypeError, IndexError):
         return default
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,9 @@ class ProjetDialog(QDialog):
         self.tabs.addTab(general_tab, "📋 Général")
         
         # Onglet 2: Budget
+        opportunite_tab = self.create_opportunite_tab()
+        self.tabs.addTab(opportunite_tab, "🎯 Opportunité")
+
         budget_tab = self.create_budget_tab()
         self.tabs.addTab(budget_tab, "💰 Budget")
         
@@ -62,6 +65,12 @@ class ProjetDialog(QDialog):
         self.tabs.addTab(equipe_tab, "👥 Équipe")
         
         # Onglet 4: Contacts
+        acteurs_tab = self.create_acteurs_tab()
+        self.tabs.addTab(acteurs_tab, "🪪 Acteurs détail")
+
+        couts_tab = self.create_couts_tab()
+        self.tabs.addTab(couts_tab, "💶 Coûts & Charges")
+
         contacts_tab = self.create_contacts_tab()
         self.tabs.addTab(contacts_tab, "📞 Contacts")
         
@@ -75,11 +84,21 @@ class ProjetDialog(QDialog):
         
         layout.addWidget(self.tabs)
         
-        # Boutons OK/Annuler
+        # Boutons
+        btn_layout = QHBoxLayout()
+
+        self.btn_fiche = QPushButton("🖨️ Exporter Fiche Word")
+        self.btn_fiche.setStyleSheet(
+            "background:#C00000;color:white;font-weight:bold;padding:6px 14px;border-radius:4px;")
+        self.btn_fiche.clicked.connect(self._exporter_fiche)
+        btn_layout.addWidget(self.btn_fiche)
+
+        btn_layout.addStretch()
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept_dialog)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        btn_layout.addWidget(buttons)
+        layout.addLayout(btn_layout)
     
     def create_general_tab(self):
         """Crée l'onglet Général."""
@@ -170,6 +189,7 @@ class ProjetDialog(QDialog):
         self.date_fin_reelle.setDate(QDate.currentDate())
         self.date_fin_reelle.setEnabled(False)
         self.chk_termine.toggled.connect(self.date_fin_reelle.setEnabled)
+        self.chk_termine.toggled.connect(self._on_termine_toggled)
         form.addRow("Date fin réelle:", self.date_fin_reelle)
         
         # Avancement
@@ -196,20 +216,73 @@ class ProjetDialog(QDialog):
         layout.addStretch()
         return widget
     
-    def create_budget_tab(self):
-        """Crée l'onglet Budget."""
+    def create_opportunite_tab(self):
+        """Crée l'onglet Opportunité — objectifs, risques, gains, solutions."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         form = QFormLayout()
-        
-        # Budget initial
+        form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
+
+        # Objectifs métier
+        self.objectifs_edit = QTextEdit()
+        self.objectifs_edit.setPlaceholderText(
+            "Quels sont les objectifs métier opérationnels du projet ?")
+        self.objectifs_edit.setMinimumHeight(80)
+        form.addRow("Objectifs métier:", self.objectifs_edit)
+
+        # Enjeux stratégiques
+        self.enjeux_edit = QTextEdit()
+        self.enjeux_edit.setPlaceholderText(
+            "À quels enjeux stratégiques de l'établissement ce projet concourt-il ?")
+        self.enjeux_edit.setMinimumHeight(60)
+        form.addRow("Enjeux stratégiques:", self.enjeux_edit)
+
+        # Risques
+        self.risques_edit = QTextEdit()
+        self.risques_edit.setPlaceholderText(
+            "Principaux risques identifiés à NE PAS faire le projet ?")
+        self.risques_edit.setMinimumHeight(70)
+        form.addRow("Risques / Freins:", self.risques_edit)
+
+        # Gains qualitatifs
+        self.gains_edit = QTextEdit()
+        self.gains_edit.setPlaceholderText(
+            "Gains qualitatifs et bénéfices attendus...")
+        self.gains_edit.setMinimumHeight(70)
+        form.addRow("Gains / Bénéfices:", self.gains_edit)
+
+        # Contraintes techniques / RGPD
+        self.contraintes_edit = QTextEdit()
+        self.contraintes_edit.setPlaceholderText(
+            "Contraintes techniques, réglementaires ou RGPD...")
+        self.contraintes_edit.setMinimumHeight(60)
+        form.addRow("Contraintes:", self.contraintes_edit)
+
+        # Solutions envisagées
+        self.solutions_edit = QTextEdit()
+        self.solutions_edit.setPlaceholderText(
+            "Solutions organisationnelles et techniques envisagées...")
+        self.solutions_edit.setMinimumHeight(60)
+        form.addRow("Solutions:", self.solutions_edit)
+
+        layout.addLayout(form)
+        layout.addStretch()
+        return widget
+
+    def create_budget_tab(self):
+        """Crée l'onglet Budget — V5 (lignes budgétaires)."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        form = QFormLayout()
+
+        # Budget prévisionnel
         self.budget_initial_spin = QDoubleSpinBox()
         self.budget_initial_spin.setRange(0, 100000000)
         self.budget_initial_spin.setSingleStep(1000)
         self.budget_initial_spin.setSuffix(" €")
         self.budget_initial_spin.setDecimals(2)
-        form.addRow("Budget initial:", self.budget_initial_spin)
-        
+        form.addRow("Budget prévisionnel:", self.budget_initial_spin)
+
         # Budget estimé
         self.budget_estime_spin = QDoubleSpinBox()
         self.budget_estime_spin.setRange(0, 100000000)
@@ -217,33 +290,39 @@ class ProjetDialog(QDialog):
         self.budget_estime_spin.setSuffix(" €")
         self.budget_estime_spin.setDecimals(2)
         form.addRow("Budget estimé:", self.budget_estime_spin)
-        
-        # Budget actuel
+
+        # Budget actuel (voté)
         self.budget_actuel_spin = QDoubleSpinBox()
         self.budget_actuel_spin.setRange(0, 100000000)
         self.budget_actuel_spin.setSingleStep(1000)
         self.budget_actuel_spin.setSuffix(" €")
         self.budget_actuel_spin.setDecimals(2)
-        form.addRow("Budget actuel:", self.budget_actuel_spin)
-        
-        # Budget consommé (lecture seule)
-        self.budget_consomme_label = QLabel("0 €")
-        form.addRow("Budget consommé:", self.budget_consomme_label)
-        
-        # Lien AP
-        self.ap_combo = QComboBox()
-        self.ap_combo.addItem("-- Aucune --", None)
-        # Charger les AP disponibles
+        form.addRow("Budget voté:", self.budget_actuel_spin)
+
+        # Budget consommé (lecture seule — calculé depuis BC)
+        self.budget_consomme_label = QLabel("0,00 €")
+        self.budget_consomme_label.setStyleSheet("color:#e67e22;font-weight:bold;")
+        form.addRow("Budget consommé (BC):", self.budget_consomme_label)
+
+        # Ligne budgétaire liée (V5)
+        self.ligne_budg_combo = QComboBox()
+        self.ligne_budg_combo.addItem("-- Aucune ligne --", None)
         try:
-            aps = db_service.fetch_all(
-                "SELECT id, numero_ap, libelle FROM autorisations_programme WHERE statut = 'ACTIVE' ORDER BY numero_ap"
-            )
-            for ap in aps:
-                self.ap_combo.addItem(f"{ap['numero_ap']} - {ap['libelle']}", ap['id'])
+            from app.services.budget_v5_service import budget_v5_service
+            lignes = budget_v5_service.get_lignes()
+            for lb in lignes:
+                label = f"{lb.get('entite_code','')} | {lb.get('libelle','')[:40]} ({lb.get('exercice','')})"
+                self.ligne_budg_combo.addItem(label, lb['id'])
         except Exception as e:
-            logger.error(f"Erreur chargement AP: {e}")
-        form.addRow("Autorisation Programme:", self.ap_combo)
-        
+            logger.error(f"Erreur chargement lignes budgétaires: {e}")
+        form.addRow("Ligne budgétaire V5:", self.ligne_budg_combo)
+
+        # Récapitulatif BC liés
+        self.bc_recap_label = QLabel("Aucun BC lié")
+        self.bc_recap_label.setStyleSheet("color:#95a5a6;font-style:italic;")
+        self.bc_recap_label.setWordWrap(True)
+        form.addRow("BC liés:", self.bc_recap_label)
+
         layout.addLayout(form)
         layout.addStretch()
         return widget
@@ -263,6 +342,7 @@ class ProjetDialog(QDialog):
         self.responsable_combo.completer().setFilterMode(Qt.MatchContains)
         self.responsable_combo.completer().setCaseSensitivity(Qt.CaseInsensitive)
         self._charger_personnes(self.responsable_combo)
+        self.responsable_combo.lineEdit().setPlaceholderText("Tapez un nom...")
         row_resp.addWidget(self.responsable_combo)
         btn_add_resp = QPushButton("➕")
         btn_add_resp.setFixedWidth(32)
@@ -280,6 +360,7 @@ class ProjetDialog(QDialog):
         self.chef_projet_combo.completer().setFilterMode(Qt.MatchContains)
         self.chef_projet_combo.completer().setCaseSensitivity(Qt.CaseInsensitive)
         self._charger_personnes(self.chef_projet_combo)
+        self.chef_projet_combo.lineEdit().setPlaceholderText("Tapez un nom...")
         row_chef.addWidget(self.chef_projet_combo)
         btn_add_chef = QPushButton("➕")
         btn_add_chef.setFixedWidth(32)
@@ -299,10 +380,10 @@ class ProjetDialog(QDialog):
         self.equipe_search.setEditable(True)
         self.equipe_search.setInsertPolicy(QComboBox.NoInsert)
         self.equipe_search.setMinimumWidth(320)
-        self.equipe_search.setPlaceholderText("Rechercher un contact ou agent...")
         self.equipe_search.completer().setFilterMode(Qt.MatchContains)
         self.equipe_search.completer().setCaseSensitivity(Qt.CaseInsensitive)
         self._charger_personnes(self.equipe_search)
+        self.equipe_search.lineEdit().setPlaceholderText("Tapez un nom pour filtrer...")
         add_row.addWidget(self.equipe_search)
         btn_ajouter_membre = QPushButton("➕ Ajouter")
         btn_ajouter_membre.setStyleSheet(
@@ -333,7 +414,6 @@ class ProjetDialog(QDialog):
         self.prestataire_search.setMinimumWidth(320)
         self.prestataire_search.setEditable(True)
         self.prestataire_search.setInsertPolicy(QComboBox.NoInsert)
-        self.prestataire_search.setPlaceholderText("Rechercher un fournisseur...")
         self.prestataire_search.completer().setFilterMode(Qt.MatchContains)
         self.prestataire_search.completer().setCaseSensitivity(Qt.CaseInsensitive)
         self.prestataire_search.addItem("-- Choisir --", None)
@@ -369,6 +449,239 @@ class ProjetDialog(QDialog):
         layout.addStretch()
         return widget
     
+    def create_acteurs_tab(self):
+        """Onglet Acteurs détail — Fonction/Service et Email/Tél de chaque membre."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        lbl = QLabel(
+            "Completez ici la fonction/service et les coordonnees de chaque acteur du projet. "
+            "Ces informations apparaitront dans la section Equipe & Contacts de la fiche Word.")
+        lbl.setStyleSheet("color:#7f8c8d; font-style:italic; padding:4px;")
+        lbl.setWordWrap(True)
+        layout.addWidget(lbl)
+
+        # Tableau éditable : Rôle | Nom | Fonction/Service | Email | Téléphone
+        self.acteurs_table = QTableWidget(0, 5)
+        self.acteurs_table.setHorizontalHeaderLabels(
+            ["Rôle", "Nom Prénom", "Fonction / Service", "Email", "Téléphone"])
+        hdr = self.acteurs_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, hdr.ResizeToContents)
+        hdr.setSectionResizeMode(1, hdr.Stretch)
+        hdr.setSectionResizeMode(2, hdr.Stretch)
+        hdr.setSectionResizeMode(3, hdr.Stretch)
+        hdr.setSectionResizeMode(4, hdr.ResizeToContents)
+        self.acteurs_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.acteurs_table.setAlternatingRowColors(True)
+        layout.addWidget(self.acteurs_table)
+
+        btn_layout = QHBoxLayout()
+        btn_refresh = QPushButton("🔄 Actualiser depuis Équipe")
+        btn_refresh.setToolTip("Recharge les membres depuis l'onglet Équipe")
+        btn_refresh.clicked.connect(self._refresh_acteurs_table)
+        btn_layout.addWidget(btn_refresh)
+        btn_add_row = QPushButton("➕ Ligne manuelle")
+        btn_add_row.clicked.connect(self._add_acteur_row)
+        btn_layout.addWidget(btn_add_row)
+        btn_del_row = QPushButton("🗑️ Supprimer")
+        btn_del_row.clicked.connect(self._del_acteur_row)
+        btn_layout.addWidget(btn_del_row)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+        return widget
+
+    def _refresh_acteurs_table(self):
+        """Recharge le tableau acteurs depuis l'onglet Équipe + chef/responsable."""
+        t = self.acteurs_table
+        # Récupérer les lignes déjà saisies pour ne pas écraser les coordonnées
+        existing = {}
+        for r in range(t.rowCount()):
+            nom_item = t.item(r, 1)
+            if nom_item:
+                key = nom_item.text().strip()
+                existing[key] = {
+                    'role':     (t.item(r, 0).text() if t.item(r, 0) else ''),
+                    'fonction': (t.item(r, 2).text() if t.item(r, 2) else ''),
+                    'email':    (t.item(r, 3).text() if t.item(r, 3) else ''),
+                    'tel':      (t.item(r, 4).text() if t.item(r, 4) else ''),
+                }
+
+        rows_data = []
+
+        # Chef de projet
+        chef_text = self.chef_projet_combo.currentText().strip()
+        if chef_text and '---' not in chef_text:
+            ex = existing.get(chef_text, {})
+            rows_data.append({
+                'role': ex.get('role', 'Chef de projet DSI'),
+                'nom': chef_text,
+                'fonction': ex.get('fonction', ''),
+                'email': ex.get('email', ''),
+                'tel': ex.get('tel', ''),
+            })
+
+        # Responsable
+        resp_text = self.responsable_combo.currentText().strip()
+        if resp_text and '---' not in resp_text and resp_text != chef_text:
+            ex = existing.get(resp_text, {})
+            rows_data.append({
+                'role': ex.get('role', 'Responsable métier'),
+                'nom': resp_text,
+                'fonction': ex.get('fonction', ''),
+                'email': ex.get('email', ''),
+                'tel': ex.get('tel', ''),
+            })
+
+        # Membres équipe
+        for i in range(self.equipe_list.count()):
+            item = self.equipe_list.item(i)
+            if not item: continue
+            nom = item.text().replace('👤 ', '').replace('📇 ', '').strip()
+            ex = existing.get(nom, {})
+            rows_data.append({
+                'role': ex.get('role', 'Équipe projet'),
+                'nom': nom,
+                'fonction': ex.get('fonction', ''),
+                'email': ex.get('email', ''),
+                'tel': ex.get('tel', ''),
+            })
+
+        t.setRowCount(0)
+        for rd in rows_data:
+            r = t.rowCount(); t.insertRow(r)
+            t.setItem(r, 0, QTableWidgetItem(rd['role']))
+            nom_item = QTableWidgetItem(rd['nom'])
+            nom_item.setFlags(nom_item.flags() & ~Qt.ItemIsEditable)
+            t.setItem(r, 1, nom_item)
+            t.setItem(r, 2, QTableWidgetItem(rd['fonction']))
+            t.setItem(r, 3, QTableWidgetItem(rd['email']))
+            t.setItem(r, 4, QTableWidgetItem(rd['tel']))
+
+    def _add_acteur_row(self):
+        r = self.acteurs_table.rowCount()
+        self.acteurs_table.insertRow(r)
+        for c in range(5):
+            self.acteurs_table.setItem(r, c, QTableWidgetItem(''))
+
+    def _del_acteur_row(self):
+        row = self.acteurs_table.currentRow()
+        if row >= 0:
+            self.acteurs_table.removeRow(row)
+
+    def _get_acteurs_data(self):
+        """Retourne la liste des acteurs depuis le tableau pour la fiche Word."""
+        acteurs = []
+        t = self.acteurs_table
+        for r in range(t.rowCount()):
+            role  = t.item(r, 0).text().strip() if t.item(r, 0) else ''
+            nom   = t.item(r, 1).text().strip() if t.item(r, 1) else ''
+            fn    = t.item(r, 2).text().strip() if t.item(r, 2) else ''
+            email = t.item(r, 3).text().strip() if t.item(r, 3) else ''
+            tel   = t.item(r, 4).text().strip() if t.item(r, 4) else ''
+            if nom or role:
+                acteurs.append({'role': role, 'nom': nom,
+                                'fonction': fn, 'email': email or tel})
+        return acteurs
+
+    def create_couts_tab(self):
+        """Onglet Coûts & Charges — tableau MOE/MOA/Licences/Matériels."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        lbl = QLabel(
+            "Renseignez les couts et charges par categorie et par phase. "
+            "Ces donnees alimentent le tableau Couts & Charges de la fiche Word.")
+        lbl.setStyleSheet("color:#7f8c8d; font-style:italic; padding:4px;")
+        lbl.setWordWrap(True)
+        layout.addWidget(lbl)
+
+        # Tableau des coûts : Catégorie | Définition projet | Mise en œuvre | Total €
+        self.couts_table = QTableWidget(0, 4)
+        self.couts_table.setHorizontalHeaderLabels(
+            ["Catégorie", "Définition projet (€)", "Mise en œuvre (€)", "Total €"])
+        hdr = self.couts_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, hdr.Stretch)
+        hdr.setSectionResizeMode(1, hdr.ResizeToContents)
+        hdr.setSectionResizeMode(2, hdr.ResizeToContents)
+        hdr.setSectionResizeMode(3, hdr.ResizeToContents)
+        self.couts_table.setAlternatingRowColors(True)
+        self.couts_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        layout.addWidget(self.couts_table)
+
+        # Lignes par défaut
+        self._init_couts_table()
+        # Calcul automatique du total à chaque changement
+        self.couts_table.itemChanged.connect(self._update_couts_total)
+
+        # Zone modalités de financement
+        layout.addWidget(QLabel("Modalités de financement (internes / externes) :"))
+        self.financement_edit = QTextEdit()
+        self.financement_edit.setPlaceholderText(
+            "Décrivez les sources de financement, subventions, dates de disponibilité...")
+        self.financement_edit.setMaximumHeight(80)
+        layout.addWidget(self.financement_edit)
+
+        return widget
+
+    def _init_couts_table(self):
+        """Remplit le tableau Coûts avec les catégories standards."""
+        cats = [
+            "MOE interne",
+            "MOA interne",
+            "Licences / Logiciels",
+            "Matériels / Serveurs",
+            "Sous-traitance",
+            "Autres",
+        ]
+        self.couts_table.blockSignals(True)
+        self.couts_table.setRowCount(0)
+        for cat in cats:
+            r = self.couts_table.rowCount()
+            self.couts_table.insertRow(r)
+            cat_item = QTableWidgetItem(cat)
+            cat_item.setFlags(cat_item.flags() & ~Qt.ItemIsEditable)
+            cat_item.setBackground(Qt.lightGray)
+            self.couts_table.setItem(r, 0, cat_item)
+            self.couts_table.setItem(r, 1, QTableWidgetItem("0"))
+            self.couts_table.setItem(r, 2, QTableWidgetItem("0"))
+            # Total calculé auto
+            tot_item = QTableWidgetItem("0")
+            tot_item.setFlags(tot_item.flags() & ~Qt.ItemIsEditable)
+            self.couts_table.setItem(r, 3, tot_item)
+        self.couts_table.blockSignals(False)
+
+    def _update_couts_total(self, item):
+        """Recalcule le total de la ligne modifiée."""
+        if item.column() not in (1, 2):
+            return
+        r = item.row()
+        self.couts_table.blockSignals(True)
+        try:
+            v1 = float(self.couts_table.item(r, 1).text().replace(',', '.') or 0)
+        except Exception:
+            v1 = 0
+        try:
+            v2 = float(self.couts_table.item(r, 2).text().replace(',', '.') or 0)
+        except Exception:
+            v2 = 0
+        total_item = self.couts_table.item(r, 3)
+        if total_item:
+            total_item.setText(f"{v1 + v2:,.2f}")
+        self.couts_table.blockSignals(False)
+
+    def _get_couts_data(self):
+        """Retourne les coûts pour la fiche Word."""
+        couts = {}
+        for r in range(self.couts_table.rowCount()):
+            cat = self.couts_table.item(r, 0).text() if self.couts_table.item(r, 0) else ''
+            try: def_ = float(self.couts_table.item(r, 1).text().replace(',', '.') or 0)
+            except: def_ = 0
+            try: meo  = float(self.couts_table.item(r, 2).text().replace(',', '.') or 0)
+            except: meo = 0
+            if cat:
+                couts[cat] = {'definition': def_, 'mise_en_oeuvre': meo, 'total': def_ + meo}
+        return couts
+
     def create_contacts_tab(self):
         """Crée l'onglet Contacts."""
         widget = QWidget()
@@ -452,11 +765,17 @@ class ProjetDialog(QDialog):
         self.taches_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         layout.addWidget(self.taches_table)
         
-        # Bouton créer tâche
+        # Boutons
         btn_layout = QHBoxLayout()
         btn_create_tache = QPushButton("➕ Créer tâche")
+        btn_create_tache.setStyleSheet("background:#27ae60;color:white;font-weight:bold;padding:6px 12px;")
         btn_create_tache.clicked.connect(self.create_tache)
         btn_layout.addWidget(btn_create_tache)
+
+        btn_new_bc = QPushButton("🛒 Nouveau BC lié au projet")
+        btn_new_bc.setStyleSheet("background:#8e44ad;color:white;font-weight:bold;padding:6px 12px;")
+        btn_new_bc.clicked.connect(self.create_bc_projet)
+        btn_layout.addWidget(btn_new_bc)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
         
@@ -474,45 +793,58 @@ class ProjetDialog(QDialog):
             self.description_edit.setPlainText(safe_get(self.projet, 'description', '') or '')
             
             if safe_get(self.projet, 'type_projet'):
-                index = self.type_combo.findText(self.projet['type_projet'])
+                index = self.type_combo.findText(safe_get(self.projet, 'type_projet'))
                 if index >= 0:
                     self.type_combo.setCurrentIndex(index)
             
             if safe_get(self.projet, 'phase'):
-                index = self.phase_combo.findText(self.projet['phase'])
+                index = self.phase_combo.findText(safe_get(self.projet, 'phase'))
                 if index >= 0:
                     self.phase_combo.setCurrentIndex(index)
             
             if safe_get(self.projet, 'priorite'):
-                index = self.priorite_combo.findText(self.projet['priorite'])
+                index = self.priorite_combo.findText(safe_get(self.projet, 'priorite'))
                 if index >= 0:
                     self.priorite_combo.setCurrentIndex(index)
             
             if safe_get(self.projet, 'statut'):
-                index = self.statut_combo.findText(self.projet['statut'])
+                index = self.statut_combo.findText(safe_get(self.projet, 'statut'))
                 if index >= 0:
                     self.statut_combo.setCurrentIndex(index)
             
             if safe_get(self.projet, 'date_debut'):
-                self.date_debut.setDate(QDate.fromString(self.projet['date_debut'], "yyyy-MM-dd"))
+                self.date_debut.setDate(QDate.fromString(safe_get(self.projet, 'date_debut'), "yyyy-MM-dd"))
             
             if safe_get(self.projet, 'date_fin_prevue'):
-                self.date_fin.setDate(QDate.fromString(self.projet['date_fin_prevue'], "yyyy-MM-dd"))
+                self.date_fin.setDate(QDate.fromString(safe_get(self.projet, 'date_fin_prevue'), "yyyy-MM-dd"))
             
             if safe_get(self.projet, 'date_fin_reelle'):
-                self.date_fin_reelle.setDate(QDate.fromString(self.projet['date_fin_reelle'][:10], "yyyy-MM-dd"))
+                self.date_fin_reelle.setDate(QDate.fromString(safe_get(self.projet, 'date_fin_reelle')[:10], "yyyy-MM-dd"))
                 self.chk_termine.setChecked(True)
                 self.date_fin_reelle.setEnabled(True)
+            elif safe_get(self.projet, 'statut') == 'TERMINE':
+                # Projet marque TERMINE sans date reelle -> cocher quand meme
+                self.chk_termine.setChecked(True)
+                self.date_fin_reelle.setEnabled(True)
+                self.avancement_spin.setValue(100)
             
             self.avancement_spin.setValue(safe_get(self.projet, 'avancement', 0) or 0)
             
             # Service bénéficiaire
             if safe_get(self.projet, 'service_id'):
                 for i in range(self.service_combo.count()):
-                    if self.service_combo.itemData(i) == self.projet['service_id']:
+                    if self.service_combo.itemData(i) == safe_get(self.projet, 'service_id'):
                         self.service_combo.setCurrentIndex(i)
                         break
             
+            # Onglet Opportunité
+            self.objectifs_edit.setPlainText(safe_get(self.projet, 'objectifs', '') or '')
+            self.enjeux_edit.setPlainText(safe_get(self.projet, 'enjeux', '') or '')
+            self.risques_edit.setPlainText(safe_get(self.projet, 'risques', '') or '')
+            self.gains_edit.setPlainText(safe_get(self.projet, 'gains', '') or '')
+            self.contraintes_edit.setPlainText(safe_get(self.projet, 'contraintes', '') or '')
+            self.solutions_edit.setPlainText(safe_get(self.projet, 'solutions', '') or '')
+
             # Onglet Budget
             self.budget_initial_spin.setValue(float(safe_get(self.projet, 'budget_initial', 0) or 0))
             self.budget_estime_spin.setValue(float(safe_get(self.projet, 'budget_estime', 0) or 0))
@@ -520,46 +852,87 @@ class ProjetDialog(QDialog):
             budget_consomme = float(safe_get(self.projet, 'budget_consomme', 0) or 0)
             self.budget_consomme_label.setText(f"{budget_consomme:,.2f} €")
             
-            # AP
-            if safe_get(self.projet, 'ap_id'):
-                for i in range(self.ap_combo.count()):
-                    if self.ap_combo.itemData(i) == self.projet['ap_id']:
-                        self.ap_combo.setCurrentIndex(i)
+            # Ligne budgétaire V5
+            ligne_id = safe_get(self.projet, 'ligne_budgetaire_id')
+            if ligne_id:
+                for i in range(self.ligne_budg_combo.count()):
+                    if self.ligne_budg_combo.itemData(i) == ligne_id:
+                        self.ligne_budg_combo.setCurrentIndex(i)
                         break
+
+            # Récapitulatif BC liés
+            try:
+                bcs = db_service.fetch_all(
+                    "SELECT numero_bc, objet, montant_ttc, statut FROM bons_commande "
+                    "WHERE projet_id=? ORDER BY date_creation DESC LIMIT 5",
+                    (self.projet_id,))
+                if bcs:
+                    total = sum(float(b.get('montant_ttc') or 0) for b in bcs)
+                    lines = [f"• {b.get('numero_bc','')} — {b.get('objet','')[:30]} ({b.get('statut','')})" for b in bcs]
+                    lines.append(f"Total : {total:,.2f} €")
+                    self.bc_recap_label.setText("\n".join(lines))
+                    self.bc_recap_label.setStyleSheet("color:#2ecc71;")
+                else:
+                    self.bc_recap_label.setText("Aucun BC lié")
+            except Exception:
+                pass
             
             # Onglet Équipe
             if safe_get(self.projet, 'responsable_id'):
-                target = f"USR_{self.projet['responsable_id']}"
+                target = f"USR_{safe_get(self.projet, 'responsable_id')}"
                 for i in range(self.responsable_combo.count()):
                     if self.responsable_combo.itemData(i) == target:
                         self.responsable_combo.setCurrentIndex(i)
                         break
 
             if safe_get(self.projet, 'chef_projet_id'):
-                target = f"USR_{self.projet['chef_projet_id']}"
+                target = f"USR_{safe_get(self.projet, 'chef_projet_id')}"
                 for i in range(self.chef_projet_combo.count()):
                     if self.chef_projet_combo.itemData(i) == target:
                         self.chef_projet_combo.setCurrentIndex(i)
                         break
             
-            # Charger équipe DSI
-            # Reconstruire la liste équipe depuis la DB
+            # Charger équipe depuis projet_membres
             self.equipe_list.clear()
-            equipe_membres = db_service.fetch_all("""
-                SELECT pe.utilisateur_id, u.nom, u.prenom, u.fonction
-                FROM projet_equipe pe
-                JOIN utilisateurs u ON u.id = pe.utilisateur_id
-                WHERE pe.projet_id = ?
-                ORDER BY u.nom
-            """, (self.projet_id,)) or []
-            for m in equipe_membres:
-                m = dict(m)
-                label = f"👤 {m.get('nom','')} {m.get('prenom','') or ''}"
-                if m.get('fonction'):
-                    label += f" ({m['fonction']})"
-                item = QListWidgetItem(label)
-                item.setData(Qt.UserRole, f"USR_{m['utilisateur_id']}")
-                self.equipe_list.addItem(item)
+            conn = db_service.get_connection()
+            try:
+                membres = conn.execute(
+                    "SELECT * FROM projet_membres WHERE projet_id=? ORDER BY id",
+                    (self.projet_id,)
+                ).fetchall()
+                for m in membres:
+                    m = dict(m)
+                    label = m.get('label') or ''
+                    uid = m.get('utilisateur_id')
+                    cid = m.get('contact_id')
+                    if uid:
+                        val = f"USR_{uid}"
+                        if not label:
+                            u = conn.execute(
+                                "SELECT nom, prenom, fonction FROM utilisateurs WHERE id=?",
+                                (uid,)).fetchone()
+                            label = f"👤 {u['nom']} {u['prenom'] or ''}" if u else f"👤 #{uid}"
+                    elif cid:
+                        val = f"CTT_{cid}"
+                        if not label:
+                            c = conn.execute(
+                                "SELECT nom, prenom, fonction FROM contacts WHERE id=?",
+                                (cid,)).fetchone()
+                            label = f"📇 {c['nom']} {c['prenom'] or ''}" if c else f"📇 #{cid}"
+                    else:
+                        continue
+                    item = QListWidgetItem(label)
+                    item.setData(Qt.UserRole, val)
+                    self.equipe_list.addItem(item)
+                logger.info(f"load_equipe : {self.equipe_list.count()} membre(s) chargé(s)")
+            except Exception as e:
+                logger.error(f"load_equipe : {e}")
+
+            # Recharger l'onglet Acteurs détail
+            try:
+                self._refresh_acteurs_table()
+            except Exception as e:
+                logger.error(f"_refresh_acteurs_table: {e}")
             
             # Reconstruire la liste prestataires depuis la DB
             self.prestataires_list.clear()
@@ -589,6 +962,59 @@ class ProjetDialog(QDialog):
             logger.error(f"Erreur chargement projet: {e}")
             QMessageBox.warning(self, "Erreur", f"Impossible de charger le projet:\n{e}")
     
+    def _on_termine_toggled(self, checked):
+        """Synchronise statut combo + avancement quand on coche/decoche Projet termine."""
+        if checked:
+            idx = self.statut_combo.findText('TERMINE')
+            if idx >= 0:
+                self.statut_combo.setCurrentIndex(idx)
+            self.avancement_spin.setValue(100)
+        else:
+            # Si on decoche, repasser a ACTIF seulement si le statut etait TERMINE
+            if self.statut_combo.currentText() == 'TERMINE':
+                idx = self.statut_combo.findText('ACTIF')
+                if idx >= 0:
+                    self.statut_combo.setCurrentIndex(idx)
+
+    def _exporter_fiche(self):
+        """Génère et ouvre la fiche projet Word."""
+        import os, sys
+        from pathlib import Path
+        try:
+            from app.services.fiche_projet_service import generer_fiche_depuis_id
+            # Si nouveau projet non encore sauvegardé, avertir
+            if not self.projet_id:
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.information(self, "Info",
+                    "Enregistrez d'abord le projet avant de générer la fiche.")
+                return
+            # Dossier de sortie = racine de l'appli
+            out_dir = str(Path(__file__).parent.parent.parent)
+            # Récupérer les données saisies dans les onglets Acteurs et Coûts
+            try:
+                extra = {
+                    'contacts_detail': self._get_acteurs_data(),
+                    'couts_detail':    self._get_couts_data(),
+                    'financement':     self.financement_edit.toPlainText().strip(),
+                }
+            except Exception:
+                extra = {}
+            path = generer_fiche_depuis_id(self.projet_id, out_dir, extra=extra)
+            # Ouvrir avec Word / LibreOffice
+            if sys.platform == 'win32':
+                os.startfile(path)
+            else:
+                import subprocess
+                subprocess.Popen(['xdg-open', path])
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.information(self, "✅ Fiche générée",
+                f"Fiche enregistrée :\n{path}")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Erreur génération fiche: {e}", exc_info=True)
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Erreur", f"Impossible de générer la fiche :\n{e}")
+
     def accept_dialog(self):
         """Valide et enregistre le projet."""
         try:
@@ -620,21 +1046,39 @@ class ProjetDialog(QDialog):
                 'date_debut': self.date_debut.date().toString("yyyy-MM-dd"),
                 'date_fin_prevue': self.date_fin.date().toString("yyyy-MM-dd"),
                 'avancement': self.avancement_spin.value(),
+                # Onglet Opportunité
+                'objectifs':   self.objectifs_edit.toPlainText().strip() or None,
+                'enjeux':      self.enjeux_edit.toPlainText().strip() or None,
+                'risques':     self.risques_edit.toPlainText().strip() or None,
+                'gains':       self.gains_edit.toPlainText().strip() or None,
+                'contraintes': self.contraintes_edit.toPlainText().strip() or None,
+                'solutions':   self.solutions_edit.toPlainText().strip() or None,
                 'budget_initial': self.budget_initial_spin.value(),
                 'budget_estime': self.budget_estime_spin.value(),
                 'budget_actuel': self.budget_actuel_spin.value(),
             }
             
-            # Date fin réelle si définie
+            # Date fin reelle + statut + avancement si termine
             if self.chk_termine.isChecked():
                 data['date_fin_reelle'] = self.date_fin_reelle.date().toString("yyyy-MM-dd")
+                data['statut']          = 'TERMINE'
+                data['avancement']      = 100
+                # Mettre a jour le combo statut pour coherence visuelle
+                idx = self.statut_combo.findText('TERMINE')
+                if idx >= 0:
+                    self.statut_combo.setCurrentIndex(idx)
+                self.avancement_spin.setValue(100)
             else:
                 data['date_fin_reelle'] = None
+                # Si le statut etait TERMINE et qu on decoche, repasser en ACTIF
+                if data.get('statut') == 'TERMINE':
+                    data['statut'] = 'ACTIF' 
             
             # AP
-            ap_id = self.ap_combo.currentData()
-            if ap_id:
-                data['ap_id'] = ap_id
+            # Ligne budgétaire V5
+            lb = self.ligne_budg_combo.currentData()
+            if lb:
+                data['ligne_budgetaire_id'] = lb
             
             # Équipe
             responsable_val = self.responsable_combo.currentData()
@@ -687,6 +1131,7 @@ class ProjetDialog(QDialog):
                 "SELECT id, nom, prenom, fonction, organisation FROM contacts ORDER BY nom, prenom"
             ) or []
             contacts = [dict(c) for c in contacts]
+            logger.info(f"_charger_personnes : {len(contacts)} contact(s) trouvé(s)")
             if contacts:
                 combo.addItem("── Contacts ──", "__sep__")
                 combo.model().item(combo.count() - 1).setEnabled(False)
@@ -836,35 +1281,50 @@ class ProjetDialog(QDialog):
         }
     
     def save_equipe(self):
-        """Sauvegarde l'équipe DSI."""
+        """Sauvegarde l'équipe projet dans projet_membres."""
         try:
-            # Supprimer les associations existantes
-            db_service.execute(
-                "DELETE FROM projet_equipe WHERE projet_id = ?",
+            conn = db_service.get_connection()
+
+            # Créer la table si elle n'existe pas encore
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS projet_membres (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    projet_id    INTEGER NOT NULL,
+                    utilisateur_id INTEGER,
+                    contact_id   INTEGER,
+                    label        TEXT,
+                    date_creation TEXT DEFAULT (datetime('now'))
+                )
+            """)
+            conn.execute(
+                "DELETE FROM projet_membres WHERE projet_id=?",
                 (self.projet_id,)
             )
-            
-            # Sauver tous les membres de la liste (USR_ ou CTT_)
+
+            inseres = 0
             for i in range(self.equipe_list.count()):
                 item = self.equipe_list.item(i)
                 if not item: continue
                 val   = str(item.data(Qt.UserRole) or '')
                 label = item.text()
-                if not val or val == '__sep__': continue
                 if val.startswith('USR_'):
-                    uid = int(val[4:])
-                    db_service.execute(
-                        "INSERT OR IGNORE INTO projet_equipe (projet_id, utilisateur_id, membre_label) VALUES (?,?,?)",
-                        (self.projet_id, uid, label)
+                    conn.execute(
+                        "INSERT INTO projet_membres (projet_id, utilisateur_id, label) VALUES (?,?,?)",
+                        (self.projet_id, int(val[4:]), label)
                     )
+                    inseres += 1
                 elif val.startswith('CTT_'):
-                    cid = int(val[4:])
-                    db_service.execute(
-                        "INSERT OR IGNORE INTO projet_equipe (projet_id, contact_id, membre_label) VALUES (?,?,?)",
-                        (self.projet_id, cid, label)
+                    conn.execute(
+                        "INSERT INTO projet_membres (projet_id, contact_id, label) VALUES (?,?,?)",
+                        (self.projet_id, int(val[4:]), label)
                     )
+                    inseres += 1
+
+            conn.commit()
+            logger.info(f"save_equipe : {inseres} membre(s) sauvegardé(s)")
+
         except Exception as e:
-            logger.error(f"Erreur sauvegarde équipe: {e}")
+            logger.error(f"Erreur save_equipe : {e}", exc_info=True)
     
     def save_prestataires(self):
         """Sauvegarde les prestataires."""
@@ -970,57 +1430,116 @@ class ProjetDialog(QDialog):
             logger.error(f"Erreur chargement tâches: {e}")
     
     def add_contact(self):
-        """Ajoute un contact au projet."""
+        """Ajoute un contact au projet — dialog avec combo recherchable."""
         try:
             if not self.projet_id:
                 QMessageBox.warning(self, "Attention", "Veuillez d'abord enregistrer le projet.")
                 return
-            
-            # Récupérer tous les contacts disponibles
+
+            # Récupérer TOUS les contacts sans filtre
             contacts = db_service.fetch_all("""
-                SELECT id, nom, prenom, type, fonction
+                SELECT id, nom, prenom, type, fonction, organisation
                 FROM contacts
-                ORDER BY nom, prenom
-            """)
-            
+                ORDER BY type, nom, prenom
+            """) or []
+            contacts = [dict(c) for c in contacts]
+
             if not contacts:
-                QMessageBox.information(self, "Info", "Aucun contact disponible.")
+                QMessageBox.information(self, "Info", "Aucun contact disponible.\nAjoutez des contacts dans l'onglet Contacts.")
                 return
-            
-            # Créer une liste de choix
-            contact_choices = [f"{c['nom']} {c['prenom']} ({c['type']})" for c in contacts]
-            contact_choice, ok = QInputDialog.getItem(
-                self, "Ajouter un contact", 
-                "Sélectionnez un contact:", 
-                contact_choices, 0, False
-            )
-            
-            if not ok:
+
+            # Dialog de sélection
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Ajouter un contact au projet")
+            dlg.setMinimumWidth(480)
+            layout = QVBoxLayout(dlg)
+
+            # Recherche
+            search = QLineEdit()
+            search.setPlaceholderText("Rechercher un contact...")
+            layout.addWidget(search)
+
+            # Combo contacts groupés par type
+            combo = QComboBox()
+            combo.setEditable(False)
+
+            def populate_combo(filtre=""):
+                combo.clear()
+                combo.addItem("-- Choisir un contact --", None)
+                type_courant = None
+                for c in contacts:
+                    nom = f"{c.get('nom','') or ''} {c.get('prenom','') or ''}".strip()
+                    type_c = c.get('type') or 'Autre'
+                    detail = c.get('fonction') or c.get('organisation') or ''
+                    label = f"{nom}" + (f" — {detail}" if detail else "")
+                    if filtre and filtre.lower() not in label.lower() and filtre.lower() not in type_c.lower():
+                        continue
+                    if type_c != type_courant:
+                        combo.addItem(f"── {type_c} ──", "__sep__")
+                        combo.model().item(combo.count()-1).setEnabled(False)
+                        type_courant = type_c
+                    combo.addItem(label, c['id'])
+
+            populate_combo()
+            search.textChanged.connect(populate_combo)
+            layout.addWidget(combo)
+
+            # Rôle
+            form = QFormLayout()
+            role_combo = QComboBox()
+            role_combo.addItems(["REFERENT", "SPONSOR", "VALIDEUR", "INFORME", "AUTRE"])
+            form.addRow("Rôle dans le projet:", role_combo)
+            layout.addLayout(form)
+
+            # Bouton créer nouveau contact
+            btn_new_contact = QPushButton("➕ Créer un nouveau contact")
+            btn_new_contact.setStyleSheet(
+                "background-color: #27ae60; color: white; font-weight: bold; padding: 6px 12px;")
+
+            def ouvrir_creation_contact():
+                from app.ui.dialogs.contact_dialog import ContactDialog
+                dlg_contact = ContactDialog(dlg)
+                if dlg_contact.exec_() == QDialog.Accepted:
+                    new_id = dlg_contact.contact_id
+                    if new_id:
+                        # Recharger la liste des contacts
+                        contacts.clear()
+                        nouveaux = db_service.fetch_all("""
+                            SELECT id, nom, prenom, type, fonction, organisation
+                            FROM contacts ORDER BY type, nom, prenom
+                        """) or []
+                        contacts.extend([dict(c) for c in nouveaux])
+                        populate_combo(search.text())
+                        # Sélectionner automatiquement le nouveau contact
+                        for i in range(combo.count()):
+                            if combo.itemData(i) == new_id:
+                                combo.setCurrentIndex(i)
+                                break
+
+            btn_new_contact.clicked.connect(ouvrir_creation_contact)
+            layout.addWidget(btn_new_contact)
+
+            # Boutons OK/Annuler
+            btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            btns.accepted.connect(dlg.accept)
+            btns.rejected.connect(dlg.reject)
+            layout.addWidget(btns)
+
+            if dlg.exec_() != QDialog.Accepted:
                 return
-            
-            contact_idx = contact_choices.index(contact_choice)
-            contact = contacts[contact_idx]
-            
-            # Demander le rôle
-            role, ok = QInputDialog.getItem(
-                self, "Rôle du contact",
-                "Sélectionnez le rôle:",
-                ["SPONSOR", "VALIDEUR", "REFERENT", "INFORME"],
-                0, False
-            )
-            
-            if not ok:
+
+            contact_id = combo.currentData()
+            if not contact_id or contact_id == "__sep__":
+                QMessageBox.warning(self, "Attention", "Veuillez sélectionner un contact.")
                 return
-            
-            # Insérer dans la base
+
+            role = role_combo.currentText()
             db_service.execute("""
                 INSERT OR IGNORE INTO projet_contacts (projet_id, contact_id, role)
                 VALUES (?, ?, ?)
-            """, (self.projet_id, contact['id'], role))
-            
-            # Recharger la table
+            """, (self.projet_id, contact_id, role))
             self.load_contacts()
-            
+
         except Exception as e:
             logger.error(f"Erreur ajout contact: {e}")
             QMessageBox.critical(self, "Erreur", f"Impossible d'ajouter le contact:\n{e}")
@@ -1167,13 +1686,89 @@ class ProjetDialog(QDialog):
             if not self.projet_id:
                 QMessageBox.warning(self, "Attention", "Veuillez d'abord enregistrer le projet.")
                 return
-            
-            # Créer une tâche pré-remplie avec le projet_id
             from app.ui.dialogs.tache_dialog import TacheDialog
             dialog = TacheDialog(self, tache={'projet_id': self.projet_id})
             if dialog.exec_() == QDialog.Accepted:
                 self.load_taches()
-        
         except Exception as e:
             logger.error(f"Erreur création tâche: {e}")
             QMessageBox.critical(self, "Erreur", f"Impossible de créer la tâche:\n{e}")
+
+    def create_bc_projet(self):
+        """Crée un BC lié à ce projet depuis l'onglet Tâches (hors budget)."""
+        try:
+            if not self.projet_id:
+                QMessageBox.warning(self, "Attention", "Veuillez d'abord enregistrer le projet.")
+                return
+
+            from app.ui.views.bon_commande_view import BonCommandeDialog
+            from app.services.budget_v5_service import budget_v5_service
+            from app.services.bon_commande_service import bon_commande_service
+            from app.services.fournisseur_service import fournisseur_service
+
+            # Récupérer l'entité du projet
+            projet = db_service.fetch_one(
+                "SELECT * FROM projets WHERE id=?", (self.projet_id,))
+            entite_id = dict(projet).get('entite_id') if projet else None
+
+            dlg = BonCommandeDialog(
+                budget_svc=budget_v5_service,
+                fourn_svc=fournisseur_service,
+                bc_svc=bon_commande_service,
+                bc={'projet_id': self.projet_id,
+                    'entite_id': entite_id,
+                    'budget_impute': 'HORS_BUDGET',
+                    'statut': 'BROUILLON'},
+                parent=self
+            )
+            if dlg.exec_() == QDialog.Accepted:
+                data = dlg.get_data()
+                # Forcer hors budget
+                data['budget_impute'] = 'HORS_BUDGET'
+                data['projet_id']     = self.projet_id
+                if entite_id:
+                    data['entite_id'] = entite_id
+
+                # Chercher une ligne budgétaire existante pour l'entité
+                lb = db_service.fetch_one("""
+                    SELECT lb.id, lb.montant_vote, lb.montant_solde
+                    FROM lignes_budgetaires lb
+                    JOIN budgets_annuels ba ON ba.id = lb.budget_id
+                    WHERE ba.entite_id = ?
+                    AND lb.statut = 'ACTIF'
+                    ORDER BY lb.montant_vote DESC
+                    LIMIT 1
+                """, (entite_id,)) if entite_id else None
+
+                if lb:
+                    data['ligne_budgetaire_id'] = dict(lb)['id']
+
+                bc_id = bon_commande_service.create_bon_commande(data)
+
+                # Proposer de créer une tâche liée
+                rep = QMessageBox.question(
+                    self, "Créer une tâche ?",
+                    "Voulez-vous créer une tâche associée à ce bon de commande ?",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+                if rep == QMessageBox.Yes:
+                    from app.ui.dialogs.tache_dialog import TacheDialog
+                    bc_data = bon_commande_service.get_bon_commande_by_id(bc_id)
+                    tache_init = {
+                        'projet_id':    self.projet_id,
+                        'titre':        f"BC {data.get('numero_bc','')} — {data.get('objet','')}",
+                        'description':  f"Tâche liée au BC {data.get('numero_bc','')}",
+                        'statut':       'A_FAIRE',
+                        'priorite':     'MOYENNE',
+                    }
+                    tdlg = TacheDialog(self, tache=tache_init, projet_obligatoire=False)
+                    if tdlg.exec_() == QDialog.Accepted:
+                        self.load_taches()
+                else:
+                    self.load_taches()
+
+                QMessageBox.information(self, "BC créé",
+                    f"Bon de commande créé et lié au projet.\n"
+                    f"{'Imputé sur ligne budgétaire existante.' if lb else 'Aucune ligne budgétaire disponible — marqué Hors Budget.'}")
+        except Exception as e:
+            logger.error(f"Erreur création BC projet: {e}", exc_info=True)
+            QMessageBox.critical(self, "Erreur", f"Impossible de créer le BC:\n{e}")
