@@ -26,6 +26,9 @@ class TacheDialog(QDialog):
     
     def __init__(self, parent=None, tache=None, projet_obligatoire=True):
         super().__init__(parent)
+        # Convertir sqlite3.Row en dict si necessaire
+        if tache is not None and hasattr(tache, 'keys'):
+            tache = dict(tache)
         self.tache = tache
         self.tache_id = tache.get('id') if tache else None
         self.projet_obligatoire = projet_obligatoire
