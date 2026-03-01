@@ -194,6 +194,7 @@ const loaders = {
     contacts:      loadContacts,
     services:      loadServices,
     etp:           loadETP,
+    gantt:         loadGantt,
     notifications: loadNotifications,
     admin:         loadAdminUsers,
 };
@@ -1085,31 +1086,87 @@ async function saveContrat() {
 
 // ─── PROJETS ───────────────────────────────────────────────
 
+function _renderProjets(list) {
+    const tbody = document.getElementById('projets-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = list.map(p => `
+        <tr>
+            <td>${p.code || '-'}</td>
+            <td><strong>${p.nom || '-'}</strong></td>
+            <td style="font-size:.8em;">${p.type_projet || '-'}</td>
+            <td style="font-size:.8em;">${p.phase || '-'}</td>
+            <td>${badge(p.statut)}</td>
+            <td>${badge(p.priorite)}</td>
+            <td style="font-size:.8em;">${p.service_code || p.service_nom || '-'}</td>
+            <td>${fmt(p.budget_estime)}</td>
+            <td>${p.avancement != null ? p.avancement + ' %' : '-'}</td>
+            <td>${fmtDate(p.date_debut)}</td>
+            <td>${fmtDate(p.date_fin_prevue)}</td>
+            <td style="white-space:nowrap;">
+                <button class="btn btn-info btn-sm" onclick="ficheProjet(${p.id})">Fiche</button>
+                <button class="btn btn-warning btn-sm" onclick="editProjet(${p.id})">Éditer</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteProjet(${p.id})">Suppr.</button>
+            </td>
+        </tr>`).join('');
+}
+
+function applyProjetFilters() {
+    const statut  = document.getElementById('proj-filter-statut')?.value  || '';
+    const service = document.getElementById('proj-filter-service')?.value || '';
+    const search  = (document.getElementById('proj-filter-search')?.value || '').toLowerCase();
+    let list = _cache.projets || [];
+    if (statut)  list = list.filter(p => p.statut === statut);
+    if (service) list = list.filter(p => String(p.service_id) === service);
+    if (search)  list = list.filter(p =>
+        (p.nom  || '').toLowerCase().includes(search) ||
+        (p.code || '').toLowerCase().includes(search)
+    );
+    _renderProjets(list);
+}
+
+function resetProjetFilters() {
+    const els = ['proj-filter-statut', 'proj-filter-service', 'proj-filter-search'];
+    els.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    _renderProjets(_cache.projets || []);
+}
+
 async function loadProjets() {
     try {
-        const data = await apiFetch('/projet');
+        const [data, servData] = await Promise.all([
+            apiFetch('/projet'),
+            apiFetch('/service_org')
+        ]);
         _cache.projets = data.list || [];
-        const tbody = document.getElementById('projets-tbody');
-        tbody.innerHTML = _cache.projets.map(p => `
-            <tr>
-                <td>${p.id}</td>
-                <td>${p.code || '-'}</td>
-                <td><strong>${p.nom || '-'}</strong></td>
-                <td style="font-size:.8em;">${p.type_projet || '-'}</td>
-                <td style="font-size:.8em;">${p.phase || '-'}</td>
-                <td>${badge(p.statut)}</td>
-                <td>${badge(p.priorite)}</td>
-                <td style="font-size:.8em;">${p.service_code || p.service_nom || '-'}</td>
-                <td>${fmt(p.budget_estime)}</td>
-                <td>${p.avancement != null ? p.avancement + ' %' : '-'}</td>
-                <td>${fmtDate(p.date_debut)}</td>
-                <td>${fmtDate(p.date_fin_prevue)}</td>
-                <td style="white-space:nowrap;">
-                    <button class="btn btn-info btn-sm" onclick="ficheProjet(${p.id})">Fiche</button>
-                    <button class="btn btn-warning btn-sm" onclick="editProjet(${p.id})">Éditer</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteProjet(${p.id})">Suppr.</button>
-                </td>
-            </tr>`).join('');
+
+        // Populate service filter
+        const serviceSel = document.getElementById('proj-filter-service');
+        if (serviceSel) {
+            const services = servData.list || [];
+            const parents  = services.filter(s => !s.parent_id);
+            serviceSel.innerHTML = '<option value="">Tous les services</option>';
+            parents.forEach(p => {
+                const grp = document.createElement('optgroup');
+                grp.label = `${p.code ? p.code + ' - ' : ''}${p.nom}`;
+                const pOpt = document.createElement('option');
+                pOpt.value = p.id; pOpt.textContent = p.nom;
+                grp.appendChild(pOpt);
+                services.filter(c => c.parent_id === p.id).forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id; opt.textContent = `└─ ${c.nom}`;
+                    grp.appendChild(opt);
+                });
+                serviceSel.appendChild(grp);
+            });
+            // Orphans
+            const parentIds = new Set(parents.map(p => p.id));
+            services.filter(s => s.parent_id && !parentIds.has(s.parent_id)).forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id; opt.textContent = s.nom;
+                serviceSel.appendChild(opt);
+            });
+        }
+
+        applyProjetFilters();
     } catch (e) { showMsg('Erreur chargement projets', false); }
 }
 
@@ -1358,6 +1415,13 @@ async function ficheProjet(id) {
                 : '<p style="color:#aaa;font-size:.85em;font-style:italic;margin:4px 0 8px;">Aucun membre.</p>'}
                 <div id="add-membre-form-${id}" style="display:none;margin-top:10px;padding:10px;background:#f0f4ff;border-radius:6px;border:1px solid #c5d5f5;">
                     <div style="font-size:.78em;font-weight:bold;color:#2563a8;margin-bottom:6px;">Nouveau membre</div>
+                    <select onchange="loadContactsForSelect(document.getElementById('new-membre-select-${id}'),this.value)" style="width:100%;padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:.8em;box-sizing:border-box;margin-bottom:4px;">
+                        <option value="">— Tous types de contact —</option>
+                        <option value="Élu">Élu</option>
+                        <option value="Direction">Direction</option>
+                        <option value="Prestataire">Prestataire</option>
+                        <option value="AMO">AMO</option>
+                    </select>
                     <select id="new-membre-select-${id}" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:4px;">
                         <option value="">-- Sélectionner un contact --</option>
                     </select>
@@ -1395,6 +1459,13 @@ async function ficheProjet(id) {
                 <p style="color:#aaa;font-size:.85em;font-style:italic;margin:4px 0 8px;">Aucun membre d'équipe renseigné.</p>
                 <div id="add-membre-form-${id}" style="display:none;margin-top:10px;padding:10px;background:#f0f4ff;border-radius:6px;border:1px solid #c5d5f5;">
                     <div style="font-size:.78em;font-weight:bold;color:#2563a8;margin-bottom:6px;">Nouveau membre</div>
+                    <select onchange="loadContactsForSelect(document.getElementById('new-membre-select-${id}'),this.value)" style="width:100%;padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:.8em;box-sizing:border-box;margin-bottom:4px;">
+                        <option value="">— Tous types de contact —</option>
+                        <option value="Élu">Élu</option>
+                        <option value="Direction">Direction</option>
+                        <option value="Prestataire">Prestataire</option>
+                        <option value="AMO">AMO</option>
+                    </select>
                     <select id="new-membre-select-${id}" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:4px;">
                         <option value="">-- Sélectionner un contact --</option>
                     </select>
@@ -1436,6 +1507,13 @@ async function ficheProjet(id) {
             : '<p style="color:#aaa;font-size:.85em;font-style:italic;margin:4px 0 8px;">Aucun contact externe lié.</p>'}
             <div id="add-contact-form-${id}" style="display:none;margin-top:10px;padding:10px;background:#f0f4ff;border-radius:6px;border:1px solid #c5d5f5;">
                 <div style="font-size:.78em;font-weight:bold;color:#2563a8;margin-bottom:6px;">Lier un contact</div>
+                <select onchange="loadContactsIdForSelect(document.getElementById('new-contact-id-${id}'),this.value)" style="width:100%;padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:.8em;box-sizing:border-box;margin-bottom:4px;">
+                    <option value="">— Tous types de contact —</option>
+                    <option value="Élu">Élu</option>
+                    <option value="Direction">Direction</option>
+                    <option value="Prestataire">Prestataire</option>
+                    <option value="AMO">AMO</option>
+                </select>
                 <select id="new-contact-id-${id}" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:4px;">
                     <option value="">-- Sélectionner dans la liste --</option>
                 </select>
@@ -1474,6 +1552,7 @@ async function ficheProjet(id) {
                 <span class="proj-tab" onclick="switchProjTab('documents')">📄 Documents (${(p.documents||[]).length})</span>
                 <span class="proj-tab" onclick="switchProjTab('taches')">✓ Tâches (${(p.taches||[]).length})</span>
                 <span class="proj-tab" onclick="switchProjTab('bc')">🛒 BC (${(p.bons_commande||[]).length})</span>
+                <span class="proj-tab" onclick="switchProjTab('gantt-proj');loadProjetGantt(${p.id})">📊 Gantt</span>
             </div>
 
             <!-- ── Général ── -->
@@ -1573,6 +1652,19 @@ async function ficheProjet(id) {
 
             <!-- ── BC ── -->
             <div class="proj-tab-content" id="ptab-bc">${bcsHtml}</div>
+
+            <!-- ── Gantt projet ── -->
+            <div class="proj-tab-content" id="ptab-gantt-proj" style="padding:10px 0;">
+                <div class="gantt-filter-bar" style="padding:8px 0 12px;">
+                    <select id="gantt-proj-view-mode" class="form-control" style="width:auto;" onchange="updateProjetGanttViewMode()">
+                        <option value="Week">Semaine</option>
+                        <option value="Month">Mois</option>
+                        <option value="Day">Jour</option>
+                    </select>
+                </div>
+                <div class="gantt-wrap"><svg id="gantt-projet-svg"></svg></div>
+                <p id="gantt-proj-empty" style="color:#aaa;font-style:italic;display:none;">Aucune tâche avec date début + date échéance renseignées.</p>
+            </div>
 
             <div class="modal-footer" style="margin-top:14px;">
                 <button class="btn" style="background:#6c757d;color:#fff;" onclick="printFicheProjet()">&#128424; Imprimer</button>
@@ -1712,8 +1804,10 @@ async function addTache() {
         projet_id:         document.getElementById('tache-projet').value || null,
         statut:            document.getElementById('tache-statut').value,
         priorite:          document.getElementById('tache-priorite').value || null,
+        date_debut:        document.getElementById('tache-debut')?.value || null,
         date_echeance:     document.getElementById('tache-echeance').value || null,
         estimation_heures: document.getElementById('tache-heures').value || null,
+        responsable_label: document.getElementById('tache-responsable')?.value || null,
         avancement:        0,
     };
     if (!body.titre) { showMsg('Le titre est obligatoire', false); return; }
@@ -1745,10 +1839,15 @@ async function editTache(id) {
     document.getElementById('edit-tache-projet').value     = data.projet_id || '';
     document.getElementById('edit-tache-statut').value     = data.statut || 'A faire';
     document.getElementById('edit-tache-priorite').value   = data.priorite || '';
+    const deb = data.date_debut    ? data.date_debut.split('T')[0]    : '';
     const ech = data.date_echeance ? data.date_echeance.split('T')[0] : '';
+    const debutEl = document.getElementById('edit-tache-debut');
+    if (debutEl) debutEl.value = deb;
     document.getElementById('edit-tache-echeance').value   = ech;
     document.getElementById('edit-tache-heures').value     = data.estimation_heures ?? '';
     document.getElementById('edit-tache-avancement').value = data.avancement ?? '';
+    const respEl = document.getElementById('edit-tache-responsable');
+    if (respEl) respEl.value = data.responsable_label || '';
     openModal('modal-edit-tache');
 }
 
@@ -1759,9 +1858,11 @@ async function saveTache() {
         projet_id:         document.getElementById('edit-tache-projet').value || null,
         statut:            document.getElementById('edit-tache-statut').value,
         priorite:          document.getElementById('edit-tache-priorite').value || null,
+        date_debut:        document.getElementById('edit-tache-debut')?.value || null,
         date_echeance:     document.getElementById('edit-tache-echeance').value || null,
         estimation_heures: document.getElementById('edit-tache-heures').value || null,
         avancement:        document.getElementById('edit-tache-avancement').value || 0,
+        responsable_label: document.getElementById('edit-tache-responsable')?.value || null,
     };
     if (!body.titre) { showMsg('Le titre est obligatoire', false); return; }
     try {
@@ -1988,33 +2089,74 @@ async function saveContact() {
 
 async function loadServices() {
     try {
-        const data = await apiFetch('/service_org');
+        const [data, contactsData] = await Promise.all([
+            apiFetch('/service_org'),
+            apiFetch('/contact?limit=500')
+        ]);
+        const services = data.list || [];
+        const contacts = contactsData.list || [];
+
+        // Build tree: parents first, then their children
+        const parents = services.filter(s => !s.parent_id);
+        const rows = [];
+        parents.forEach(p => {
+            rows.push({ ...p, _indent: false });
+            services.filter(c => c.parent_id === p.id).forEach(c => rows.push({ ...c, _indent: true }));
+        });
+        // Orphan children (parent not in list)
+        const seen = new Set(rows.map(s => s.id));
+        services.filter(s => !seen.has(s.id)).forEach(s => rows.push({ ...s, _indent: false }));
+
         const tbody = document.getElementById('services-tbody');
-        tbody.innerHTML = (data.list || []).map(s => `
+        tbody.innerHTML = rows.map(s => `
             <tr>
-                <td>${s.id}</td>
                 <td><strong>${s.code || '-'}</strong></td>
-                <td>${s.nom || '-'}</td>
+                <td>${s._indent ? '<span style="color:#aaa;margin-right:4px;">└─</span>' : ''}${s.nom || '-'}</td>
                 <td>${s.responsable_nom || '-'}</td>
                 <td>${s.parent_nom || '-'}</td>
                 <td>${s.nb_projets || 0}</td>
-                <td>
-                    <button class="btn btn-danger btn-sm" onclick="deleteService(${s.id})">Suppr.</button>
+                <td style="white-space:nowrap;">
+                    <button class="btn btn-warning btn-sm" onclick="editService(${s.id})"
+                        style="padding:3px 8px;font-size:.8em;background:#f39c12;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-right:4px;">Éditer</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteService(${s.id})"
+                        style="padding:3px 8px;font-size:.8em;">Suppr.</button>
                 </td>
             </tr>`).join('');
+
+        // Populate "add" form selects
+        const parentSel = document.getElementById('service-parent');
+        if (parentSel) {
+            parentSel.innerHTML = '<option value="">-- Service parent (optionnel) --</option>' +
+                services.map(s => `<option value="${s.id}">${s.code ? s.code + ' - ' : ''}${s.nom}</option>`).join('');
+        }
+        const respSel = document.getElementById('service-responsable');
+        if (respSel) {
+            respSel.innerHTML = '<option value="">-- Responsable (optionnel) --</option>' +
+                contacts.map(c => `<option value="${c.id}">${(c.prenom || '')} ${(c.nom || '')}${c.organisation ? ' — ' + c.organisation : ''}</option>`).join('');
+        }
     } catch (e) { showMsg('Erreur chargement services', false); }
 }
 
 async function addService() {
+    const parentVal = document.getElementById('service-parent')?.value;
+    const respVal   = document.getElementById('service-responsable')?.value;
     const body = {
-        code: document.getElementById('service-code').value,
-        nom:  document.getElementById('service-nom').value,
+        code:           document.getElementById('service-code').value.trim(),
+        nom:            document.getElementById('service-nom').value.trim(),
+        parent_id:      parentVal ? parseInt(parentVal) : null,
+        responsable_id: respVal   ? parseInt(respVal)   : null,
     };
     if (!body.nom) { showMsg('Le nom est obligatoire', false); return; }
     try {
         const res = await apiFetch('/service_org', { method: 'POST', body: JSON.stringify(body) });
-        if (res.success) { showMsg('Service ajouté'); loadServices(); }
-        else showMsg(res.error || 'Erreur', false);
+        if (res.success) {
+            showMsg('Service ajouté');
+            document.getElementById('service-code').value = '';
+            document.getElementById('service-nom').value  = '';
+            if (document.getElementById('service-parent'))     document.getElementById('service-parent').value = '';
+            if (document.getElementById('service-responsable')) document.getElementById('service-responsable').value = '';
+            loadServices();
+        } else showMsg(res.error || 'Erreur', false);
     } catch (e) { showMsg(e.message, false); }
 }
 
@@ -2025,6 +2167,247 @@ async function deleteService(id) {
         if (res.success) { showMsg('Service supprimé'); loadServices(); }
         else showMsg(res.error || 'Erreur', false);
     } catch (e) { showMsg(e.message, false); }
+}
+
+async function editService(id) {
+    try {
+        const [data, contactsData] = await Promise.all([
+            apiFetch('/service_org'),
+            apiFetch('/contact?limit=500')
+        ]);
+        const services = data.list || [];
+        const contacts = contactsData.list || [];
+        const s = services.find(x => x.id === id);
+        if (!s) return;
+
+        document.getElementById('edit-service-id').value   = id;
+        document.getElementById('edit-service-code').value = s.code || '';
+        document.getElementById('edit-service-nom').value  = s.nom  || '';
+
+        const parentSel = document.getElementById('edit-service-parent');
+        parentSel.innerHTML = '<option value="">-- Aucun (service racine) --</option>' +
+            services.filter(x => x.id !== id).map(x =>
+                `<option value="${x.id}" ${s.parent_id === x.id ? 'selected' : ''}>${x.code ? x.code + ' - ' : ''}${x.nom}</option>`
+            ).join('');
+
+        const respSel = document.getElementById('edit-service-responsable');
+        respSel.innerHTML = '<option value="">-- Aucun --</option>' +
+            contacts.map(c =>
+                `<option value="${c.id}" ${s.responsable_id === c.id ? 'selected' : ''}>${(c.prenom || '')} ${(c.nom || '')}${c.organisation ? ' — ' + c.organisation : ''}</option>`
+            ).join('');
+
+        openModal('modal-edit-service');
+    } catch (e) { showMsg(e.message, false); }
+}
+
+async function saveEditService() {
+    const id       = parseInt(document.getElementById('edit-service-id').value);
+    const parentVal = document.getElementById('edit-service-parent').value;
+    const respVal   = document.getElementById('edit-service-responsable').value;
+    const body = {
+        code:           document.getElementById('edit-service-code').value.trim(),
+        nom:            document.getElementById('edit-service-nom').value.trim(),
+        parent_id:      parentVal ? parseInt(parentVal) : null,
+        responsable_id: respVal   ? parseInt(respVal)   : null,
+    };
+    if (!body.nom) { showMsg('Le nom est obligatoire', false); return; }
+    try {
+        const res = await apiFetch(`/service_org/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+        if (res.success) {
+            showMsg('Service mis à jour');
+            closeModal('modal-edit-service');
+            loadServices();
+        } else showMsg(res.error || 'Erreur', false);
+    } catch (e) { showMsg(e.message, false); }
+}
+
+// ─── GANTT ─────────────────────────────────────────────────
+
+let _ganttInstance    = null;
+let _ganttProjInstance = null;
+
+function _periodDates(period) {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    switch (period) {
+        case 'month':
+            return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0) };
+        case 'quarter': {
+            const q = Math.floor(m / 3);
+            return { start: new Date(y, q * 3, 1), end: new Date(y, q * 3 + 3, 0) };
+        }
+        case 'semester': {
+            const h = m < 6 ? 0 : 6;
+            return { start: new Date(y, h, 1), end: new Date(y, h + 6, 0) };
+        }
+        case 'year':
+            return { start: new Date(y, 0, 1), end: new Date(y, 11, 31) };
+        default:
+            return null;
+    }
+}
+
+function _ganttColor(statut) {
+    const map = {
+        'ACTIF': '#2563a8', 'EN_ATTENTE': '#f39c12', 'TERMINE': '#27ae60',
+        'ANNULE': '#999', 'En cours': '#2563a8', 'A faire': '#7f8c8d',
+        'Terminée': '#27ae60', 'Bloquée': '#c0392b'
+    };
+    return map[statut] || '#2563a8';
+}
+
+async function loadGantt() {
+    // Populate service filter on first load
+    const serviceSel = document.getElementById('gantt-filter-service');
+    if (serviceSel && serviceSel.options.length <= 1) {
+        try {
+            const sData = await apiFetch('/service_org');
+            const services = sData.list || [];
+            const parents = services.filter(s => !s.parent_id);
+            services.filter(s => s.parent_id).forEach(() => {}); // just reference
+            serviceSel.innerHTML = '<option value="">Tous les services</option>';
+            parents.forEach(p => {
+                const grp = document.createElement('optgroup');
+                grp.label = `${p.code ? p.code + ' - ' : ''}${p.nom}`;
+                const pOpt = document.createElement('option');
+                pOpt.value = p.id; pOpt.textContent = p.nom;
+                grp.appendChild(pOpt);
+                services.filter(c => c.parent_id === p.id).forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id; opt.textContent = `└─ ${c.nom}`;
+                    grp.appendChild(opt);
+                });
+                serviceSel.appendChild(grp);
+            });
+        } catch(e) {}
+    }
+
+    const serviceId = serviceSel?.value;
+    const period    = document.getElementById('gantt-filter-period')?.value || 'quarter';
+    const mode      = document.getElementById('gantt-mode')?.value || 'projets';
+    const viewMode  = document.getElementById('gantt-view-mode')?.value || 'Week';
+
+    const params = new URLSearchParams();
+    if (serviceId) params.set('service_id', serviceId);
+    const dates = _periodDates(period);
+    if (dates) {
+        params.set('date_debut', dates.start.toISOString().slice(0, 10));
+        params.set('date_fin',   dates.end.toISOString().slice(0, 10));
+    }
+
+    let data;
+    try { data = await apiFetch('/gantt?' + params.toString()); }
+    catch (e) { showMsg('Erreur chargement Gantt: ' + e.message, false); return; }
+
+    const emptyEl = document.getElementById('gantt-empty');
+    const wrapEl  = document.getElementById('gantt-wrap');
+    const legendEl = document.getElementById('gantt-legend');
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    let tasks = [];
+    if (mode === 'projets') {
+        tasks = (data.projets || [])
+            .filter(p => p.date_debut || p.date_fin_prevue)
+            .map(p => ({
+                id:         String(p.id),
+                name:       `${p.code ? p.code + ' - ' : ''}${p.nom}`,
+                start:      p.date_debut      || today,
+                end:        p.date_fin_prevue || today,
+                progress:   p.avancement || 0,
+                custom_class: 'bar-projet',
+            }));
+    } else {
+        tasks = (data.taches || [])
+            .filter(t => t.date_echeance)
+            .map(t => ({
+                id:       'T' + t.id,
+                name:     `${t.projet_code || t.projet_nom || ''} › ${t.titre}`,
+                start:    t.date_debut    || today,
+                end:      t.date_echeance || today,
+                progress: t.avancement   || 0,
+                custom_class: 'bar-tache',
+            }));
+    }
+
+    if (!tasks.length) {
+        if (emptyEl) emptyEl.style.display = '';
+        wrapEl.innerHTML = '<svg id="gantt-global"></svg>';
+        if (legendEl) legendEl.innerHTML = '';
+        _ganttInstance = null;
+        return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    // Rebuild SVG container (Frappe Gantt targets existing SVG)
+    wrapEl.innerHTML = '<svg id="gantt-global"></svg>';
+    try {
+        _ganttInstance = new Gantt('#gantt-global', tasks, {
+            view_mode:    viewMode,
+            date_format:  'YYYY-MM-DD',
+            language:     'fr',
+            bar_height:   24,
+            padding:      18,
+        });
+    } catch (e) { showMsg('Erreur rendu Gantt: ' + e.message, false); }
+
+    // Legend
+    if (legendEl) {
+        legendEl.innerHTML = mode === 'projets'
+            ? '<div class="gantt-legend-item"><div class="gantt-legend-dot" style="background:#2563a8"></div>Projets</div>'
+            : '<div class="gantt-legend-item"><div class="gantt-legend-dot" style="background:#27ae60"></div>Tâches</div>';
+    }
+}
+
+function updateGanttViewMode() {
+    if (!_ganttInstance) return;
+    const vm = document.getElementById('gantt-view-mode')?.value || 'Week';
+    try { _ganttInstance.change_view_mode(vm); } catch(e) {}
+}
+
+async function loadProjetGantt(projetId) {
+    const viewMode = document.getElementById('gantt-proj-view-mode')?.value || 'Week';
+    const emptyEl  = document.getElementById('gantt-proj-empty');
+    const wrapEl   = document.querySelector('#ptab-gantt-proj .gantt-wrap');
+    if (!wrapEl) return;
+
+    let data;
+    try { data = await apiFetch(`/gantt?projet_id=${projetId}`); }
+    catch (e) { showMsg('Erreur Gantt projet: ' + e.message, false); return; }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const tasks = (data.taches || [])
+        .filter(t => t.date_echeance)
+        .map(t => ({
+            id:       'T' + t.id,
+            name:     t.titre + (t.responsable_label ? ' (' + t.responsable_label + ')' : ''),
+            start:    t.date_debut    || today,
+            end:      t.date_echeance || today,
+            progress: t.avancement   || 0,
+        }));
+
+    wrapEl.innerHTML = '<svg id="gantt-projet-svg"></svg>';
+    if (!tasks.length) {
+        if (emptyEl) emptyEl.style.display = '';
+        _ganttProjInstance = null;
+        return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+    try {
+        _ganttProjInstance = new Gantt('#gantt-projet-svg', tasks, {
+            view_mode:   viewMode,
+            date_format: 'YYYY-MM-DD',
+            language:    'fr',
+            bar_height:  24,
+            padding:     16,
+        });
+    } catch (e) { showMsg('Erreur rendu Gantt projet: ' + e.message, false); }
+}
+
+function updateProjetGanttViewMode() {
+    if (!_ganttProjInstance) return;
+    const vm = document.getElementById('gantt-proj-view-mode')?.value || 'Week';
+    try { _ganttProjInstance.change_view_mode(vm); } catch(e) {}
 }
 
 // ─── ETP ───────────────────────────────────────────────────
@@ -2165,12 +2548,9 @@ async function editAdminUser(id) {
         document.getElementById('edit-user-password').value = '';
         document.getElementById('edit-user-role').value  = u.role || 'lecteur';
         document.getElementById('edit-user-actif').checked = !!u.actif;
-        // Peupler select service
+        // Peupler select service avec hiérarchie
         const sel = document.getElementById('edit-user-service');
-        sel.innerHTML = '<option value="">Aucun (accès global)</option>' +
-            _adminServicesCache.map(s =>
-                `<option value="${s.id}" ${u.service_id === s.id ? 'selected' : ''}>${s.nom}</option>`
-            ).join('');
+        _buildServiceOptions(sel, u.service_id);
         openModal('modal-edit-user');
     } catch (e) { showMsg(e.message, false); }
 }
@@ -2214,11 +2594,42 @@ async function deleteAdminUser(id) {
     } catch (e) { showMsg(e.message, false); }
 }
 
+function _buildServiceOptions(sel, selectedId) {
+    const parents  = _adminServicesCache.filter(s => !s.parent_id);
+    const children = _adminServicesCache.filter(s =>  s.parent_id);
+    sel.innerHTML  = '';
+    const blankOpt = document.createElement('option');
+    blankOpt.value = ''; blankOpt.textContent = 'Aucun (accès global)';
+    sel.appendChild(blankOpt);
+    parents.forEach(p => {
+        const grp = document.createElement('optgroup');
+        grp.label = `${p.code ? p.code + ' - ' : ''}${p.nom}`;
+        const pOpt = document.createElement('option');
+        pOpt.value = p.id; pOpt.textContent = p.nom;
+        if (selectedId && p.id === selectedId) pOpt.selected = true;
+        grp.appendChild(pOpt);
+        children.filter(c => c.parent_id === p.id).forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id; opt.textContent = `└─ ${c.nom}`;
+            if (selectedId && c.id === selectedId) opt.selected = true;
+            grp.appendChild(opt);
+        });
+        sel.appendChild(grp);
+    });
+    // Orphan children (parent not in list)
+    const parentIds = new Set(parents.map(p => p.id));
+    children.filter(c => !parentIds.has(c.parent_id)).forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id; opt.textContent = c.nom;
+        if (selectedId && c.id === selectedId) opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
+
 function _populateNewUserServiceSelect() {
     const sel = document.getElementById('new-user-service');
     if (!sel) return;
-    sel.innerHTML = '<option value="">Aucun (accès global)</option>' +
-        _adminServicesCache.map(s => `<option value="${s.id}">${s.nom}</option>`).join('');
+    _buildServiceOptions(sel, null);
 }
 
 
@@ -2226,6 +2637,37 @@ function _populateNewUserServiceSelect() {
 
 document.getElementById('header-date').textContent =
     new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+// ─── Helper : peupler un <select> avec les contacts filtrés par type ──────────
+async function loadContactsForSelect(sel, type = '') {
+    if (!sel) return;
+    sel.innerHTML = '<option value="">-- Sélectionner un contact --</option>';
+    const url = type ? `/contact?type=${encodeURIComponent(type)}` : '/contact?limit=500';
+    try {
+        const data = await apiFetch(url);
+        (data.list || []).forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = `${c.prenom || ''} ${c.nom || ''}`.trim();
+            opt.textContent = `${c.prenom || ''} ${c.nom || ''}${c.organisation ? ' — ' + c.organisation : ''}`.trim();
+            sel.appendChild(opt);
+        });
+    } catch(e) {}
+}
+
+async function loadContactsIdForSelect(sel, type = '') {
+    if (!sel) return;
+    sel.innerHTML = '<option value="">-- Sélectionner un contact --</option>';
+    const url = type ? `/contact?type=${encodeURIComponent(type)}` : '/contact?limit=500';
+    try {
+        const data = await apiFetch(url);
+        (data.list || []).forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = `${c.prenom || ''} ${c.nom || ''}${c.organisation ? ' — ' + c.organisation : ''}`.trim();
+            sel.appendChild(opt);
+        });
+    } catch(e) {}
+}
 
 // ─── Équipe projet ───────────────────────────────────────────────────────────
 async function showAddMembreForm(projetId) {
@@ -2237,29 +2679,38 @@ async function showAddMembreForm(projetId) {
     const contactSel = document.getElementById(`new-membre-select-${projetId}`);
     const serviceSel = document.getElementById(`new-service-select-${projetId}`);
     const labelInput = document.getElementById(`new-membre-label-${projetId}`);
-    if (contactSel) contactSel.innerHTML = '<option value="">-- Sélectionner un contact --</option>';
-    if (serviceSel) serviceSel.innerHTML = '<option value="">-- Ou sélectionner un service --</option>';
     if (labelInput) labelInput.value = '';
 
     try {
-        const [cData, sData] = await Promise.all([
-            apiFetch('/contact?limit=500'),
-            apiFetch('/service_org')
-        ]);
-        (cData.list || []).forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = `${c.prenom || ''} ${c.nom || ''}`.trim();
-            opt.textContent = `${c.prenom || ''} ${c.nom || ''}${c.organisation ? ' — ' + c.organisation : ''}`.trim();
-            contactSel?.appendChild(opt);
-        });
-        (sData.list || []).forEach(s => {
-            const opt = document.createElement('option');
-            opt.value = s.nom || s.code || '';
-            opt.textContent = `${s.code ? s.code + ' — ' : ''}${s.nom || ''}`.trim();
-            serviceSel?.appendChild(opt);
-        });
+        const sData = await apiFetch('/service_org');
+        if (serviceSel) {
+            serviceSel.innerHTML = '<option value="">-- Ou sélectionner un service --</option>';
+            // Grouper par parent
+            const parents = sData.list.filter(s => !s.parent_id);
+            const children = sData.list.filter(s => s.parent_id);
+            parents.forEach(p => {
+                const grp = document.createElement('optgroup');
+                grp.label = `${p.code || ''} ${p.nom || ''}`.trim();
+                const subs = children.filter(c => c.parent_id === p.id);
+                subs.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.nom || s.code || '';
+                    opt.textContent = `└─ ${s.nom || s.code || ''}`.trim();
+                    grp.appendChild(opt);
+                });
+                serviceSel.appendChild(grp);
+                // Si pas de sous-services, ajouter le parent directement
+                if (!subs.length) {
+                    const opt = document.createElement('option');
+                    opt.value = p.nom || p.code || '';
+                    opt.textContent = `${p.code || ''} ${p.nom || ''}`.trim();
+                    serviceSel.appendChild(opt);
+                }
+            });
+        }
     } catch(e) {}
 
+    await loadContactsForSelect(contactSel, '');
     if (contactSel) contactSel.focus();
 }
 
@@ -2291,17 +2742,8 @@ async function showAddContactForm(projetId) {
     form.style.display = form.style.display === 'none' ? '' : 'none';
     if (form.style.display === 'none') return;
     const sel = document.getElementById(`new-contact-id-${projetId}`);
-    sel.innerHTML = '<option value="">-- Sélectionner un contact --</option>';
-    try {
-        const data = await apiFetch('/contact?limit=500');
-        (data.list || []).forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = c.id;
-            opt.textContent = `${c.prenom || ''} ${c.nom || ''}${c.organisation ? ' — ' + c.organisation : ''}`.trim();
-            sel.appendChild(opt);
-        });
-    } catch(e) {}
-    sel.focus();
+    await loadContactsIdForSelect(sel, '');
+    sel?.focus();
 }
 
 async function saveProjetContact(projetId) {
