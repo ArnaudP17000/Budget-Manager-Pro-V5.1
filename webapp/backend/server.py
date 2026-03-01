@@ -108,6 +108,14 @@ def run_migrations():
     except Exception:
         pass
 
+    # ── Nettoyer emails vides → NULL (évite contrainte UNIQUE sur '') ─
+    try:
+        db.execute(
+            "UPDATE utilisateurs SET email = NULL WHERE email = ''"
+        )
+    except Exception:
+        pass
+
     # ── Resync séquences (évite duplicate key après import CSV) ─
     for table in ['projets', 'services', 'utilisateurs', 'contacts',
                   'taches', 'contrats', 'bons_commande', 'fournisseurs']:

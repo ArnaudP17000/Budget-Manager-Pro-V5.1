@@ -82,7 +82,8 @@ class AuthService:
             "INSERT INTO utilisateurs "
             "(nom, prenom, email, login, mot_de_passe, role, service_id, actif) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            [data.get('nom'), data.get('prenom'), data.get('email'),
+            [data.get('nom') or None, data.get('prenom') or None,
+             data.get('email') or None,
              data['login'], hashed,
              data.get('role', 'lecteur'),
              data.get('service_id') or None,
@@ -99,7 +100,8 @@ class AuthService:
             self.db.execute(
                 "UPDATE utilisateurs SET nom=%s, prenom=%s, email=%s, login=%s, "
                 "mot_de_passe=%s, role=%s, service_id=%s, actif=%s WHERE id=%s",
-                [data.get('nom'), data.get('prenom'), data.get('email'),
+                [data.get('nom') or None, data.get('prenom') or None,
+                 data.get('email') or None,
                  data.get('login'), hashed, data.get('role'),
                  data.get('service_id') or None, data.get('actif', True), user_id]
             )
@@ -107,7 +109,8 @@ class AuthService:
             self.db.execute(
                 "UPDATE utilisateurs SET nom=%s, prenom=%s, email=%s, login=%s, "
                 "role=%s, service_id=%s, actif=%s WHERE id=%s",
-                [data.get('nom'), data.get('prenom'), data.get('email'),
+                [data.get('nom') or None, data.get('prenom') or None,
+                 data.get('email') or None,
                  data.get('login'), data.get('role'),
                  data.get('service_id') or None, data.get('actif', True), user_id]
             )
