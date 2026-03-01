@@ -46,6 +46,14 @@ def run_migrations():
         except Exception:
             pass
 
+    # ── Colonne projet_equipe ────────────────────────────────
+    try:
+        db.execute(
+            "ALTER TABLE projet_equipe ADD COLUMN IF NOT EXISTS membre_label TEXT"
+        )
+    except Exception:
+        pass
+
     # ── Compte admin par défaut (idempotent) ────────────────
     try:
         existing = db.fetch_one(
