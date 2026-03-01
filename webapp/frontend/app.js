@@ -2103,38 +2103,46 @@ async function loadServices() {
         const parents = services.filter(s => !s.parent_id);
         const rows = [];
         parents.forEach(p => {
-            rows.push({ ...p, _indent: false });
-            services.filter(c => c.parent_id === p.id).forEach(c => rows.push({ ...c, _indent: true }));
+            rows.push({ ...p, _isUnite: false });
+            services.filter(c => c.parent_id === p.id).forEach(c => rows.push({ ...c, _isUnite: true }));
         });
-        // Orphan children (parent not in list)
+        // Sous-sous-services (niveaux 3+)
         const seen = new Set(rows.map(s => s.id));
-        services.filter(s => !seen.has(s.id)).forEach(s => rows.push({ ...s, _indent: false }));
+        services.filter(s => !seen.has(s.id)).forEach(s => rows.push({ ...s, _isUnite: !!s.parent_id }));
 
         const tbody = document.getElementById('services-tbody');
-        tbody.innerHTML = rows.map(s => `
-            <tr>
+        tbody.innerHTML = rows.map(s => {
+            const badge = s._isUnite
+                ? '<span style="background:#27ae60;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Unité</span>'
+                : '<span style="background:#2563a8;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Service</span>';
+            const nbP = s.nb_personnes != null ? s.nb_personnes : '-';
+            const nbM = s.nb_membres || 0;
+            return `<tr>
+                <td>${badge}</td>
                 <td><strong>${s.code || '-'}</strong></td>
-                <td>${s._indent ? '<span style="color:#aaa;margin-right:4px;">└─</span>' : ''}${s.nom || '-'}</td>
+                <td>${s._isUnite ? '<span style="color:#aaa;margin-right:4px;">└─</span>' : ''}${s.nom || '-'}</td>
                 <td>${s.responsable_nom || '-'}</td>
-                <td>${s.parent_nom || '-'}</td>
-                <td>${s.nb_projets || 0}</td>
+                <td style="font-size:.85em;">${s.parent_nom || '-'}</td>
+                <td style="text-align:center;">${nbP}</td>
+                <td style="text-align:center;">${nbM > 0 ? `<span style="color:#2563a8;font-weight:bold;">${nbM}</span>` : '-'}</td>
                 <td style="white-space:nowrap;">
-                    <button class="btn btn-warning btn-sm" onclick="editService(${s.id})"
+                    <button onclick="editService(${s.id})"
                         style="padding:3px 8px;font-size:.8em;background:#f39c12;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-right:4px;">Éditer</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteService(${s.id})"
                         style="padding:3px 8px;font-size:.8em;">Suppr.</button>
                 </td>
-            </tr>`).join('');
+            </tr>`;
+        }).join('');
 
         // Populate "add" form selects
         const parentSel = document.getElementById('service-parent');
         if (parentSel) {
-            parentSel.innerHTML = '<option value="">-- Service parent (optionnel) --</option>' +
+            parentSel.innerHTML = '<option value="">-- Service parent → devient une Unité --</option>' +
                 services.map(s => `<option value="${s.id}">${s.code ? s.code + ' - ' : ''}${s.nom}</option>`).join('');
         }
         const respSel = document.getElementById('service-responsable');
         if (respSel) {
-            respSel.innerHTML = '<option value="">-- Responsable (optionnel) --</option>' +
+            respSel.innerHTML = '<option value="">-- Responsable d\'unité (optionnel) --</option>' +
                 contacts.map(c => `<option value="${c.id}">${(c.prenom || '')} ${(c.nom || '')}${c.organisation ? ' — ' + c.organisation : ''}</option>`).join('');
         }
     } catch (e) { showMsg('Erreur chargement services', false); }
@@ -2143,11 +2151,13 @@ async function loadServices() {
 async function addService() {
     const parentVal = document.getElementById('service-parent')?.value;
     const respVal   = document.getElementById('service-responsable')?.value;
+    const nbP       = document.getElementById('service-nb-personnes')?.value;
     const body = {
         code:           document.getElementById('service-code').value.trim(),
         nom:            document.getElementById('service-nom').value.trim(),
         parent_id:      parentVal ? parseInt(parentVal) : null,
         responsable_id: respVal   ? parseInt(respVal)   : null,
+        nb_personnes:   nbP       ? parseInt(nbP)        : null,
     };
     if (!body.nom) { showMsg('Le nom est obligatoire', false); return; }
     try {
@@ -2156,8 +2166,9 @@ async function addService() {
             showMsg('Service ajouté');
             document.getElementById('service-code').value = '';
             document.getElementById('service-nom').value  = '';
-            if (document.getElementById('service-parent'))     document.getElementById('service-parent').value = '';
-            if (document.getElementById('service-responsable')) document.getElementById('service-responsable').value = '';
+            if (document.getElementById('service-parent'))      document.getElementById('service-parent').value = '';
+            if (document.getElementById('service-responsable'))  document.getElementById('service-responsable').value = '';
+            if (document.getElementById('service-nb-personnes')) document.getElementById('service-nb-personnes').value = '';
             loadServices();
         } else showMsg(res.error || 'Erreur', false);
     } catch (e) { showMsg(e.message, false); }
@@ -2174,18 +2185,26 @@ async function deleteService(id) {
 
 async function editService(id) {
     try {
-        const [data, contactsData] = await Promise.all([
+        const [data, contactsData, membresData] = await Promise.all([
             apiFetch('/service_org'),
-            apiFetch('/contact?limit=500')
+            apiFetch('/contact?limit=500'),
+            apiFetch(`/service_org/${id}/membres`)
         ]);
         const services = data.list || [];
         const contacts = contactsData.list || [];
+        const membres  = membresData.list || [];
         const s = services.find(x => x.id === id);
         if (!s) return;
 
-        document.getElementById('edit-service-id').value   = id;
-        document.getElementById('edit-service-code').value = s.code || '';
-        document.getElementById('edit-service-nom').value  = s.nom  || '';
+        const isUnite = !!s.parent_id;
+        const titleEl = document.getElementById('edit-service-title');
+        if (titleEl) titleEl.textContent = isUnite ? 'Modifier l\'unité' : 'Modifier le service';
+
+        document.getElementById('edit-service-id').value            = id;
+        document.getElementById('edit-service-code').value          = s.code || '';
+        document.getElementById('edit-service-nom').value           = s.nom  || '';
+        document.getElementById('edit-service-nb-personnes').value  = s.nb_personnes != null ? s.nb_personnes : '';
+        document.getElementById('edit-service-membres').value       = s.membres_label || '';
 
         const parentSel = document.getElementById('edit-service-parent');
         parentSel.innerHTML = '<option value="">-- Aucun (service racine) --</option>' +
@@ -2199,19 +2218,32 @@ async function editService(id) {
                 `<option value="${c.id}" ${s.responsable_id === c.id ? 'selected' : ''}>${(c.prenom || '')} ${(c.nom || '')}${c.organisation ? ' — ' + c.organisation : ''}</option>`
             ).join('');
 
+        // Afficher les membres avec compte système
+        const memSysEl = document.getElementById('edit-service-membres-sys');
+        if (memSysEl) {
+            memSysEl.innerHTML = membres.length
+                ? membres.map(u => `<span style="display:inline-block;background:#e8f4fd;border:1px solid #bee3f8;border-radius:4px;padding:2px 8px;margin:2px;font-size:.82em;">
+                    ${u.prenom || ''} ${u.nom || ''} <span style="color:#888;font-size:.85em;">(${u.role || ''})</span>
+                  </span>`).join('')
+                : '<em style="color:#aaa;font-size:.85em;">Aucun utilisateur lié à ce service</em>';
+        }
+
         openModal('modal-edit-service');
     } catch (e) { showMsg(e.message, false); }
 }
 
 async function saveEditService() {
-    const id       = parseInt(document.getElementById('edit-service-id').value);
+    const id        = parseInt(document.getElementById('edit-service-id').value);
     const parentVal = document.getElementById('edit-service-parent').value;
     const respVal   = document.getElementById('edit-service-responsable').value;
+    const nbP       = document.getElementById('edit-service-nb-personnes').value;
     const body = {
         code:           document.getElementById('edit-service-code').value.trim(),
         nom:            document.getElementById('edit-service-nom').value.trim(),
         parent_id:      parentVal ? parseInt(parentVal) : null,
         responsable_id: respVal   ? parseInt(respVal)   : null,
+        nb_personnes:   nbP       ? parseInt(nbP)        : null,
+        membres_label:  document.getElementById('edit-service-membres').value || null,
     };
     if (!body.nom) { showMsg('Le nom est obligatoire', false); return; }
     try {

@@ -874,6 +874,12 @@ def delete_service_org(service_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+@routes.route('/service_org/<int:service_id>/membres', methods=['GET'])
+@require_auth()
+def get_service_membres(service_id):
+    membres = service_org_service.get_membres(service_id)
+    return jsonify({"list": membres})
+
 
 # ─────────────────────────────────────────────
 # RÉFÉRENTIELS (données pour les selects)

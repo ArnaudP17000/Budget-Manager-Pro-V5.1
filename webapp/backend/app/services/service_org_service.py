@@ -20,29 +20,46 @@ class ServiceOrgService:
                 "SELECT s.*, "
                 "c.nom || ' ' || c.prenom as responsable_nom, "
                 "p.nom as parent_nom, "
-                "(SELECT COUNT(*) FROM projets pr WHERE pr.service_id = s.id) as nb_projets "
+                "(SELECT COUNT(*) FROM projets pr WHERE pr.service_id = s.id) as nb_projets, "
+                "(SELECT COUNT(*) FROM utilisateurs u WHERE u.service_id = s.id AND u.actif = true) as nb_membres "
                 "FROM services s "
                 "LEFT JOIN contacts c ON c.id = s.responsable_id "
                 "LEFT JOIN services p ON p.id = s.parent_id "
-                "ORDER BY s.code"
+                "ORDER BY s.parent_id NULLS FIRST, s.code"
             )
             return [_d(r) for r in rows] if rows else []
         except Exception as ex:
             logger.warning(f"Erreur services: {ex}")
             return []
 
+    def get_membres(self, service_id):
+        try:
+            rows = self.db.fetch_all(
+                "SELECT id, nom, prenom, email, role FROM utilisateurs "
+                "WHERE service_id = %s AND actif = true ORDER BY nom",
+                [service_id]
+            )
+            return [_d(r) for r in rows] if rows else []
+        except Exception as ex:
+            logger.warning(f"Erreur membres service: {ex}")
+            return []
+
     def create(self, data):
         self.db.execute(
-            "INSERT INTO services (code, nom, responsable_id, parent_id) VALUES (%s, %s, %s, %s)",
+            "INSERT INTO services (code, nom, responsable_id, parent_id, nb_personnes, membres_label) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
             [data.get('code'), data.get('nom'),
-             data.get('responsable_id') or None, data.get('parent_id') or None]
+             data.get('responsable_id') or None, data.get('parent_id') or None,
+             data.get('nb_personnes') or None, data.get('membres_label') or None]
         )
 
     def update(self, service_id, data):
         self.db.execute(
-            "UPDATE services SET code=%s, nom=%s, responsable_id=%s, parent_id=%s WHERE id=%s",
+            "UPDATE services SET code=%s, nom=%s, responsable_id=%s, parent_id=%s, "
+            "nb_personnes=%s, membres_label=%s WHERE id=%s",
             [data.get('code'), data.get('nom'),
              data.get('responsable_id') or None, data.get('parent_id') or None,
+             data.get('nb_personnes') or None, data.get('membres_label') or None,
              service_id]
         )
 
