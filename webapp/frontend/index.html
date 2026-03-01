@@ -213,11 +213,46 @@
 </head>
 <body>
 
+<!-- ══════════════════ LOGIN OVERLAY ══════════════════ -->
+<div id="login-overlay" style="position:fixed;inset:0;background:#1a3c5e;z-index:9999;
+     display:flex;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;padding:40px 48px;min-width:340px;
+              box-shadow:0 8px 32px rgba(0,0,0,.3);">
+    <h2 style="color:#1a3c5e;margin-bottom:24px;text-align:center;">Budget Manager Pro</h2>
+    <div id="login-error" style="display:none;background:#fee;color:#c0392b;padding:8px 12px;
+         border-radius:4px;margin-bottom:14px;font-size:.87em;"></div>
+    <label style="display:block;margin-bottom:6px;font-size:.85em;">Identifiant</label>
+    <input id="login-user" type="text" autocomplete="username"
+           style="width:100%;padding:9px;border:1px solid #ccc;border-radius:5px;
+                  margin-bottom:14px;font-size:.95em;">
+    <label style="display:block;margin-bottom:6px;font-size:.85em;">Mot de passe</label>
+    <input id="login-pass" type="password" autocomplete="current-password"
+           style="width:100%;padding:9px;border:1px solid #ccc;border-radius:5px;
+                  margin-bottom:20px;font-size:.95em;">
+    <button onclick="doLogin()"
+            style="width:100%;padding:10px;background:#2563a8;color:#fff;border:none;
+                   border-radius:5px;font-size:1em;cursor:pointer;">
+      Se connecter
+    </button>
+  </div>
+</div>
+
 <header>
     <h1>Budget Manager Pro V5
         <span id="notif-badge" onclick="showView('notifications')">0</span>
     </h1>
-    <span id="header-date" style="font-size:.8em;opacity:.8;"></span>
+    <div style="display:flex;align-items:center;gap:12px;">
+        <span id="header-date" style="font-size:.8em;opacity:.8;"></span>
+        <div id="user-info" style="display:none;font-size:.82em;color:#cde;display:flex;align-items:center;gap:8px;">
+            <span id="user-name"></span>
+            <span id="user-role-badge" style="background:#1a3c5e;border:1px solid #cde;
+                  padding:2px 8px;border-radius:10px;font-size:.85em;"></span>
+            <button onclick="doLogout()" style="background:none;border:1px solid #cde;color:#cde;
+                    padding:4px 10px;border-radius:4px;cursor:pointer;font-size:.8em;">
+              Déconnexion
+            </button>
+        </div>
+    </div>
 </header>
 
 <nav>
@@ -233,6 +268,7 @@
     <button onclick="showView('services')">Services</button>
     <button onclick="showView('etp')">ETP</button>
     <button onclick="showView('notifications')">Notifications</button>
+    <button id="nav-admin" onclick="showView('admin')" style="display:none;background:#c0392b;">Admin</button>
 </nav>
 
 <!-- ══════════════════ DASHBOARD ══════════════════ -->
@@ -662,6 +698,92 @@
 <div id="view-notifications" class="view">
     <h2>Notifications</h2>
     <div id="notif-list"></div>
+</div>
+
+<!-- ══════════════════ ADMIN UTILISATEURS ══════════════════ -->
+<div id="view-admin" class="view">
+    <div style="padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
+        <h2>Gestion des utilisateurs</h2>
+        <button class="btn btn-primary" onclick="openModal('modal-add-user')">+ Nouvel utilisateur</button>
+    </div>
+    <div style="padding:0 24px 24px;overflow-x:auto;">
+        <table class="table" style="width:100%;">
+            <thead>
+                <tr>
+                    <th>Nom</th><th>Prénom</th><th>Login</th><th>Email</th>
+                    <th>Rôle</th><th>Service</th><th>Actif</th><th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="admin-users-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL CRÉER UTILISATEUR ══════════════════ -->
+<div class="modal-overlay" id="modal-add-user">
+    <div class="modal" style="max-width:480px;">
+        <button class="modal-close" onclick="closeModal('modal-add-user')">✕</button>
+        <h3>Nouvel utilisateur</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+            <div><label>Nom</label><input id="new-user-nom" class="form-control"></div>
+            <div><label>Prénom</label><input id="new-user-prenom" class="form-control"></div>
+            <div><label>Login *</label><input id="new-user-login" class="form-control"></div>
+            <div><label>Email</label><input id="new-user-email" type="email" class="form-control"></div>
+            <div><label>Mot de passe * (min 8 car.)</label><input id="new-user-password" type="password" class="form-control"></div>
+            <div><label>Rôle</label>
+                <select id="new-user-role" class="form-control">
+                    <option value="lecteur">Lecteur</option>
+                    <option value="gestionnaire">Gestionnaire</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <div style="grid-column:1/-1;"><label>Service (restriction périmètre)</label>
+                <select id="new-user-service" class="form-control">
+                    <option value="">Aucun (accès global)</option>
+                </select>
+            </div>
+        </div>
+        <div style="margin-top:16px;text-align:right;">
+            <button class="btn" onclick="closeModal('modal-add-user')" style="margin-right:8px;">Annuler</button>
+            <button class="btn btn-primary" onclick="saveNewUser()">Créer</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL ÉDITER UTILISATEUR ══════════════════ -->
+<div class="modal-overlay" id="modal-edit-user">
+    <div class="modal" style="max-width:480px;">
+        <button class="modal-close" onclick="closeModal('modal-edit-user')">✕</button>
+        <h3>Modifier l'utilisateur</h3>
+        <input type="hidden" id="edit-user-id">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+            <div><label>Nom</label><input id="edit-user-nom" class="form-control"></div>
+            <div><label>Prénom</label><input id="edit-user-prenom" class="form-control"></div>
+            <div><label>Login</label><input id="edit-user-login" class="form-control"></div>
+            <div><label>Email</label><input id="edit-user-email" type="email" class="form-control"></div>
+            <div><label>Nouveau mot de passe (laisser vide = inchangé)</label>
+                <input id="edit-user-password" type="password" class="form-control" placeholder="••••••••"></div>
+            <div><label>Rôle</label>
+                <select id="edit-user-role" class="form-control">
+                    <option value="lecteur">Lecteur</option>
+                    <option value="gestionnaire">Gestionnaire</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <div style="grid-column:1/-1;"><label>Service (restriction périmètre)</label>
+                <select id="edit-user-service" class="form-control">
+                    <option value="">Aucun (accès global)</option>
+                </select>
+            </div>
+            <div style="grid-column:1/-1;">
+                <label><input type="checkbox" id="edit-user-actif" style="margin-right:6px;">Compte actif</label>
+            </div>
+        </div>
+        <div style="margin-top:16px;text-align:right;">
+            <button class="btn" onclick="closeModal('modal-edit-user')" style="margin-right:8px;">Annuler</button>
+            <button class="btn btn-primary" onclick="saveEditUser()">Enregistrer</button>
+        </div>
+    </div>
 </div>
 
 <!-- ══════════════════ MODAL FICHE BC ══════════════════ -->

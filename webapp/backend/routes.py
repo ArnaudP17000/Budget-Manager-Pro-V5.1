@@ -1,4 +1,5 @@
-from flask import Blueprint, jsonify, request
+import functools
+from flask import Blueprint, jsonify, request, g
 
 from app.services.projet_service import ProjetService
 from app.services.budget_v5_service import BudgetV5Service
@@ -8,6 +9,7 @@ from app.services.tache_service import TacheService
 from app.services.referentiel_service import ReferentielService
 from app.services.contact_service import ContactService
 from app.services.service_org_service import ServiceOrgService
+from app.services.auth_service import AuthService
 
 routes = Blueprint('routes', __name__)
 
@@ -19,6 +21,113 @@ referentiel_service = ReferentielService()
 tache_service       = TacheService()
 contact_service     = ContactService()
 service_org_service = ServiceOrgService()
+auth_service        = AuthService()
+
+
+# ─────────────────────────────────────────────
+# DECORATOR AUTH
+# ─────────────────────────────────────────────
+
+def require_auth(*roles):
+    """
+    @require_auth()                      → tout utilisateur authentifié
+    @require_auth('admin')               → admin seulement
+    @require_auth('admin','gestionnaire')→ admin ou gestionnaire
+    """
+    def decorator(f):
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Bearer '):
+                return jsonify({"error": "Token manquant"}), 401
+            payload = auth_service.verify_token(auth_header[7:])
+            if not payload:
+                return jsonify({"error": "Token invalide ou expiré"}), 401
+            if roles and payload.get('role') not in roles:
+                return jsonify({"error": "Accès interdit"}), 403
+            g.user = payload
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+# ─────────────────────────────────────────────
+# AUTH
+# ─────────────────────────────────────────────
+
+@routes.route('/auth/login', methods=['POST'])
+def login():
+    data = request.json or {}
+    result = auth_service.login(data.get('login', ''), data.get('password', ''))
+    if not result:
+        return jsonify({"error": "Identifiants invalides ou compte désactivé"}), 401
+    return jsonify(result)
+
+@routes.route('/auth/me', methods=['GET'])
+@require_auth()
+def me():
+    return jsonify(g.user)
+
+
+# ─────────────────────────────────────────────
+# USERS (admin)
+# ─────────────────────────────────────────────
+
+@routes.route('/users', methods=['GET'])
+@require_auth('admin')
+def get_users():
+    return jsonify({"list": auth_service.get_all_users()})
+
+@routes.route('/users', methods=['POST'])
+@require_auth('admin')
+def create_user():
+    data = request.json or {}
+    try:
+        if not data.get('login') or not data.get('mot_de_passe'):
+            return jsonify({"error": "login et mot_de_passe requis"}), 400
+        auth_service.create_user(data)
+        return jsonify({"success": True}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@routes.route('/users/<int:user_id>', methods=['GET'])
+@require_auth('admin')
+def get_user(user_id):
+    user = auth_service.get_user_by_id(user_id)
+    if not user:
+        return jsonify({"error": "Utilisateur introuvable"}), 404
+    return jsonify(user)
+
+@routes.route('/users/<int:user_id>', methods=['PUT'])
+@require_auth('admin')
+def update_user(user_id):
+    data = request.json or {}
+    try:
+        auth_service.update_user(user_id, data)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@routes.route('/users/<int:user_id>', methods=['DELETE'])
+@require_auth('admin')
+def delete_user(user_id):
+    try:
+        if g.user.get('sub') == user_id:
+            return jsonify({"error": "Impossible de supprimer son propre compte"}), 400
+        auth_service.delete_user(user_id)
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@routes.route('/users/<int:user_id>/toggle', methods=['POST'])
+@require_auth('admin')
+def toggle_user(user_id):
+    data = request.json or {}
+    try:
+        auth_service.set_active(user_id, data.get('actif', True))
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 # ─────────────────────────────────────────────
@@ -26,6 +135,7 @@ service_org_service = ServiceOrgService()
 # ─────────────────────────────────────────────
 
 @routes.route('/dashboard', methods=['GET'])
+@require_auth()
 def dashboard():
     projets       = projet_service.get_all()
     budget        = budget_service.get_budget()
@@ -50,6 +160,7 @@ def dashboard():
 # ─────────────────────────────────────────────
 
 @routes.route('/entites', methods=['GET'])
+@require_auth()
 def get_entites():
     return jsonify({"list": budget_service.get_entites()})
 
@@ -59,6 +170,7 @@ def get_entites():
 # ─────────────────────────────────────────────
 
 @routes.route('/applications', methods=['GET'])
+@require_auth()
 def get_applications():
     return jsonify({"list": budget_service.get_all_applications()})
 
@@ -68,6 +180,7 @@ def get_applications():
 # ─────────────────────────────────────────────
 
 @routes.route('/budget', methods=['GET'])
+@require_auth()
 def get_budget():
     budgets = budget_service.get_budget()
     return jsonify({
@@ -77,15 +190,18 @@ def get_budget():
     })
 
 @routes.route('/budget/<int:budget_id>/lignes', methods=['GET'])
+@require_auth()
 def get_lignes_budget(budget_id):
     return jsonify({"list": budget_service.get_lignes(budget_id)})
 
 @routes.route('/lignes', methods=['GET'])
+@require_auth()
 def get_all_lignes():
     budget_id = request.args.get('budget_id', type=int)
     return jsonify({"list": budget_service.get_lignes(budget_id)})
 
 @routes.route('/ligne', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
 def create_ligne():
     data = request.json
     try:
@@ -106,6 +222,7 @@ def create_ligne():
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/ligne/<int:ligne_id>', methods=['PUT'])
+@require_auth('admin', 'gestionnaire')
 def update_ligne(ligne_id):
     data = request.json
     try:
@@ -127,6 +244,7 @@ def update_ligne(ligne_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/ligne/<int:ligne_id>/bcs', methods=['GET'])
+@require_auth()
 def get_ligne_bcs(ligne_id):
     bcs = budget_service.db.fetch_all(
         "SELECT bc.id, bc.numero_bc, bc.objet, bc.montant_ht, bc.montant_ttc, "
@@ -144,6 +262,7 @@ def get_ligne_bcs(ligne_id):
     return jsonify({"bcs": [dict(b) for b in bcs] if bcs else []})
 
 @routes.route('/budget/<int:budget_id>/detail', methods=['GET'])
+@require_auth()
 def get_budget_detail(budget_id):
     lignes = budget_service.get_lignes(budget_id)
     for ligne in lignes:
@@ -161,6 +280,7 @@ def get_budget_detail(budget_id):
     return jsonify({"lignes": lignes})
 
 @routes.route('/budget/<int:budget_id>/voter', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
 def voter_budget(budget_id):
     data = request.json
     try:
@@ -171,6 +291,7 @@ def voter_budget(budget_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/budget', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
 def create_budget():
     data = request.json
     try:
@@ -185,6 +306,7 @@ def create_budget():
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/budget/<int:budget_id>', methods=['PUT'])
+@require_auth('admin', 'gestionnaire')
 def update_budget(budget_id):
     data = request.json
     try:
@@ -200,6 +322,7 @@ def update_budget(budget_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/budget/<int:budget_id>', methods=['DELETE'])
+@require_auth('admin')
 def delete_budget(budget_id):
     try:
         budget_service.db.execute("DELETE FROM budgets_annuels WHERE id=%s", [budget_id])
@@ -213,16 +336,19 @@ def delete_budget(budget_id):
 # ─────────────────────────────────────────────
 
 @routes.route('/bon_commande', methods=['GET'])
+@require_auth()
 def get_bon_commande():
     filters = {k: v for k, v in request.args.items() if v}
     bc_list = bc_service.get_all_bons_commande(filters)
     return jsonify({"count": len(bc_list), "list": bc_list})
 
 @routes.route('/bon_commande/stats', methods=['GET'])
+@require_auth()
 def get_bc_stats():
     return jsonify(bc_service.get_stats())
 
 @routes.route('/bon_commande/<int:bc_id>', methods=['GET'])
+@require_auth()
 def get_bon_commande_by_id(bc_id):
     bc = bc_service.get_by_id(bc_id)
     if bc:
@@ -230,6 +356,7 @@ def get_bon_commande_by_id(bc_id):
     return jsonify({"error": "BC introuvable"}), 404
 
 @routes.route('/bon_commande/<int:bc_id>/valider', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
 def valider_bc(bc_id):
     try:
         new_statut = bc_service.valider(bc_id)
@@ -238,6 +365,7 @@ def valider_bc(bc_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/bon_commande/<int:bc_id>/imputer', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
 def imputer_bc(bc_id):
     data = request.json
     ligne_id = data.get('ligne_id')
@@ -250,6 +378,7 @@ def imputer_bc(bc_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/bon_commande', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
 def create_bon_commande():
     data = request.json
     try:
@@ -269,6 +398,7 @@ def create_bon_commande():
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/bon_commande/<int:bc_id>', methods=['PUT'])
+@require_auth('admin', 'gestionnaire')
 def update_bon_commande(bc_id):
     data = request.json
     try:
@@ -288,6 +418,7 @@ def update_bon_commande(bc_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/bon_commande/<int:bc_id>', methods=['DELETE'])
+@require_auth('admin')
 def delete_bon_commande(bc_id):
     try:
         bc_service.db.execute("DELETE FROM bons_commande WHERE id=%s", [bc_id])
@@ -301,11 +432,13 @@ def delete_bon_commande(bc_id):
 # ─────────────────────────────────────────────
 
 @routes.route('/contrat', methods=['GET'])
+@require_auth()
 def get_contrats():
     contrats = contrat_service.get_all()
     return jsonify({"count": len(contrats), "list": contrats})
 
 @routes.route('/contrat/<int:contrat_id>', methods=['GET'])
+@require_auth()
 def get_contrat_by_id(contrat_id):
     c = contrat_service.get_by_id(contrat_id)
     if not c:
@@ -313,10 +446,12 @@ def get_contrat_by_id(contrat_id):
     return jsonify(c)
 
 @routes.route('/contrat/alertes', methods=['GET'])
+@require_auth()
 def get_contrat_alertes():
     return jsonify({"list": contrat_service.get_alertes()})
 
 @routes.route('/contrat/<int:contrat_id>/reconduire', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
 def reconduire_contrat(contrat_id):
     data = request.json
     nouvelle_date_fin = data.get('nouvelle_date_fin')
@@ -329,6 +464,7 @@ def reconduire_contrat(contrat_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/contrat', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
 def create_contrat():
     data = request.json
     try:
@@ -347,6 +483,7 @@ def create_contrat():
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/contrat/<int:contrat_id>', methods=['PUT'])
+@require_auth('admin', 'gestionnaire')
 def update_contrat(contrat_id):
     data = request.json
     try:
@@ -365,6 +502,7 @@ def update_contrat(contrat_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/contrat/<int:contrat_id>', methods=['DELETE'])
+@require_auth('admin')
 def delete_contrat(contrat_id):
     try:
         contrat_service.db.execute("DELETE FROM contrats WHERE id=%s", [contrat_id])
@@ -378,19 +516,29 @@ def delete_contrat(contrat_id):
 # ─────────────────────────────────────────────
 
 @routes.route('/projet', methods=['GET'])
+@require_auth()
 def get_projets():
     filters = request.args.to_dict()
+    # Restriction par service pour les non-admin
+    if g.user.get('service_id') and g.user.get('role') != 'admin':
+        filters['service_id'] = g.user['service_id']
     projets = projet_service.get_all(filters)
     return jsonify({"count": len(projets), "list": projets})
 
 @routes.route('/projet/<int:projet_id>', methods=['GET'])
+@require_auth()
 def get_projet(projet_id):
     p = projet_service.get_by_id(projet_id)
     if not p:
         return jsonify({"error": "Projet introuvable"}), 404
+    # Restriction par service pour les non-admin
+    if (g.user.get('service_id') and g.user.get('role') != 'admin'
+            and p.get('service_id') != g.user['service_id']):
+        return jsonify({"error": "Accès interdit"}), 403
     return jsonify(p)
 
 @routes.route('/projet', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
 def create_projet():
     data = request.json
     try:
@@ -416,6 +564,7 @@ def create_projet():
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/projet/<int:projet_id>', methods=['PUT'])
+@require_auth('admin', 'gestionnaire')
 def update_projet(projet_id):
     data = request.json
     try:
@@ -443,6 +592,7 @@ def update_projet(projet_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/projet/<int:projet_id>', methods=['DELETE'])
+@require_auth('admin')
 def delete_projet(projet_id):
     try:
         projet_service.db.execute("DELETE FROM projets WHERE id=%s", [projet_id])
@@ -456,11 +606,13 @@ def delete_projet(projet_id):
 # ─────────────────────────────────────────────
 
 @routes.route('/tache', methods=['GET'])
+@require_auth()
 def get_taches():
     taches = tache_service.get_all()
     return jsonify({"count": len(taches), "list": taches})
 
 @routes.route('/tache', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
 def create_tache():
     data = request.json
     try:
@@ -477,6 +629,7 @@ def create_tache():
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/tache/<int:tache_id>', methods=['GET'])
+@require_auth()
 def get_tache_by_id(tache_id):
     try:
         row = tache_service.db.fetch_one(
@@ -491,6 +644,7 @@ def get_tache_by_id(tache_id):
         return jsonify({"error": str(e)}), 500
 
 @routes.route('/tache/<int:tache_id>', methods=['PUT'])
+@require_auth('admin', 'gestionnaire')
 def update_tache(tache_id):
     data = request.json
     try:
@@ -506,6 +660,7 @@ def update_tache(tache_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/tache/<int:tache_id>', methods=['DELETE'])
+@require_auth('admin')
 def delete_tache(tache_id):
     try:
         tache_service.db.execute("DELETE FROM taches WHERE id=%s", [tache_id])
@@ -519,6 +674,7 @@ def delete_tache(tache_id):
 # ─────────────────────────────────────────────
 
 @routes.route('/fournisseur', methods=['GET'])
+@require_auth()
 def get_fournisseurs_list():
     try:
         rows = referentiel_service.db.fetch_all(
@@ -534,6 +690,7 @@ def get_fournisseurs_list():
         return jsonify({"count": 0, "list": [], "error": str(e)})
 
 @routes.route('/fournisseur', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
 def create_fournisseur():
     data = request.json
     try:
@@ -548,6 +705,7 @@ def create_fournisseur():
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/fournisseur/<int:fournisseur_id>', methods=['PUT'])
+@require_auth('admin', 'gestionnaire')
 def update_fournisseur(fournisseur_id):
     data = request.json
     try:
@@ -562,6 +720,7 @@ def update_fournisseur(fournisseur_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/fournisseur/<int:fournisseur_id>', methods=['DELETE'])
+@require_auth('admin')
 def delete_fournisseur(fournisseur_id):
     try:
         referentiel_service.db.execute("DELETE FROM fournisseurs WHERE id=%s", [fournisseur_id])
@@ -575,12 +734,14 @@ def delete_fournisseur(fournisseur_id):
 # ─────────────────────────────────────────────
 
 @routes.route('/contact', methods=['GET'])
+@require_auth()
 def get_contacts():
     filters = {k: v for k, v in request.args.items() if v}
     contacts = contact_service.get_all(filters)
     return jsonify({"count": len(contacts), "list": contacts})
 
 @routes.route('/contact', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
 def create_contact():
     data = request.json
     try:
@@ -590,6 +751,7 @@ def create_contact():
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/contact/<int:contact_id>', methods=['PUT'])
+@require_auth('admin', 'gestionnaire')
 def update_contact(contact_id):
     data = request.json
     try:
@@ -599,6 +761,7 @@ def update_contact(contact_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/contact/<int:contact_id>', methods=['DELETE'])
+@require_auth('admin')
 def delete_contact(contact_id):
     try:
         contact_service.delete(contact_id)
@@ -612,11 +775,13 @@ def delete_contact(contact_id):
 # ─────────────────────────────────────────────
 
 @routes.route('/service_org', methods=['GET'])
+@require_auth()
 def get_services_org():
     services = service_org_service.get_all()
     return jsonify({"count": len(services), "list": services})
 
 @routes.route('/service_org', methods=['POST'])
+@require_auth('admin')
 def create_service_org():
     data = request.json
     try:
@@ -626,6 +791,7 @@ def create_service_org():
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/service_org/<int:service_id>', methods=['PUT'])
+@require_auth('admin')
 def update_service_org(service_id):
     data = request.json
     try:
@@ -635,6 +801,7 @@ def update_service_org(service_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 @routes.route('/service_org/<int:service_id>', methods=['DELETE'])
+@require_auth('admin')
 def delete_service_org(service_id):
     try:
         service_org_service.delete(service_id)
@@ -648,6 +815,7 @@ def delete_service_org(service_id):
 # ─────────────────────────────────────────────
 
 @routes.route('/referentiels', methods=['GET'])
+@require_auth()
 def get_referentiels():
     try:
         etp          = referentiel_service.get_etp()
@@ -678,11 +846,9 @@ def get_referentiels():
 # ─────────────────────────────────────────────
 
 @routes.route('/kanban', methods=['GET'])
+@require_auth()
 def kanban():
     projet_id = request.args.get('projet_id')
-    filters = {}
-    if projet_id:
-        filters['projet_id'] = projet_id
     taches = tache_service.get_all()
     if projet_id:
         taches = [t for t in taches if str(t.get('projet_id', '')) == str(projet_id)]
@@ -702,6 +868,7 @@ def kanban():
 # ─────────────────────────────────────────────
 
 @routes.route('/etp', methods=['GET'])
+@require_auth()
 def etp():
     try:
         rows = projet_service.db.fetch_all(
@@ -732,6 +899,7 @@ def etp():
 # ─────────────────────────────────────────────
 
 @routes.route('/notifications', methods=['GET'])
+@require_auth()
 def get_notifications():
     try:
         rows = budget_service.db.fetch_all(
@@ -744,6 +912,7 @@ def get_notifications():
         return jsonify({"list": [], "non_lues": 0})
 
 @routes.route('/notifications/<int:notif_id>/lire', methods=['POST'])
+@require_auth()
 def lire_notification(notif_id):
     try:
         budget_service.db.execute("UPDATE notifications SET lue=true WHERE id=%s", [notif_id])

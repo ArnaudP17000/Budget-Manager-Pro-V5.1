@@ -1,3 +1,4 @@
+import bcrypt as _bcrypt
 from flask import Flask, send_from_directory
 import os
 from routes import routes
@@ -12,6 +13,8 @@ def run_migrations():
     """Ajoute les colonnes manquantes sans casser l'existant."""
     from app.services.database_service import DatabaseService
     db = DatabaseService()
+
+    # ── Colonnes projets ────────────────────────────────────
     new_cols = [
         ('objectifs',    'TEXT'),
         ('enjeux',       'TEXT'),
@@ -28,6 +31,41 @@ def run_migrations():
         except Exception:
             pass
 
+    # ── Colonnes utilisateurs (auth) ────────────────────────
+    auth_cols = [
+        ('login',        'VARCHAR(100) UNIQUE'),
+        ('mot_de_passe', 'TEXT'),
+        ('role',         "VARCHAR(20) DEFAULT 'lecteur'"),
+        ('service_id',   'INTEGER'),
+    ]
+    for col, typ in auth_cols:
+        try:
+            db.execute(
+                f"ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS {col} {typ}"
+            )
+        except Exception:
+            pass
+
+    # ── Compte admin par défaut (idempotent) ────────────────
+    try:
+        existing = db.fetch_one(
+            "SELECT id FROM utilisateurs WHERE login = %s", ['admin']
+        )
+        if not existing:
+            hashed = _bcrypt.hashpw(b'Admin1234!', _bcrypt.gensalt()).decode('utf-8')
+            db.execute(
+                "INSERT INTO utilisateurs "
+                "(nom, prenom, email, login, mot_de_passe, role, actif) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                ['Administrateur', 'Système', 'admin@local.fr',
+                 'admin', hashed, 'admin', True]
+            )
+    except Exception:
+        pass
+
+
+run_migrations()
+
 
 @app.route('/')
 def index():
@@ -35,6 +73,4 @@ def index():
 
 
 if __name__ == '__main__':
-    run_migrations()
     app.run(host='0.0.0.0', port=5000, debug=False)
-

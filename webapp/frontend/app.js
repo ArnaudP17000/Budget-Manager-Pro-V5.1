@@ -1,5 +1,71 @@
 const API = '/api';
 
+// ─── Auth / Token ───────────────────────────────────────────
+const TOKEN_KEY = 'bmp_jwt';
+function getToken()   { return localStorage.getItem(TOKEN_KEY); }
+function setToken(t)  { localStorage.setItem(TOKEN_KEY, t); }
+function removeToken(){ localStorage.removeItem(TOKEN_KEY); }
+function decodeToken(t) {
+    try { return JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); }
+    catch { return null; }
+}
+
+function showLoginOverlay() {
+    document.getElementById('login-overlay').style.display = 'flex';
+    document.getElementById('login-pass').value = '';
+}
+function hideLoginOverlay() {
+    document.getElementById('login-overlay').style.display = 'none';
+}
+
+function applyRoleUI(user) {
+    document.getElementById('user-name').textContent =
+        ((user.prenom || '') + ' ' + (user.nom || '')).trim();
+    document.getElementById('user-role-badge').textContent = user.role;
+    document.getElementById('user-info').style.display = 'flex';
+    const adminNav = document.getElementById('nav-admin');
+    if (adminNav) adminNav.style.display = user.role === 'admin' ? '' : 'none';
+}
+
+async function doLogin() {
+    const login = document.getElementById('login-user').value.trim();
+    const pass  = document.getElementById('login-pass').value;
+    const errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+    if (!login || !pass) {
+        errEl.textContent = 'Identifiant et mot de passe requis';
+        errEl.style.display = 'block';
+        return;
+    }
+    try {
+        const res = await fetch(API + '/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ login, password: pass })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            errEl.textContent = data.error || 'Identifiants invalides';
+            errEl.style.display = 'block';
+            return;
+        }
+        setToken(data.token);
+        hideLoginOverlay();
+        applyRoleUI(data.user);
+        initRefs().then(() => { loadDashboard(); loadNotifications(); });
+    } catch (e) {
+        errEl.textContent = e.message;
+        errEl.style.display = 'block';
+    }
+}
+
+function doLogout() {
+    removeToken();
+    document.getElementById('user-name').textContent = '';
+    document.getElementById('user-info').style.display = 'none';
+    showLoginOverlay();
+}
+
 // ─── État global ───────────────────────────────────────────
 let _currentBudgetId  = null;   // pour modal voter
 let _currentBcId      = null;   // pour modal imputer / valider
@@ -78,10 +144,18 @@ function progressBar(val, max) {
 }
 
 async function apiFetch(path, opts = {}) {
-    const res = await fetch(API + path, {
-        headers: { 'Content-Type': 'application/json' },
-        ...opts
-    });
+    const token = getToken();
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch(API + path, { headers, ...opts });
+    if (res.status === 401) {
+        removeToken();
+        showLoginOverlay();
+        throw new Error('Session expirée, veuillez vous reconnecter');
+    }
+    if (res.status === 403) {
+        throw new Error('Accès interdit — droits insuffisants');
+    }
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);
@@ -121,6 +195,7 @@ const loaders = {
     services:      loadServices,
     etp:           loadETP,
     notifications: loadNotifications,
+    admin:         loadAdminUsers,
 };
 
 function showView(name) {
@@ -1960,6 +2035,135 @@ async function lireNotif(id) {
     } catch (e) { /* silencieux */ }
 }
 
+// ─── ADMIN UTILISATEURS ────────────────────────────────────
+
+let _adminServicesCache = [];
+
+async function loadAdminUsers() {
+    try {
+        const [usersData, servicesData] = await Promise.all([
+            apiFetch('/users'),
+            apiFetch('/service_org')
+        ]);
+        _adminServicesCache = servicesData.list || [];
+        const tbody = document.getElementById('admin-users-tbody');
+        const roleColor = { admin: '#c0392b', gestionnaire: '#2563a8', lecteur: '#27ae60' };
+        tbody.innerHTML = (usersData.list || []).map(u => `
+            <tr style="opacity:${u.actif ? 1 : 0.5}">
+                <td>${u.nom || '-'}</td>
+                <td>${u.prenom || '-'}</td>
+                <td><strong>${u.login || '-'}</strong></td>
+                <td>${u.email || '-'}</td>
+                <td><span style="background:${roleColor[u.role]||'#888'};color:#fff;
+                    padding:2px 8px;border-radius:10px;font-size:.82em;">${u.role}</span></td>
+                <td>${u.service_id
+                    ? (_adminServicesCache.find(s => s.id === u.service_id) || {}).nom || u.service_id
+                    : '<em style="color:#aaa">Global</em>'}</td>
+                <td style="text-align:center">${u.actif
+                    ? '<span style="color:#27ae60">✓</span>'
+                    : '<span style="color:#c0392b">✗</span>'}</td>
+                <td style="white-space:nowrap;">
+                    <button class="btn btn-warning btn-sm" onclick="editAdminUser(${u.id})"
+                            style="padding:3px 8px;font-size:.8em;">Éditer</button>
+                    <button class="btn btn-sm" onclick="toggleAdminUser(${u.id}, ${!u.actif})"
+                            style="padding:3px 8px;font-size:.8em;background:${u.actif ? '#e67e22' : '#27ae60'};color:#fff;border:none;border-radius:4px;cursor:pointer;">
+                        ${u.actif ? 'Désactiver' : 'Activer'}</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteAdminUser(${u.id})"
+                            style="padding:3px 8px;font-size:.8em;">Suppr.</button>
+                </td>
+            </tr>`).join('');
+    } catch (e) { showMsg('Erreur chargement utilisateurs: ' + e.message, false); }
+}
+
+async function saveNewUser() {
+    const serviceVal = document.getElementById('new-user-service').value;
+    const data = {
+        nom:          document.getElementById('new-user-nom').value,
+        prenom:       document.getElementById('new-user-prenom').value,
+        login:        document.getElementById('new-user-login').value.trim(),
+        email:        document.getElementById('new-user-email').value,
+        mot_de_passe: document.getElementById('new-user-password').value,
+        role:         document.getElementById('new-user-role').value,
+        service_id:   serviceVal ? parseInt(serviceVal) : null,
+        actif:        true,
+    };
+    if (!data.login || !data.mot_de_passe) { showMsg('Login et mot de passe obligatoires', false); return; }
+    try {
+        await apiFetch('/users', { method: 'POST', body: JSON.stringify(data) });
+        showMsg('Utilisateur créé');
+        closeModal('modal-add-user');
+        loadAdminUsers();
+    } catch (e) { showMsg(e.message, false); }
+}
+
+async function editAdminUser(id) {
+    try {
+        const u = await apiFetch(`/users/${id}`);
+        document.getElementById('edit-user-id').value    = u.id;
+        document.getElementById('edit-user-nom').value   = u.nom || '';
+        document.getElementById('edit-user-prenom').value= u.prenom || '';
+        document.getElementById('edit-user-login').value = u.login || '';
+        document.getElementById('edit-user-email').value = u.email || '';
+        document.getElementById('edit-user-password').value = '';
+        document.getElementById('edit-user-role').value  = u.role || 'lecteur';
+        document.getElementById('edit-user-actif').checked = !!u.actif;
+        // Peupler select service
+        const sel = document.getElementById('edit-user-service');
+        sel.innerHTML = '<option value="">Aucun (accès global)</option>' +
+            _adminServicesCache.map(s =>
+                `<option value="${s.id}" ${u.service_id === s.id ? 'selected' : ''}>${s.nom}</option>`
+            ).join('');
+        openModal('modal-edit-user');
+    } catch (e) { showMsg(e.message, false); }
+}
+
+async function saveEditUser() {
+    const id = parseInt(document.getElementById('edit-user-id').value);
+    const serviceVal = document.getElementById('edit-user-service').value;
+    const data = {
+        nom:          document.getElementById('edit-user-nom').value,
+        prenom:       document.getElementById('edit-user-prenom').value,
+        login:        document.getElementById('edit-user-login').value.trim(),
+        email:        document.getElementById('edit-user-email').value,
+        role:         document.getElementById('edit-user-role').value,
+        service_id:   serviceVal ? parseInt(serviceVal) : null,
+        actif:        document.getElementById('edit-user-actif').checked,
+    };
+    const pwd = document.getElementById('edit-user-password').value;
+    if (pwd) data.mot_de_passe = pwd;
+    try {
+        await apiFetch(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+        showMsg('Utilisateur mis à jour');
+        closeModal('modal-edit-user');
+        loadAdminUsers();
+    } catch (e) { showMsg(e.message, false); }
+}
+
+async function toggleAdminUser(id, actif) {
+    try {
+        await apiFetch(`/users/${id}/toggle`, { method: 'POST', body: JSON.stringify({ actif }) });
+        showMsg(actif ? 'Compte activé' : 'Compte désactivé');
+        loadAdminUsers();
+    } catch (e) { showMsg(e.message, false); }
+}
+
+async function deleteAdminUser(id) {
+    if (!confirm('Supprimer définitivement cet utilisateur ?')) return;
+    try {
+        await apiFetch(`/users/${id}`, { method: 'DELETE' });
+        showMsg('Utilisateur supprimé');
+        loadAdminUsers();
+    } catch (e) { showMsg(e.message, false); }
+}
+
+function _populateNewUserServiceSelect() {
+    const sel = document.getElementById('new-user-service');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Aucun (accès global)</option>' +
+        _adminServicesCache.map(s => `<option value="${s.id}">${s.nom}</option>`).join('');
+}
+
+
 // ─── INIT ──────────────────────────────────────────────────
 
 document.getElementById('header-date').textContent =
@@ -1972,7 +2176,37 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
     });
 });
 
-initRefs().then(() => {
-    loadDashboard();
-    loadNotifications();
+// Enter key sur le formulaire de login
+document.getElementById('login-pass').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
 });
+document.getElementById('login-user').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('login-pass').focus();
+});
+
+// Peupler le select service du modal "Nouvel utilisateur" à l'ouverture
+document.getElementById('modal-add-user').addEventListener('click', function(e) {
+    if (e.target === this) return;
+}, false);
+const _addUserBtn = document.querySelector('[onclick="openModal(\'modal-add-user\')"]');
+if (_addUserBtn) {
+    _addUserBtn.addEventListener('click', () => {
+        setTimeout(_populateNewUserServiceSelect, 50);
+    });
+}
+
+// Vérifier token existant (refresh de page)
+const _existingToken = getToken();
+if (_existingToken) {
+    const _payload = decodeToken(_existingToken);
+    if (_payload && _payload.exp * 1000 > Date.now()) {
+        hideLoginOverlay();
+        applyRoleUI(_payload);
+        initRefs().then(() => { loadDashboard(); loadNotifications(); });
+    } else {
+        removeToken();
+        showLoginOverlay();
+    }
+} else {
+    showLoginOverlay();
+}
