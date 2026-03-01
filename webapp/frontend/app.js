@@ -2394,22 +2394,22 @@ async function loadGantt() {
         try {
             const sData = await apiFetch('/service_org');
             const services = sData.list || [];
-            const parents = services.filter(s => !s.parent_id);
-            services.filter(s => s.parent_id).forEach(() => {}); // just reference
             serviceSel.innerHTML = '<option value="">Tous les services</option>';
-            parents.forEach(p => {
-                const grp = document.createElement('optgroup');
-                grp.label = `${p.code ? p.code + ' - ' : ''}${p.nom}`;
-                const pOpt = document.createElement('option');
-                pOpt.value = p.id; pOpt.textContent = p.nom;
-                grp.appendChild(pOpt);
-                services.filter(c => c.parent_id === p.id).forEach(c => {
-                    const opt = document.createElement('option');
-                    opt.value = c.id; opt.textContent = `└─ ${c.nom}`;
-                    grp.appendChild(opt);
-                });
-                serviceSel.appendChild(grp);
-            });
+            function addServiceOpts(parentId, depth) {
+                services
+                    .filter(s => (s.parent_id || null) === parentId)
+                    .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr'))
+                    .forEach(s => {
+                        const opt = document.createElement('option');
+                        opt.value = s.id;
+                        const prefix = depth === 0 ? (s.code ? s.code + ' \u2014 ' : '') : '\u00a0'.repeat(depth * 2) + '└─ ';
+                        opt.textContent = prefix + s.nom;
+                        if (depth === 0) opt.style.fontWeight = 'bold';
+                        serviceSel.appendChild(opt);
+                        addServiceOpts(s.id, depth + 1);
+                    });
+            }
+            addServiceOpts(null, 0);
         } catch(e) {}
     }
 
@@ -2798,37 +2798,41 @@ function _buildServiceOptions(sel, selectedId) {
         return o;
     }
 
-    // ── Section Services ──────────────────────────────────────
+    // ── Section Services (récursif, tous niveaux) ─────────────
     const svcList = all.filter(s => !s.is_unite);
     if (svcList.length) {
         const grpSvc = document.createElement('optgroup');
         grpSvc.label = '── Services ──';
-        const roots = svcList.filter(s => !s.parent_id);
-        const kids  = svcList.filter(s =>  s.parent_id);
-        const rootIds = new Set(roots.map(r => r.id));
-        roots.forEach(p => {
-            grpSvc.appendChild(_opt(p, ''));
-            kids.filter(c => c.parent_id === p.id).forEach(c => grpSvc.appendChild(_opt(c, '  └─ ')));
-        });
-        kids.filter(c => !rootIds.has(c.parent_id)).forEach(c => grpSvc.appendChild(_opt(c, '  └─ ')));
+        function addSvcOpt(parentId, depth) {
+            svcList.filter(s => (s.parent_id || null) === parentId)
+                .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr'))
+                .forEach(s => {
+                    grpSvc.appendChild(_opt(s, '  '.repeat(depth) + (depth ? '└─ ' : '')));
+                    addSvcOpt(s.id, depth + 1);
+                });
+        }
+        addSvcOpt(null, 0);
         sel.appendChild(grpSvc);
     }
 
-    // ── Section Unités ────────────────────────────────────────
+    // ── Section Unités (récursif, tous niveaux) ────────────────
     const uniList = all.filter(s => s.is_unite);
     if (uniList.length) {
         const grpUni = document.createElement('optgroup');
         grpUni.label = '── Unités ──';
-        // Trier : d'abord celles sans parent, puis les autres
-        const uRoots = uniList.filter(s => !s.parent_id);
-        const uKids  = uniList.filter(s =>  s.parent_id);
-        const uRootIds = new Set(uRoots.map(r => r.id));
-        uRoots.forEach(u => grpUni.appendChild(_opt(u, '')));
-        uKids.forEach(u => grpUni.appendChild(_opt(u, '  └─ ')));
-        // Unités enfants dont le parent est un Service (pas Unité)
-        all.filter(s => !s.is_unite).forEach(p => {
-            all.filter(c => c.is_unite && c.parent_id === p.id && !uRootIds.has(c.id))
-               .forEach(c => grpUni.appendChild(_opt(c, '  └─ ')));
+        function addUniOpt(parentId, depth) {
+            uniList.filter(s => (s.parent_id || null) === parentId)
+                .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr'))
+                .forEach(s => {
+                    grpUni.appendChild(_opt(s, '  '.repeat(depth) + (depth ? '└─ ' : '')));
+                    addUniOpt(s.id, depth + 1);
+                });
+        }
+        addUniOpt(null, 0);
+        // Unités dont le parent est un Service
+        all.filter(s => !s.is_unite && uniList.some(u => u.parent_id === s.id)).forEach(p => {
+            uniList.filter(u => u.parent_id === p.id)
+                .forEach(u => grpUni.appendChild(_opt(u, '  └─ ')));
         });
         sel.appendChild(grpUni);
     }
