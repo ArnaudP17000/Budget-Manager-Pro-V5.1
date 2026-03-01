@@ -1399,20 +1399,36 @@ async function ficheProjet(id) {
         })();
 
         // ── Contacts HTML ───────────────────────────────────────────────────
-        const contactsHtml = (p.contacts_externes || []).length === 0
-            ? '<p style="color:#aaa;font-style:italic;margin:12px 0;">Aucun contact externe lié.</p>'
-            : `<table style="width:100%;border-collapse:collapse;font-size:.82em;margin-top:6px;">
-                <thead><tr style="background:#1a3c5e;color:#fff;">
-                    <th style="padding:6px;">Rôle</th><th>Nom</th><th>Organisation</th><th>Email</th><th>Tél.</th>
-                </tr></thead><tbody>
-                ${p.contacts_externes.map(c => `<tr style="border-bottom:1px solid #eee;">
+        const contactRows = (p.contacts_externes || []).map(c => `<tr style="border-bottom:1px solid #eee;">
                     <td style="padding:5px;font-weight:bold;color:#2563a8;">${c.role || '-'}</td>
                     <td>${c.prenom || ''} ${c.nom || ''}</td>
                     <td style="color:#666;">${c.organisation || '-'}</td>
                     <td style="color:#2563a8;">${c.email || '-'}</td>
                     <td>${c.telephone || '-'}</td>
-                </tr>`).join('')}
-                </tbody></table>`;
+                    <td style="text-align:center;"><button onclick="deleteProjetContact(${id},${c.contact_id})" style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:1.1em;line-height:1;" title="Retirer">×</button></td>
+                </tr>`).join('');
+        const contactsHtml = `<div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #eee;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div style="font-size:.75em;font-weight:bold;color:#555;text-transform:uppercase;">📞 Contacts externes (${(p.contacts_externes||[]).length})</div>
+                <button onclick="showAddContactForm(${id})" style="background:#2563a8;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:.78em;cursor:pointer;">+ Ajouter</button>
+            </div>
+            ${(p.contacts_externes||[]).length ? `<table style="width:100%;border-collapse:collapse;font-size:.82em;">
+                <thead><tr style="background:#1a3c5e;color:#fff;">
+                    <th style="padding:6px;">Rôle</th><th>Nom</th><th>Organisation</th><th>Email</th><th>Tél.</th><th></th>
+                </tr></thead><tbody>${contactRows}</tbody></table>`
+            : '<p style="color:#aaa;font-size:.85em;font-style:italic;margin:4px 0 8px;">Aucun contact externe lié.</p>'}
+            <div id="add-contact-form-${id}" style="display:none;margin-top:10px;padding:10px;background:#f0f4ff;border-radius:6px;border:1px solid #c5d5f5;">
+                <div style="font-size:.78em;font-weight:bold;color:#2563a8;margin-bottom:6px;">Lier un contact</div>
+                <select id="new-contact-id-${id}" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
+                    <option value="">-- Sélectionner un contact --</option>
+                </select>
+                <input id="new-contact-role-${id}" type="text" placeholder="Rôle (ex: Chef de projet, Référent...)" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
+                <div style="display:flex;gap:6px;">
+                    <button onclick="saveProjetContact(${id})" style="background:#27ae60;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Ajouter</button>
+                    <button onclick="document.getElementById('add-contact-form-${id}').style.display='none'" style="background:#95a5a6;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Annuler</button>
+                </div>
+            </div>
+        </div>`;
 
         // ── Documents HTML ──────────────────────────────────────────────────
         const documentsHtml = (p.documents || []).length === 0
@@ -2221,6 +2237,45 @@ async function deleteMembreEquipe(projetId, membreId) {
     await apiFetch(`/projet/${projetId}/equipe/${membreId}`, { method: 'DELETE' });
     await ficheProjet(projetId);
     switchProjTab('equipe');
+}
+
+// ─── Contacts projet ─────────────────────────────────────────────────────────
+async function showAddContactForm(projetId) {
+    const form = document.getElementById(`add-contact-form-${projetId}`);
+    if (!form) return;
+    form.style.display = form.style.display === 'none' ? '' : 'none';
+    if (form.style.display === 'none') return;
+    const sel = document.getElementById(`new-contact-id-${projetId}`);
+    sel.innerHTML = '<option value="">-- Sélectionner un contact --</option>';
+    try {
+        const data = await apiFetch('/contact?limit=500');
+        (data.list || []).forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = `${c.prenom || ''} ${c.nom || ''}${c.organisation ? ' — ' + c.organisation : ''}`.trim();
+            sel.appendChild(opt);
+        });
+    } catch(e) {}
+    sel.focus();
+}
+
+async function saveProjetContact(projetId) {
+    const contactId = document.getElementById(`new-contact-id-${projetId}`)?.value;
+    const role      = document.getElementById(`new-contact-role-${projetId}`)?.value?.trim();
+    if (!contactId) { showMsg('Sélectionnez un contact', false); return; }
+    await apiFetch(`/projet/${projetId}/contact`, {
+        method: 'POST',
+        body: JSON.stringify({ contact_id: parseInt(contactId), role })
+    });
+    await ficheProjet(projetId);
+    switchProjTab('contacts');
+}
+
+async function deleteProjetContact(projetId, contactId) {
+    if (!confirm('Retirer ce contact du projet ?')) return;
+    await apiFetch(`/projet/${projetId}/contact/${contactId}`, { method: 'DELETE' });
+    await ficheProjet(projetId);
+    switchProjTab('contacts');
 }
 
 // Fermer modals au clic sur l'overlay

@@ -111,7 +111,7 @@ class ProjetService:
 
             # ── Contacts externes (projet_contacts) ─────────────────────────
             contacts_ext = self.db.fetch_all(
-                "SELECT pc.role, c.nom, c.prenom, c.email, c.telephone, c.organisation "
+                "SELECT pc.contact_id, pc.role, c.nom, c.prenom, c.email, c.telephone, c.organisation "
                 "FROM projet_contacts pc "
                 "JOIN contacts c ON c.id = pc.contact_id "
                 "WHERE pc.projet_id = %s",
@@ -155,4 +155,16 @@ class ProjetService:
         self.db.execute(
             "DELETE FROM projet_equipe WHERE id=%s AND projet_id=%s",
             [membre_id, projet_id]
+        )
+
+    def add_projet_contact(self, projet_id, contact_id, role=None):
+        self.db.execute(
+            "INSERT INTO projet_contacts (projet_id, contact_id, role) VALUES (%s, %s, %s)",
+            [projet_id, contact_id, role or None]
+        )
+
+    def remove_projet_contact(self, projet_id, contact_id):
+        self.db.execute(
+            "DELETE FROM projet_contacts WHERE projet_id=%s AND contact_id=%s",
+            [projet_id, contact_id]
         )
