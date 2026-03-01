@@ -1339,22 +1339,32 @@ async function ficheProjet(id) {
                     </div>
                 </div>`);
             }
-            if ((p.equipe || []).length) {
-                parts.push(`<div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #eee;margin-bottom:10px;">
-                    <div style="font-size:.75em;font-weight:bold;color:#555;margin-bottom:8px;text-transform:uppercase;">👥 Membres de l'équipe (${p.equipe.length})</div>
-                    <table style="width:100%;border-collapse:collapse;font-size:.82em;">
-                        <thead><tr style="background:#2c3e50;color:#fff;">
-                            <th style="padding:5px 8px;">Nom</th><th>Fonction</th><th>Email</th><th>Tél.</th>
-                        </tr></thead><tbody>
-                        ${p.equipe.map(m => `<tr style="border-bottom:1px solid #eee;">
-                            <td style="padding:4px 8px;font-weight:bold;">${m.nom_complet || '-'}</td>
-                            <td style="color:#666;">${m.fonction || '-'}</td>
-                            <td style="color:#2563a8;">${m.email || '-'}</td>
-                            <td style="color:#555;">${m.telephone || '-'}</td>
-                        </tr>`).join('')}
-                        </tbody></table>
-                </div>`);
-            }
+            const membreRows = (p.equipe || []).map(m => `<tr style="border-bottom:1px solid #eee;">
+                <td style="padding:4px 8px;font-weight:bold;">${m.nom_complet || '-'}</td>
+                <td style="color:#666;">${m.fonction || '-'}</td>
+                <td style="color:#2563a8;">${m.email || '-'}</td>
+                <td style="color:#555;">${m.telephone || '-'}</td>
+                <td style="text-align:center;"><button onclick="deleteMembreEquipe(${id},${m.membre_id})" style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:1.1em;line-height:1;" title="Retirer">×</button></td>
+            </tr>`).join('');
+            parts.push(`<div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #eee;margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <div style="font-size:.75em;font-weight:bold;color:#555;text-transform:uppercase;">👥 Membres de l'équipe (${(p.equipe||[]).length})</div>
+                    <button onclick="showAddMembreForm(${id})" style="background:#2563a8;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:.78em;cursor:pointer;">+ Ajouter</button>
+                </div>
+                ${(p.equipe||[]).length ? `<table style="width:100%;border-collapse:collapse;font-size:.82em;">
+                    <thead><tr style="background:#2c3e50;color:#fff;">
+                        <th style="padding:5px 8px;">Nom</th><th>Fonction</th><th>Email</th><th>Tél.</th><th></th>
+                    </tr></thead><tbody>${membreRows}</tbody></table>`
+                : '<p style="color:#aaa;font-size:.85em;font-style:italic;margin:4px 0 8px;">Aucun membre.</p>'}
+                <div id="add-membre-form-${id}" style="display:none;margin-top:10px;padding:10px;background:#f0f4ff;border-radius:6px;border:1px solid #c5d5f5;">
+                    <div style="font-size:.78em;font-weight:bold;color:#2563a8;margin-bottom:6px;">Nouveau membre</div>
+                    <input id="new-membre-label-${id}" type="text" placeholder="Nom du membre" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
+                    <div style="display:flex;gap:6px;">
+                        <button onclick="saveMembreEquipe(${id})" style="background:#27ae60;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Ajouter</button>
+                        <button onclick="document.getElementById('add-membre-form-${id}').style.display='none'" style="background:#95a5a6;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Annuler</button>
+                    </div>
+                </div>
+            </div>`);
             if ((p.prestataires || []).length) {
                 parts.push(`<div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #eee;">
                     <div style="font-size:.75em;font-weight:bold;color:#555;margin-bottom:8px;text-transform:uppercase;">🏢 Prestataires / Fournisseurs (${p.prestataires.length})</div>
@@ -1371,7 +1381,21 @@ async function ficheProjet(id) {
                         </tbody></table>
                 </div>`);
             }
-            return parts.length ? parts.join('') : '<p style="color:#aaa;font-style:italic;">Aucun membre d\'équipe renseigné.</p>';
+            return parts.length ? parts.join('') : `<div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #eee;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <div style="font-size:.75em;font-weight:bold;color:#555;text-transform:uppercase;">👥 Membres de l'équipe (0)</div>
+                    <button onclick="showAddMembreForm(${id})" style="background:#2563a8;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:.78em;cursor:pointer;">+ Ajouter</button>
+                </div>
+                <p style="color:#aaa;font-size:.85em;font-style:italic;margin:4px 0 8px;">Aucun membre d'équipe renseigné.</p>
+                <div id="add-membre-form-${id}" style="display:none;margin-top:10px;padding:10px;background:#f0f4ff;border-radius:6px;border:1px solid #c5d5f5;">
+                    <div style="font-size:.78em;font-weight:bold;color:#2563a8;margin-bottom:6px;">Nouveau membre</div>
+                    <input id="new-membre-label-${id}" type="text" placeholder="Nom du membre" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
+                    <div style="display:flex;gap:6px;">
+                        <button onclick="saveMembreEquipe(${id})" style="background:#27ae60;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Ajouter</button>
+                        <button onclick="document.getElementById('add-membre-form-${id}').style.display='none'" style="background:#95a5a6;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Annuler</button>
+                    </div>
+                </div>
+            </div>`;
         })();
 
         // ── Contacts HTML ───────────────────────────────────────────────────
@@ -2168,6 +2192,36 @@ function _populateNewUserServiceSelect() {
 
 document.getElementById('header-date').textContent =
     new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+// ─── Équipe projet ───────────────────────────────────────────────────────────
+function showAddMembreForm(projetId) {
+    const form = document.getElementById(`add-membre-form-${projetId}`);
+    if (!form) return;
+    form.style.display = form.style.display === 'none' ? '' : 'none';
+    if (form.style.display !== 'none') {
+        const input = document.getElementById(`new-membre-label-${projetId}`);
+        if (input) { input.value = ''; input.focus(); }
+    }
+}
+
+async function saveMembreEquipe(projetId) {
+    const input = document.getElementById(`new-membre-label-${projetId}`);
+    const label = input?.value?.trim();
+    if (!label) { if (input) input.focus(); return; }
+    await apiFetch(`/projet/${projetId}/equipe`, {
+        method: 'POST',
+        body: JSON.stringify({ membre_label: label })
+    });
+    await ficheProjet(projetId);
+    switchProjTab('equipe');
+}
+
+async function deleteMembreEquipe(projetId, membreId) {
+    if (!confirm('Retirer ce membre de l\'équipe ?')) return;
+    await apiFetch(`/projet/${projetId}/equipe/${membreId}`, { method: 'DELETE' });
+    await ficheProjet(projetId);
+    switchProjTab('equipe');
+}
 
 // Fermer modals au clic sur l'overlay
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
