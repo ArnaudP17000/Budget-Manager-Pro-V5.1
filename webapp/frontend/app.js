@@ -2090,6 +2090,11 @@ async function saveContact() {
 
 // ─── SERVICES / ORGANISATION ───────────────────────────────
 
+// ─── Services : cache + tri + recherche ────────────────────────
+let _servicesRows   = [];   // toutes les lignes enrichies
+let _servicesSortCol = '';
+let _servicesSortAsc = true;
+
 async function loadServices() {
     try {
         const [data, contactsData] = await Promise.all([
@@ -2099,45 +2104,25 @@ async function loadServices() {
         const services = data.list || [];
         const contacts = contactsData.list || [];
 
-        // Build tree: parents first, then their children
+        // Build ordered rows (parents → enfants)
         const parents = services.filter(s => !s.parent_id);
         const rows = [];
         parents.forEach(p => {
             rows.push({ ...p, _isUnite: !!p.is_unite });
             services.filter(c => c.parent_id === p.id).forEach(c => rows.push({ ...c, _isUnite: !!c.is_unite }));
         });
-        // Sous-sous-services (niveaux 3+)
         const seen = new Set(rows.map(s => s.id));
         services.filter(s => !seen.has(s.id)).forEach(s => rows.push({ ...s, _isUnite: !!s.is_unite }));
 
-        const tbody = document.getElementById('services-tbody');
-        tbody.innerHTML = rows.map(s => {
-            const badge = s._isUnite
-                ? '<span style="background:#27ae60;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Unité</span>'
-                : '<span style="background:#2563a8;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Service</span>';
-            const nbP = s.nb_personnes != null ? s.nb_personnes : '-';
-            const nbM = s.nb_membres || 0;
-            return `<tr>
-                <td>${badge}</td>
-                <td><strong>${s.code || '-'}</strong></td>
-                <td>${s._isUnite ? '<span style="color:#aaa;margin-right:4px;">└─</span>' : ''}${s.nom || '-'}</td>
-                <td>${s.responsable_nom || '-'}</td>
-                <td style="font-size:.85em;">${s.parent_nom || '-'}</td>
-                <td style="text-align:center;">${nbP}</td>
-                <td style="text-align:center;">${nbM > 0 ? `<span style="color:#2563a8;font-weight:bold;">${nbM}</span>` : '-'}</td>
-                <td style="white-space:nowrap;">
-                    <button onclick="editService(${s.id})"
-                        style="padding:3px 8px;font-size:.8em;background:#f39c12;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-right:4px;">Éditer</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteService(${s.id})"
-                        style="padding:3px 8px;font-size:.8em;">Suppr.</button>
-                </td>
-            </tr>`;
-        }).join('');
+        _servicesRows = rows;
+        _servicesSortCol = '';
+        _servicesSortAsc = true;
+        renderServicesTable();
 
         // Populate "add" form selects
         const parentSel = document.getElementById('service-parent');
         if (parentSel) {
-            parentSel.innerHTML = '<option value="">-- Service parent → devient une Unité --</option>' +
+            parentSel.innerHTML = '<option value="">-- Service parent (optionnel) --</option>' +
                 services.map(s => `<option value="${s.id}">${s.code ? s.code + ' - ' : ''}${s.nom}</option>`).join('');
         }
         const respSel = document.getElementById('service-responsable');
@@ -2146,6 +2131,76 @@ async function loadServices() {
                 contacts.map(c => `<option value="${c.id}">${(c.prenom || '')} ${(c.nom || '')}${c.organisation ? ' — ' + c.organisation : ''}</option>`).join('');
         }
     } catch (e) { showMsg('Erreur chargement services', false); }
+}
+
+function _serviceRowHtml(s) {
+    const badge = s._isUnite
+        ? '<span style="background:#27ae60;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Unité</span>'
+        : '<span style="background:#2563a8;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Service</span>';
+    const nbP = s.nb_personnes != null ? s.nb_personnes : '-';
+    const nbM = s.nb_membres || 0;
+    return `<tr>
+        <td>${badge}</td>
+        <td><strong>${s.code || '-'}</strong></td>
+        <td>${s.nom || '-'}</td>
+        <td>${s.responsable_nom || '-'}</td>
+        <td style="font-size:.85em;">${s.parent_nom || '-'}</td>
+        <td style="text-align:center;">${nbP}</td>
+        <td style="text-align:center;">${nbM > 0 ? `<span style="color:#2563a8;font-weight:bold;">${nbM}</span>` : '-'}</td>
+        <td style="white-space:nowrap;">
+            <button onclick="editService(${s.id})"
+                style="padding:3px 8px;font-size:.8em;background:#f39c12;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-right:4px;">Éditer</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteService(${s.id})"
+                style="padding:3px 8px;font-size:.8em;">Suppr.</button>
+        </td>
+    </tr>`;
+}
+
+function renderServicesTable() {
+    const q = (document.getElementById('service-search')?.value || '').toLowerCase().trim();
+    let rows = _servicesRows;
+
+    // Filtre recherche
+    if (q) {
+        rows = rows.filter(s =>
+            (s.code || '').toLowerCase().includes(q) ||
+            (s.nom  || '').toLowerCase().includes(q) ||
+            (s.responsable_nom || '').toLowerCase().includes(q) ||
+            (s.parent_nom || '').toLowerCase().includes(q)
+        );
+    }
+
+    // Tri colonne
+    if (_servicesSortCol) {
+        const col = _servicesSortCol;
+        rows = [...rows].sort((a, b) => {
+            let va = col === 'type' ? (a._isUnite ? 'Unité' : 'Service') : (a[col] || '');
+            let vb = col === 'type' ? (b._isUnite ? 'Unité' : 'Service') : (b[col] || '');
+            va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+            return _servicesSortAsc ? va.localeCompare(vb, 'fr') : vb.localeCompare(va, 'fr');
+        });
+    }
+
+    document.getElementById('services-tbody').innerHTML = rows.map(_serviceRowHtml).join('') ||
+        '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:16px;">Aucun résultat</td></tr>';
+
+    // Indicateurs de tri
+    ['type','code','nom','responsable_nom','parent_nom'].forEach(c => {
+        const el = document.getElementById(`sort-services-${c}`);
+        if (el) el.textContent = _servicesSortCol === c ? (_servicesSortAsc ? ' ▲' : ' ▼') : ' ↕';
+    });
+}
+
+function filterServices() { renderServicesTable(); }
+
+function sortServices(col) {
+    if (_servicesSortCol === col) {
+        _servicesSortAsc = !_servicesSortAsc;
+    } else {
+        _servicesSortCol = col;
+        _servicesSortAsc = true;
+    }
+    renderServicesTable();
 }
 
 async function addService() {
