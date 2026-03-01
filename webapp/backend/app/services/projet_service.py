@@ -75,7 +75,7 @@ class ProjetService:
             # ── Équipe : membres (projet_equipe → utilisateurs) ─────────────
             try:
                 membres = self.db.fetch_all(
-                    "SELECT "
+                    "SELECT pe.id as membre_id, "
                     "  COALESCE(pe.membre_label, TRIM(COALESCE(u.prenom,'') || ' ' || COALESCE(u.nom,''))) as nom_complet, "
                     "  COALESCE(u.email, '') as email, "
                     "  COALESCE(u.fonction, '') as fonction, "
@@ -87,7 +87,7 @@ class ProjetService:
                 )
             except Exception:
                 membres = self.db.fetch_all(
-                    "SELECT "
+                    "SELECT pe.id as membre_id, "
                     "  TRIM(COALESCE(u.prenom,'') || ' ' || COALESCE(u.nom,'')) as nom_complet, "
                     "  COALESCE(u.email, '') as email, "
                     "  COALESCE(u.fonction, '') as fonction, "
@@ -144,3 +144,15 @@ class ProjetService:
         except Exception as e:
             logger.error(f"Erreur get_by_id projet {projet_id}: {e}")
             return None
+
+    def add_equipe_membre(self, projet_id, utilisateur_id=None, membre_label=None):
+        self.db.execute(
+            "INSERT INTO projet_equipe (projet_id, utilisateur_id, membre_label) VALUES (%s, %s, %s)",
+            [projet_id, utilisateur_id or None, membre_label or None]
+        )
+
+    def remove_equipe_membre(self, projet_id, membre_id):
+        self.db.execute(
+            "DELETE FROM projet_equipe WHERE id=%s AND projet_id=%s",
+            [membre_id, projet_id]
+        )

@@ -601,6 +601,31 @@ def delete_projet(projet_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@routes.route('/projet/<int:projet_id>/equipe', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
+def add_projet_equipe(projet_id):
+    data = request.json or {}
+    try:
+        projet_service.add_equipe_membre(
+            projet_id,
+            data.get('utilisateur_id') or None,
+            data.get('membre_label') or None
+        )
+        return jsonify({"ok": True}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@routes.route('/projet/<int:projet_id>/equipe/<int:membre_id>', methods=['DELETE'])
+@require_auth('admin', 'gestionnaire')
+def remove_projet_equipe(projet_id, membre_id):
+    try:
+        projet_service.remove_equipe_membre(projet_id, membre_id)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
 # ─────────────────────────────────────────────
 # TÂCHES
 # ─────────────────────────────────────────────
