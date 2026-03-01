@@ -81,6 +81,12 @@ def run_migrations():
         )
     except Exception:
         pass
+    try:
+        db.execute(
+            "ALTER TABLE services ADD COLUMN IF NOT EXISTS is_unite BOOLEAN DEFAULT FALSE"
+        )
+    except Exception:
+        pass
 
     # ── Colonne projet_contacts (contact libre + contact_id nullable) ─────
     try:

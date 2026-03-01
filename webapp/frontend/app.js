@@ -2103,12 +2103,12 @@ async function loadServices() {
         const parents = services.filter(s => !s.parent_id);
         const rows = [];
         parents.forEach(p => {
-            rows.push({ ...p, _isUnite: false });
-            services.filter(c => c.parent_id === p.id).forEach(c => rows.push({ ...c, _isUnite: true }));
+            rows.push({ ...p, _isUnite: !!p.is_unite });
+            services.filter(c => c.parent_id === p.id).forEach(c => rows.push({ ...c, _isUnite: !!c.is_unite }));
         });
         // Sous-sous-services (niveaux 3+)
         const seen = new Set(rows.map(s => s.id));
-        services.filter(s => !seen.has(s.id)).forEach(s => rows.push({ ...s, _isUnite: !!s.parent_id }));
+        services.filter(s => !seen.has(s.id)).forEach(s => rows.push({ ...s, _isUnite: !!s.is_unite }));
 
         const tbody = document.getElementById('services-tbody');
         tbody.innerHTML = rows.map(s => {
@@ -2158,6 +2158,7 @@ async function addService() {
         parent_id:      parentVal ? parseInt(parentVal) : null,
         responsable_id: respVal   ? parseInt(respVal)   : null,
         nb_personnes:   nbP       ? parseInt(nbP)        : null,
+        is_unite:       document.getElementById('service-is-unite')?.checked || false,
     };
     if (!body.nom) { showMsg('Le nom est obligatoire', false); return; }
     try {
@@ -2169,6 +2170,7 @@ async function addService() {
             if (document.getElementById('service-parent'))      document.getElementById('service-parent').value = '';
             if (document.getElementById('service-responsable'))  document.getElementById('service-responsable').value = '';
             if (document.getElementById('service-nb-personnes')) document.getElementById('service-nb-personnes').value = '';
+            if (document.getElementById('service-is-unite')) document.getElementById('service-is-unite').checked = false;
             loadServices();
         } else showMsg(res.error || 'Erreur', false);
     } catch (e) { showMsg(e.message, false); }
@@ -2196,7 +2198,7 @@ async function editService(id) {
         const s = services.find(x => x.id === id);
         if (!s) return;
 
-        const isUnite = !!s.parent_id;
+        const isUnite = !!s.is_unite;
         const titleEl = document.getElementById('edit-service-title');
         if (titleEl) titleEl.textContent = isUnite ? 'Modifier l\'unité' : 'Modifier le service';
 
@@ -2205,6 +2207,8 @@ async function editService(id) {
         document.getElementById('edit-service-nom').value           = s.nom  || '';
         document.getElementById('edit-service-nb-personnes').value  = s.nb_personnes != null ? s.nb_personnes : '';
         document.getElementById('edit-service-membres').value       = s.membres_label || '';
+        const isUniteChk = document.getElementById('edit-service-is-unite');
+        if (isUniteChk) isUniteChk.checked = isUnite;
 
         const parentSel = document.getElementById('edit-service-parent');
         parentSel.innerHTML = '<option value="">-- Aucun (service racine) --</option>' +
@@ -2244,6 +2248,7 @@ async function saveEditService() {
         responsable_id: respVal   ? parseInt(respVal)   : null,
         nb_personnes:   nbP       ? parseInt(nbP)        : null,
         membres_label:  document.getElementById('edit-service-membres').value || null,
+        is_unite:       document.getElementById('edit-service-is-unite')?.checked || false,
     };
     if (!body.nom) { showMsg('Le nom est obligatoire', false); return; }
     try {
