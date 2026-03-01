@@ -575,7 +575,7 @@
             <input id="tache-debut" type="date" title="Date début">
             <input id="tache-echeance" type="date" title="Date échéance">
             <input id="tache-heures" placeholder="Heures estimées" type="number" step="0.5">
-            <input id="tache-responsable" placeholder="Responsable (nom libre)">
+            <select id="tache-assignee"><option value="">-- Assigner à --</option></select>
             <button class="btn btn-primary" onclick="addTache()">+ Ajouter</button>
         </div>
     </div>
@@ -594,7 +594,7 @@
     <table>
         <thead><tr>
             <th>ID</th><th>Titre</th><th>Projet</th><th>Statut</th>
-            <th>Priorité</th><th>Échéance</th><th>Heures est.</th><th>Avancement</th><th>Actions</th>
+            <th>Priorité</th><th>Échéance</th><th>Heures est.</th><th>Avancement</th><th>Assigné à</th><th>Actions</th>
         </tr></thead>
         <tbody id="taches-tbody"></tbody>
     </table>
@@ -604,10 +604,15 @@
 <!-- ══════════════════ KANBAN ══════════════════ -->
 <div id="view-kanban" class="view">
     <h2>Kanban des tâches</h2>
-    <div class="toolbar">
+    <div class="toolbar" style="gap:10px;flex-wrap:wrap;">
         <select id="kanban-filter-projet" onchange="loadKanban()">
             <option value="">Tous les projets</option>
         </select>
+        <select id="kanban-filter-user" onchange="loadKanban()">
+            <option value="">Toutes les personnes</option>
+        </select>
+        <button class="btn" onclick="document.getElementById('kanban-filter-projet').value='';document.getElementById('kanban-filter-user').value='';loadKanban();"
+            style="font-size:.85em;padding:5px 12px;">Réinitialiser</button>
     </div>
     <div id="kanban-board" style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;"></div>
 </div>
@@ -774,8 +779,18 @@
 <!-- ══════════════════ ETP / CHARGE ══════════════════ -->
 <div id="view-etp" class="view">
     <h2>ETP / Charge de travail</h2>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button id="etp-tab-projet"   onclick="switchEtpMode('projet')"
+            style="padding:7px 18px;border:none;border-radius:6px;cursor:pointer;font-weight:bold;background:#2563a8;color:#fff;">
+            Par projet</button>
+        <button id="etp-tab-personne" onclick="switchEtpMode('personne')"
+            style="padding:7px 18px;border:none;border-radius:6px;cursor:pointer;font-weight:bold;background:#e9ecef;color:#333;">
+            Par personne</button>
+    </div>
     <div id="etp-kpi-bar" class="kpi-bar"></div>
-    <div class="tbl-wrap">
+
+    <!-- Vue par projet -->
+    <div id="etp-view-projet" class="tbl-wrap">
     <table>
         <thead><tr>
             <th>Code</th><th>Projet</th><th>Statut</th>
@@ -783,6 +798,18 @@
             <th>Jours estimés</th><th>ETP annuel</th>
         </tr></thead>
         <tbody id="etp-tbody"></tbody>
+    </table>
+    </div>
+
+    <!-- Vue par personne -->
+    <div id="etp-view-personne" class="tbl-wrap" style="display:none;">
+    <table>
+        <thead><tr>
+            <th>Nom</th><th>Prénom</th><th>Service / Unité</th>
+            <th>Nb tâches</th><th>Heures estimées</th><th>Heures réelles</th>
+            <th>Charge (%)</th><th>Disponible (h)</th><th>ETP chargé</th>
+        </tr></thead>
+        <tbody id="etp-personne-tbody"></tbody>
     </table>
     </div>
 </div>
@@ -1194,8 +1221,10 @@
                 <input id="edit-tache-heures" type="number" step="0.5" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
             <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Avancement (%)</label>
                 <input id="edit-tache-avancement" type="number" min="0" max="100" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
-            <div style="flex:2;min-width:200px;"><label style="font-size:.82em;color:#666;">Responsable (nom libre)</label>
-                <input id="edit-tache-responsable" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;" placeholder="Ex: Jean Dupont"></div>
+            <div style="flex:2;min-width:200px;"><label style="font-size:.82em;color:#666;">Assigné à (utilisateur)</label>
+                <select id="edit-tache-assignee" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">-- Non assigné --</option>
+                </select></div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-success" onclick="saveTache()">Enregistrer</button>
@@ -1388,6 +1417,6 @@
 
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
-<script src="app.js?v=5.65"></script>
+<script src="app.js?v=5.66"></script>
 </body>
 </html>
