@@ -67,6 +67,12 @@ def run_migrations():
         )
     except Exception:
         pass
+    try:
+        db.execute(
+            "ALTER TABLE taches ADD COLUMN IF NOT EXISTS assignee_id INTEGER"
+        )
+    except Exception:
+        pass
 
     # ── Colonnes services (Unités) ──────────────────────────
     try:

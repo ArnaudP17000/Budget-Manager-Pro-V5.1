@@ -679,12 +679,14 @@ def create_tache():
     try:
         tache_service.db.execute(
             "INSERT INTO taches (projet_id, titre, statut, priorite, date_debut, date_echeance, "
-            "estimation_heures, avancement, responsable_label) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "estimation_heures, avancement, responsable_label, assignee_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             [data.get('projet_id') or None, data.get('titre'),
              data.get('statut', 'A faire'), data.get('priorite'),
              data.get('date_debut') or None, data.get('date_echeance') or None,
              data.get('estimation_heures') or None, data.get('avancement') or 0,
-             data.get('responsable_label') or None]
+             data.get('responsable_label') or None,
+             data.get('assignee_id') or None]
         )
         return jsonify({"success": True}), 201
     except Exception as e:
@@ -713,12 +715,13 @@ def update_tache(tache_id):
         tache_service.db.execute(
             "UPDATE taches SET projet_id=%s, titre=%s, statut=%s, priorite=%s, "
             "date_debut=%s, date_echeance=%s, estimation_heures=%s, avancement=%s, "
-            "responsable_label=%s, updated_at=NOW() WHERE id=%s",
+            "responsable_label=%s, assignee_id=%s, updated_at=NOW() WHERE id=%s",
             [data.get('projet_id') or None, data.get('titre'), data.get('statut'),
              data.get('priorite'), data.get('date_debut') or None,
              data.get('date_echeance') or None,
              data.get('estimation_heures') or None, data.get('avancement') or 0,
-             data.get('responsable_label') or None, tache_id]
+             data.get('responsable_label') or None,
+             data.get('assignee_id') or None, tache_id]
         )
         return jsonify({"success": True})
     except Exception as e:
@@ -920,9 +923,12 @@ def get_referentiels():
 @require_auth()
 def kanban():
     projet_id = request.args.get('projet_id')
+    user_id   = request.args.get('user_id')
     taches = tache_service.get_all()
     if projet_id:
         taches = [t for t in taches if str(t.get('projet_id', '')) == str(projet_id)]
+    if user_id:
+        taches = [t for t in taches if str(t.get('assignee_id', '')) == str(user_id)]
     colonnes = ['A faire', 'En cours', 'En attente', 'Bloqué', 'Terminé']
     columns = {c: [] for c in colonnes}
     for t in taches:
@@ -941,26 +947,75 @@ def kanban():
 @routes.route('/etp', methods=['GET'])
 @require_auth()
 def etp():
+    mode = request.args.get('mode', 'projet')  # 'projet' ou 'personne'
     try:
-        rows = projet_service.db.fetch_all(
-            "SELECT p.id, p.code, p.nom, p.statut, "
-            "COALESCE(SUM(t.estimation_heures), 0) as heures_estimees, "
-            "COALESCE(SUM(t.heures_reelles), 0) as heures_reelles, "
-            "COUNT(t.id) as nb_taches "
-            "FROM projets p "
-            "LEFT JOIN taches t ON t.projet_id = p.id "
-            "WHERE p.statut NOT IN ('Terminé', 'Annulé') "
-            "GROUP BY p.id, p.code, p.nom, p.statut "
-            "ORDER BY heures_estimees DESC"
+        if mode == 'personne':
+            # Charge par personne (utilisateurs actifs + tâches assignées)
+            rows = projet_service.db.fetch_all(
+                "SELECT u.id, u.nom, u.prenom, u.email, u.role, "
+                "s.nom as service_nom, s.code as service_code, "
+                "COALESCE(s.is_unite, false) as is_unite, "
+                "COUNT(t.id) as nb_taches, "
+                "COALESCE(SUM(t.estimation_heures), 0) as heures_estimees, "
+                "COALESCE(SUM(t.heures_reelles), 0) as heures_reelles "
+                "FROM utilisateurs u "
+                "LEFT JOIN services s ON s.id = u.service_id "
+                "LEFT JOIN taches t ON t.assignee_id = u.id "
+                "  AND t.statut NOT IN ('Terminé', 'Annulé') "
+                "WHERE u.actif = true "
+                "GROUP BY u.id, u.nom, u.prenom, u.email, u.role, "
+                "  s.nom, s.code, s.is_unite "
+                "ORDER BY heures_estimees DESC, u.nom"
+            )
+            result = [dict(r) for r in rows] if rows else []
+            HEURES_AN = 1540  # 1 ETP = ~220 jours * 7h
+            for r in result:
+                h = float(r.get('heures_estimees') or 0)
+                r['heures_dispo'] = round(HEURES_AN - h, 1)
+                r['pct_charge']   = round(h / HEURES_AN * 100, 1)
+                r['etp_charge']   = round(h / HEURES_AN, 2)
+            return jsonify({"list": result, "mode": "personne",
+                            "heures_an": HEURES_AN})
+        else:
+            # Charge par projet (mode existant)
+            rows = projet_service.db.fetch_all(
+                "SELECT p.id, p.code, p.nom, p.statut, "
+                "COALESCE(SUM(t.estimation_heures), 0) as heures_estimees, "
+                "COALESCE(SUM(t.heures_reelles), 0) as heures_reelles, "
+                "COUNT(t.id) as nb_taches "
+                "FROM projets p "
+                "LEFT JOIN taches t ON t.projet_id = p.id "
+                "WHERE p.statut NOT IN ('Terminé', 'Annulé') "
+                "GROUP BY p.id, p.code, p.nom, p.statut "
+                "ORDER BY heures_estimees DESC"
+            )
+            result = [dict(r) for r in rows] if rows else []
+            total_h = sum(r.get('heures_estimees', 0) or 0 for r in result)
+            return jsonify({
+                "list": result, "mode": "projet",
+                "total_heures": total_h,
+                "total_jours": round(total_h / 7, 1),
+                "total_etp": round(total_h / 154, 2),
+            })
+    except Exception as e:
+        return jsonify({"list": [], "error": str(e)})
+
+
+@routes.route('/users/actifs', methods=['GET'])
+@require_auth()
+def get_users_actifs():
+    """Tous les utilisateurs actifs — pour les selects tâches/équipe."""
+    try:
+        rows = tache_service.db.fetch_all(
+            "SELECT u.id, u.nom, u.prenom, u.email, u.role, "
+            "u.service_id, s.nom as service_nom, s.code as service_code, "
+            "COALESCE(s.is_unite, false) as is_unite "
+            "FROM utilisateurs u "
+            "LEFT JOIN services s ON s.id = u.service_id "
+            "WHERE u.actif = true ORDER BY u.nom, u.prenom"
         )
         result = [dict(r) for r in rows] if rows else []
-        total_h = sum(r.get('heures_estimees', 0) or 0 for r in result)
-        return jsonify({
-            "list": result,
-            "total_heures": total_h,
-            "total_jours": round(total_h / 7, 1),
-            "total_etp": round(total_h / 154, 2),
-        })
+        return jsonify({"list": result})
     except Exception as e:
         return jsonify({"list": [], "error": str(e)})
 

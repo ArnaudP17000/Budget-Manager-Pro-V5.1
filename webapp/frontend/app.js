@@ -1793,15 +1793,25 @@ async function loadTaches() {
                 <td>${fmtDate(t.date_echeance)}</td>
                 <td>${t.estimation_heures != null ? t.estimation_heures + ' h' : '-'}</td>
                 <td>${t.avancement != null ? t.avancement + ' %' : '-'}</td>
+                <td>${t.assignee_nom
+                    ? `<span style="font-size:.82em;color:#2563a8;">${t.assignee_nom}</span>`
+                    : '<span style="color:#aaa;font-size:.82em;">—</span>'}</td>
                 <td style="white-space:nowrap;">
                     <button class="btn btn-warning btn-sm" onclick="editTache(${t.id})">Éditer</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteTache(${t.id})">Suppr.</button>
                 </td>
             </tr>`).join('');
+
+        // Peupler le select "Assigner à" du formulaire de création
+        const addSel = document.getElementById('tache-assignee');
+        if (addSel && addSel.options.length <= 1) {
+            await _populateMembresSelect(addSel, null);
+        }
     } catch (e) { showMsg('Erreur chargement tâches', false); }
 }
 
 async function addTache() {
+    const assigneeVal = document.getElementById('tache-assignee')?.value;
     const body = {
         titre:             document.getElementById('tache-titre').value,
         projet_id:         document.getElementById('tache-projet').value || null,
@@ -1810,7 +1820,7 @@ async function addTache() {
         date_debut:        document.getElementById('tache-debut')?.value || null,
         date_echeance:     document.getElementById('tache-echeance').value || null,
         estimation_heures: document.getElementById('tache-heures').value || null,
-        responsable_label: document.getElementById('tache-responsable')?.value || null,
+        assignee_id:       assigneeVal ? parseInt(assigneeVal) : null,
         avancement:        0,
     };
     if (!body.titre) { showMsg('Le titre est obligatoire', false); return; }
@@ -1849,13 +1859,17 @@ async function editTache(id) {
     document.getElementById('edit-tache-echeance').value   = ech;
     document.getElementById('edit-tache-heures').value     = data.estimation_heures ?? '';
     document.getElementById('edit-tache-avancement').value = data.avancement ?? '';
-    const respEl = document.getElementById('edit-tache-responsable');
-    if (respEl) respEl.value = data.responsable_label || '';
+    // Populate assignee select
+    const assigneeSel = document.getElementById('edit-tache-assignee');
+    if (assigneeSel) {
+        await _populateMembresSelect(assigneeSel, data.assignee_id);
+    }
     openModal('modal-edit-tache');
 }
 
 async function saveTache() {
     const id = document.getElementById('edit-tache-id').value;
+    const assigneeVal = document.getElementById('edit-tache-assignee')?.value;
     const body = {
         titre:             document.getElementById('edit-tache-titre').value,
         projet_id:         document.getElementById('edit-tache-projet').value || null,
@@ -1865,7 +1879,7 @@ async function saveTache() {
         date_echeance:     document.getElementById('edit-tache-echeance').value || null,
         estimation_heures: document.getElementById('edit-tache-heures').value || null,
         avancement:        document.getElementById('edit-tache-avancement').value || 0,
-        responsable_label: document.getElementById('edit-tache-responsable')?.value || null,
+        assignee_id:       assigneeVal ? parseInt(assigneeVal) : null,
     };
     if (!body.titre) { showMsg('Le titre est obligatoire', false); return; }
     try {
@@ -1879,7 +1893,22 @@ async function saveTache() {
 
 async function loadKanban() {
     const projetId = document.getElementById('kanban-filter-projet')?.value;
-    const params   = projetId ? `?projet_id=${projetId}` : '';
+    const userId   = document.getElementById('kanban-filter-user')?.value;
+    let params = '';
+    if (projetId) params += `?projet_id=${projetId}`;
+    if (userId)   params += (params ? '&' : '?') + `user_id=${userId}`;
+
+    // Peupler le filtre user si vide
+    const userSel = document.getElementById('kanban-filter-user');
+    if (userSel && userSel.options.length <= 1) {
+        await _populateMembresSelect(userSel, userId ? parseInt(userId) : null);
+        // Réinsérer "Toutes les personnes" en premier
+        const blankOpt = document.createElement('option');
+        blankOpt.value = ''; blankOpt.textContent = 'Toutes les personnes';
+        userSel.insertBefore(blankOpt, userSel.firstChild);
+        if (userId) userSel.value = userId;
+    }
+
     try {
         const data = await apiFetch('/kanban' + params);
         const board = document.getElementById('kanban-board');
@@ -1893,7 +1922,7 @@ async function loadKanban() {
         };
         board.innerHTML = Object.entries(columns).map(([col, cards]) => {
             const color = colorMap[col] || '#2563a8';
-            return `<div style="flex:1;min-width:190px;max-width:260px;background:#fff;border-radius:8px;
+            return `<div style="flex:1;min-width:200px;max-width:270px;background:#fff;border-radius:8px;
                                 box-shadow:0 1px 4px rgba(0,0,0,.08);">
                 <div style="background:${color};color:#fff;padding:9px 12px;border-radius:8px 8px 0 0;
                             font-size:.9em;font-weight:bold;">
@@ -1905,6 +1934,7 @@ async function loadKanban() {
                                 margin-bottom:8px;font-size:.82em;border-left:3px solid ${color};">
                         <strong>${t.titre || '-'}</strong>
                         ${t.projet_nom ? `<div style="color:#888;font-size:.9em;">${t.projet_nom}</div>` : ''}
+                        ${t.assignee_nom ? `<div style="color:#2563a8;font-size:.85em;margin-top:2px;">👤 ${t.assignee_nom}</div>` : ''}
                         ${t.date_echeance ? `<div style="color:#666;margin-top:2px;">Éch: ${fmtDate(t.date_echeance)}</div>` : ''}
                         ${t.priorite ? `<div style="margin-top:3px;">${badge(t.priorite)}</div>` : ''}
                     </div>`).join('')}
@@ -2507,29 +2537,84 @@ function updateProjetGanttViewMode() {
 
 // ─── ETP ───────────────────────────────────────────────────
 
+let _etpMode = 'projet';
+
+function switchEtpMode(mode) {
+    _etpMode = mode;
+    document.getElementById('etp-tab-projet').style.background   = mode === 'projet'   ? '#2563a8' : '#e9ecef';
+    document.getElementById('etp-tab-projet').style.color        = mode === 'projet'   ? '#fff'    : '#333';
+    document.getElementById('etp-tab-personne').style.background = mode === 'personne' ? '#2563a8' : '#e9ecef';
+    document.getElementById('etp-tab-personne').style.color      = mode === 'personne' ? '#fff'    : '#333';
+    document.getElementById('etp-view-projet').style.display   = mode === 'projet'   ? '' : 'none';
+    document.getElementById('etp-view-personne').style.display = mode === 'personne' ? '' : 'none';
+    loadETP();
+}
+
 async function loadETP() {
     try {
-        const data = await apiFetch('/etp');
+        const data = await apiFetch(`/etp?mode=${_etpMode}`);
         const kpiEl = document.getElementById('etp-kpi-bar');
-        kpiEl.innerHTML =
-            `<span>Total heures estimées: <strong class="kpi-num">${data.total_heures || 0} h</strong></span>` +
-            `<span>Jours estimés: <strong class="kpi-num">${data.total_jours || 0} j</strong></span>` +
-            `<span>ETP annuel: <strong class="kpi-num">${data.total_etp || 0}</strong></span>`;
-        const tbody = document.getElementById('etp-tbody');
-        tbody.innerHTML = (data.list || []).map(p => {
-            const h = p.heures_estimees || 0;
-            const hr = p.heures_reelles || 0;
-            return `<tr>
-                <td>${p.code || '-'}</td>
-                <td><strong>${p.nom || '-'}</strong></td>
-                <td>${badge(p.statut)}</td>
-                <td>${p.nb_taches || 0}</td>
-                <td>${h} h</td>
-                <td>${hr} h</td>
-                <td>${Math.round(h / 7 * 10) / 10} j</td>
-                <td>${Math.round(h / 154 * 100) / 100} ETP</td>
-            </tr>`;
-        }).join('');
+
+        if (_etpMode === 'personne') {
+            const users = data.list || [];
+            const totalH = users.reduce((s, u) => s + (u.heures_estimees || 0), 0);
+            kpiEl.innerHTML =
+                `<span>Personnes: <strong class="kpi-num">${users.length}</strong></span>` +
+                `<span>Total heures assignées: <strong class="kpi-num">${Math.round(totalH)} h</strong></span>` +
+                `<span>ETP chargé: <strong class="kpi-num">${Math.round(totalH / (data.heures_an || 1540) * 100) / 100}</strong></span>`;
+
+            const tbody = document.getElementById('etp-personne-tbody');
+            tbody.innerHTML = users.map(u => {
+                const h = u.heures_estimees || 0;
+                const hr = u.heures_reelles || 0;
+                const pct = u.pct_charge || 0;
+                const dispo = u.heures_dispo || (1540 - h);
+                // Barre de charge colorée
+                const barColor = pct >= 90 ? '#e74c3c' : pct >= 70 ? '#f39c12' : '#27ae60';
+                const serviceBadge = u.is_unite
+                    ? `<span style="background:#27ae60;color:#fff;padding:1px 6px;border-radius:8px;font-size:.75em;">Unité</span> `
+                    : `<span style="background:#2563a8;color:#fff;padding:1px 6px;border-radius:8px;font-size:.75em;">Service</span> `;
+                return `<tr>
+                    <td><strong>${u.nom || '-'}</strong></td>
+                    <td>${u.prenom || '-'}</td>
+                    <td>${serviceBadge}${u.service_code ? '<strong>' + u.service_code + '</strong> – ' : ''}${u.service_nom || '<em style="color:#aaa">Aucun</em>'}</td>
+                    <td style="text-align:center;">${u.nb_taches || 0}</td>
+                    <td>${h} h</td>
+                    <td>${hr} h</td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <div style="flex:1;background:#e9ecef;border-radius:4px;height:8px;min-width:60px;">
+                                <div style="width:${Math.min(pct,100)}%;background:${barColor};height:8px;border-radius:4px;"></div>
+                            </div>
+                            <span style="font-weight:bold;color:${barColor};min-width:40px;">${pct}%</span>
+                        </div>
+                    </td>
+                    <td style="color:${dispo < 0 ? '#e74c3c' : '#27ae60'};font-weight:bold;">${Math.round(dispo)} h</td>
+                    <td>${u.etp_charge || 0}</td>
+                </tr>`;
+            }).join('') || '<tr><td colspan="9" style="text-align:center;color:#aaa;">Aucune donnée</td></tr>';
+
+        } else {
+            kpiEl.innerHTML =
+                `<span>Total heures estimées: <strong class="kpi-num">${data.total_heures || 0} h</strong></span>` +
+                `<span>Jours estimés: <strong class="kpi-num">${data.total_jours || 0} j</strong></span>` +
+                `<span>ETP annuel: <strong class="kpi-num">${data.total_etp || 0}</strong></span>`;
+            const tbody = document.getElementById('etp-tbody');
+            tbody.innerHTML = (data.list || []).map(p => {
+                const h = p.heures_estimees || 0;
+                const hr = p.heures_reelles || 0;
+                return `<tr>
+                    <td>${p.code || '-'}</td>
+                    <td><strong>${p.nom || '-'}</strong></td>
+                    <td>${badge(p.statut)}</td>
+                    <td>${p.nb_taches || 0}</td>
+                    <td>${h} h</td>
+                    <td>${hr} h</td>
+                    <td>${Math.round(h / 7 * 10) / 10} j</td>
+                    <td>${Math.round(h / 154 * 100) / 100} ETP</td>
+                </tr>`;
+            }).join('');
+        }
     } catch (e) { showMsg('Erreur chargement ETP', false); }
 }
 
@@ -2749,6 +2834,64 @@ function _populateNewUserServiceSelect() {
     _buildServiceOptions(sel, null);
 }
 
+
+// ─── Cache utilisateurs actifs (pour selects tâches/kanban) ────────────────
+let _usersActifsCache = [];
+
+async function _loadUsersActifs(force = false) {
+    if (_usersActifsCache.length && !force) return _usersActifsCache;
+    try {
+        const data = await apiFetch('/users/actifs');
+        _usersActifsCache = data.list || [];
+    } catch (e) { _usersActifsCache = []; }
+    return _usersActifsCache;
+}
+
+/**
+ * Peuple un <select> avec les utilisateurs actifs groupés par service/unité.
+ * @param {HTMLSelectElement} sel
+ * @param {number|null} selectedId  — id à pré-sélectionner
+ */
+async function _populateMembresSelect(sel, selectedId = null) {
+    if (!sel) return;
+    const users = await _loadUsersActifs();
+    sel.innerHTML = '<option value="">-- Non assigné --</option>';
+
+    // Grouper par service
+    const byService = {};
+    const noService = [];
+    users.forEach(u => {
+        const grpKey = u.service_id
+            ? `${u.is_unite ? '[Unité] ' : ''}${u.service_code ? u.service_code + ' – ' : ''}${u.service_nom || 'Service ' + u.service_id}`
+            : null;
+        if (grpKey) {
+            if (!byService[grpKey]) byService[grpKey] = [];
+            byService[grpKey].push(u);
+        } else {
+            noService.push(u);
+        }
+    });
+
+    Object.entries(byService).sort((a, b) => a[0].localeCompare(b[0], 'fr')).forEach(([grpLabel, members]) => {
+        const grp = document.createElement('optgroup');
+        grp.label = grpLabel;
+        members.forEach(u => {
+            const o = document.createElement('option');
+            o.value = u.id;
+            o.textContent = `${u.nom} ${u.prenom}`;
+            if (selectedId && u.id == selectedId) o.selected = true;
+            grp.appendChild(o);
+        });
+        sel.appendChild(grp);
+    });
+    noService.forEach(u => {
+        const o = document.createElement('option');
+        o.value = u.id;
+        o.textContent = `${u.nom} ${u.prenom}`;
+        if (selectedId && u.id == selectedId) o.selected = true;
+        sel.appendChild(o);
+    });
+}
 
 // ─── INIT ──────────────────────────────────────────────────
 
