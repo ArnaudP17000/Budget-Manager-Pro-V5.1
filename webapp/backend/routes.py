@@ -1252,14 +1252,40 @@ def delete_fournisseur(fournisseur_id):
 @routes.route('/contact', methods=['GET'])
 @require_auth()
 def get_contacts():
-    filters = {k: v for k, v in request.args.items() if v}
-    contacts = contact_service.get_all(filters)
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    filters    = request.args.to_dict()
+
+    if role == 'admin':
+        contacts = contact_service.get_all(filters)
+    else:
+        where, params = _ownership_where(user_id, role, service_id, 'c')
+        extra = []
+        if filters.get('type'):
+            extra.append("AND c.type = %s")
+            params.append(filters['type'])
+        if filters.get('search'):
+            s = '%' + filters['search'] + '%'
+            extra.append("AND (c.nom ILIKE %s OR c.prenom ILIKE %s OR c.email ILIKE %s OR c.organisation ILIKE %s)")
+            params.extend([s, s, s, s])
+        rows = contact_service.db.fetch_all(
+            "SELECT c.*, s.nom as service_nom "
+            "FROM contacts c "
+            "LEFT JOIN services s ON s.id = c.service_id "
+            f"WHERE {where} " + " ".join(extra) +
+            " ORDER BY c.nom, c.prenom",
+            params
+        )
+        contacts = [dict(r) for r in rows] if rows else []
+
     return jsonify({"count": len(contacts), "list": contacts})
 
 @routes.route('/contact', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def create_contact():
     data = request.json
+    data['created_by_id'] = g.user.get('sub')
     try:
         contact_service.create(data)
         return jsonify({"success": True}), 201

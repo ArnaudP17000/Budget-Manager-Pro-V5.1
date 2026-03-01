@@ -40,11 +40,12 @@ class ContactService:
 
     def create(self, data):
         self.db.execute(
-            "INSERT INTO contacts (nom, prenom, fonction, type, telephone, email, service_id, organisation) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            "INSERT INTO contacts (nom, prenom, fonction, type, telephone, email, service_id, organisation, created_by_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             [data.get('nom'), data.get('prenom'), data.get('fonction'),
              data.get('type'), data.get('telephone'), data.get('email'),
-             data.get('service_id') or None, data.get('organisation')]
+             data.get('service_id') or None, data.get('organisation'),
+             data.get('created_by_id')]
         )
 
     def update(self, contact_id, data):
