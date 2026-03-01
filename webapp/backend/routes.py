@@ -176,34 +176,114 @@ def get_applications():
 
 
 # ─────────────────────────────────────────────
-# BUDGETS ANNUELS
+# BUDGETS ANNUELS — avec contrôle d'accès explicite
 # ─────────────────────────────────────────────
+
+def _user_budget_role(user_id, budget_id):
+    """Retourne le rôle de l'utilisateur sur ce budget ('lecteur'/'gestionnaire'), ou None."""
+    row = budget_service.db.fetch_one(
+        "SELECT role FROM budget_permissions WHERE budget_id=%s AND user_id=%s",
+        [budget_id, user_id]
+    )
+    return row['role'] if row else None
+
 
 @routes.route('/budget', methods=['GET'])
 @require_auth()
 def get_budget():
-    budgets = budget_service.get_budget()
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    if role == 'admin':
+        budgets = budget_service.get_budget()
+        for b in budgets:
+            b['user_perm'] = 'gestionnaire'
+    else:
+        rows = budget_service.db.fetch_all(
+            "SELECT ba.*, e.code as entite_code, e.nom as entite_nom, bp.role as user_perm "
+            "FROM budgets_annuels ba "
+            "LEFT JOIN entites e ON e.id = ba.entite_id "
+            "JOIN budget_permissions bp ON bp.budget_id = ba.id AND bp.user_id = %s "
+            "ORDER BY ba.exercice DESC, ba.nature",
+            [user_id]
+        )
+        budgets = [dict(b) for b in (rows or [])]
     return jsonify({
         "total_vote":   sum(b.get('montant_vote', 0) or 0 for b in budgets),
         "total_engage": sum(b.get('montant_engage', 0) or 0 for b in budgets),
         "details": budgets
     })
 
+
 @routes.route('/budget/<int:budget_id>/lignes', methods=['GET'])
 @require_auth()
 def get_lignes_budget(budget_id):
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    if role != 'admin' and _user_budget_role(user_id, budget_id) is None:
+        return jsonify({"error": "Accès interdit à ce budget"}), 403
     return jsonify({"list": budget_service.get_lignes(budget_id)})
+
 
 @routes.route('/lignes', methods=['GET'])
 @require_auth()
 def get_all_lignes():
+    user_id   = g.user.get('sub')
+    role      = g.user.get('role')
     budget_id = request.args.get('budget_id', type=int)
-    return jsonify({"list": budget_service.get_lignes(budget_id)})
+    if budget_id:
+        if role != 'admin' and _user_budget_role(user_id, budget_id) is None:
+            return jsonify({"list": []})
+        return jsonify({"list": budget_service.get_lignes(budget_id)})
+    if role == 'admin':
+        rows = budget_service.db.fetch_all(
+            "SELECT l.*, ba.exercice, ba.nature, "
+            "e.code as entite_code, e.nom as entite_nom, "
+            "CONCAT(e.code, ' — ', ba.nature, ' ', ba.exercice) as budget_label, "
+            "app.nom as application_nom, f.nom as fournisseur_nom, "
+            "CASE WHEN l.montant_vote > 0 "
+            "THEN ROUND((COALESCE(l.montant_engage,0)/l.montant_vote*100)::numeric, 1) "
+            "ELSE 0 END as taux_engagement, "
+            "CASE WHEN l.montant_vote > 0 AND COALESCE(l.montant_engage,0) >= l.montant_vote * "
+            "COALESCE(l.seuil_alerte_pct,80)/100.0 THEN true ELSE false END as alerte "
+            "FROM lignes_budgetaires l "
+            "JOIN budgets_annuels ba ON ba.id = l.budget_id "
+            "LEFT JOIN entites e ON e.id = ba.entite_id "
+            "LEFT JOIN applications app ON app.id = l.application_id "
+            "LEFT JOIN fournisseurs f ON f.id = l.fournisseur_id "
+            "ORDER BY l.id"
+        )
+    else:
+        rows = budget_service.db.fetch_all(
+            "SELECT l.*, ba.exercice, ba.nature, "
+            "e.code as entite_code, e.nom as entite_nom, "
+            "CONCAT(e.code, ' — ', ba.nature, ' ', ba.exercice) as budget_label, "
+            "app.nom as application_nom, f.nom as fournisseur_nom, "
+            "CASE WHEN l.montant_vote > 0 "
+            "THEN ROUND((COALESCE(l.montant_engage,0)/l.montant_vote*100)::numeric, 1) "
+            "ELSE 0 END as taux_engagement, "
+            "CASE WHEN l.montant_vote > 0 AND COALESCE(l.montant_engage,0) >= l.montant_vote * "
+            "COALESCE(l.seuil_alerte_pct,80)/100.0 THEN true ELSE false END as alerte "
+            "FROM lignes_budgetaires l "
+            "JOIN budgets_annuels ba ON ba.id = l.budget_id "
+            "LEFT JOIN entites e ON e.id = ba.entite_id "
+            "LEFT JOIN applications app ON app.id = l.application_id "
+            "LEFT JOIN fournisseurs f ON f.id = l.fournisseur_id "
+            "JOIN budget_permissions bp ON bp.budget_id = l.budget_id AND bp.user_id = %s "
+            "ORDER BY l.id",
+            [user_id]
+        )
+    return jsonify({"list": [dict(r) for r in (rows or [])]})
+
 
 @routes.route('/ligne', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def create_ligne():
-    data = request.json
+    data    = request.json
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    bid     = data.get('budget_id')
+    if role != 'admin' and _user_budget_role(user_id, bid) != 'gestionnaire':
+        return jsonify({"error": "Droits insuffisants sur ce budget"}), 403
     try:
         vote = float(data.get('montant_vote') or 0)
         budget_service.db.execute(
@@ -211,7 +291,7 @@ def create_ligne():
             "(budget_id, libelle, application_id, fournisseur_id, "
             "montant_prevu, montant_vote, montant_solde, nature, note, statut) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            [data.get('budget_id'), data.get('libelle'),
+            [bid, data.get('libelle'),
              data.get('application_id') or None, data.get('fournisseur_id') or None,
              float(data.get('montant_prevu') or 0), vote, vote,
              data.get('nature') or 'FONCTIONNEMENT',
@@ -221,10 +301,16 @@ def create_ligne():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+
 @routes.route('/ligne/<int:ligne_id>', methods=['PUT'])
 @require_auth('admin', 'gestionnaire')
 def update_ligne(ligne_id):
-    data = request.json
+    data    = request.json
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    bid     = data.get('budget_id')
+    if role != 'admin' and _user_budget_role(user_id, bid) != 'gestionnaire':
+        return jsonify({"error": "Droits insuffisants sur ce budget"}), 403
     try:
         vote = float(data.get('montant_vote') or 0)
         budget_service.db.execute(
@@ -233,7 +319,7 @@ def update_ligne(ligne_id):
             "montant_prevu=%s, montant_vote=%s, "
             "montant_solde=GREATEST(%s - COALESCE(montant_engage, 0), 0), "
             "nature=%s, note=%s, statut=%s, date_maj=NOW() WHERE id=%s",
-            [data.get('budget_id'), data.get('libelle'),
+            [bid, data.get('libelle'),
              data.get('application_id') or None, data.get('fournisseur_id') or None,
              float(data.get('montant_prevu') or 0), vote, vote,
              data.get('nature') or 'FONCTIONNEMENT',
@@ -243,9 +329,18 @@ def update_ligne(ligne_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+
 @routes.route('/ligne/<int:ligne_id>/bcs', methods=['GET'])
 @require_auth()
 def get_ligne_bcs(ligne_id):
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    if role != 'admin':
+        row = budget_service.db.fetch_one(
+            "SELECT l.budget_id FROM lignes_budgetaires l WHERE l.id=%s", [ligne_id]
+        )
+        if not row or _user_budget_role(user_id, row['budget_id']) is None:
+            return jsonify({"bcs": []})
     bcs = budget_service.db.fetch_all(
         "SELECT bc.id, bc.numero_bc, bc.objet, bc.montant_ht, bc.montant_ttc, "
         "bc.statut, bc.date_creation, bc.date_imputation, bc.date_solde, "
@@ -261,9 +356,14 @@ def get_ligne_bcs(ligne_id):
     )
     return jsonify({"bcs": [dict(b) for b in bcs] if bcs else []})
 
+
 @routes.route('/budget/<int:budget_id>/detail', methods=['GET'])
 @require_auth()
 def get_budget_detail(budget_id):
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    if role != 'admin' and _user_budget_role(user_id, budget_id) is None:
+        return jsonify({"error": "Accès interdit à ce budget"}), 403
     lignes = budget_service.get_lignes(budget_id)
     for ligne in lignes:
         bcs = budget_service.db.fetch_all(
@@ -279,9 +379,14 @@ def get_budget_detail(budget_id):
         ligne['bons_commande'] = [dict(b) for b in bcs] if bcs else []
     return jsonify({"lignes": lignes})
 
+
 @routes.route('/budget/<int:budget_id>/voter', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def voter_budget(budget_id):
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    if role != 'admin' and _user_budget_role(user_id, budget_id) != 'gestionnaire':
+        return jsonify({"error": "Droits insuffisants sur ce budget"}), 403
     data = request.json
     try:
         montant_vote = float(data.get('montant_vote') or 0)
@@ -290,24 +395,39 @@ def voter_budget(budget_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+
 @routes.route('/budget', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def create_budget():
-    data = request.json
+    data    = request.json
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
     try:
-        budget_service.db.execute(
+        row = budget_service.db.execute_returning(
             "INSERT INTO budgets_annuels (entite_id, exercice, nature, montant_previsionnel, statut) "
-            "VALUES (%s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
             [data.get('entite_id') or None, data.get('exercice'), data.get('nature'),
              data.get('montant_previsionnel') or 0, data.get('statut', 'BROUILLON')]
         )
+        new_id = row[0] if row else None
+        if new_id and role != 'admin':
+            budget_service.db.execute(
+                "INSERT INTO budget_permissions (budget_id, user_id, role) "
+                "VALUES (%s, %s, 'gestionnaire') ON CONFLICT DO NOTHING",
+                [new_id, user_id]
+            )
         return jsonify({"success": True}), 201
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+
 @routes.route('/budget/<int:budget_id>', methods=['PUT'])
 @require_auth('admin', 'gestionnaire')
 def update_budget(budget_id):
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    if role != 'admin' and _user_budget_role(user_id, budget_id) != 'gestionnaire':
+        return jsonify({"error": "Droits insuffisants sur ce budget"}), 403
     data = request.json
     try:
         budget_service.db.execute(
@@ -321,11 +441,69 @@ def update_budget(budget_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+
 @routes.route('/budget/<int:budget_id>', methods=['DELETE'])
 @require_auth('admin')
 def delete_budget(budget_id):
     try:
         budget_service.db.execute("DELETE FROM budgets_annuels WHERE id=%s", [budget_id])
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+# ─── Gestion des permissions budget ───────────────────────────────────────────
+
+@routes.route('/budget/<int:budget_id>/permissions', methods=['GET'])
+@require_auth()
+def get_budget_permissions(budget_id):
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    if role != 'admin' and _user_budget_role(user_id, budget_id) != 'gestionnaire':
+        return jsonify({"error": "Accès interdit"}), 403
+    rows = budget_service.db.fetch_all(
+        "SELECT bp.id, bp.user_id, bp.role, bp.date_creation, "
+        "u.nom, u.prenom, u.login, s.nom as service_nom "
+        "FROM budget_permissions bp "
+        "JOIN utilisateurs u ON u.id = bp.user_id "
+        "LEFT JOIN services s ON s.id = u.service_id "
+        "WHERE bp.budget_id = %s ORDER BY u.nom, u.prenom",
+        [budget_id]
+    )
+    return jsonify({"list": [dict(r) for r in (rows or [])]})
+
+
+@routes.route('/budget/<int:budget_id>/permissions', methods=['POST'])
+@require_auth()
+def add_budget_permission(budget_id):
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    if role != 'admin' and _user_budget_role(user_id, budget_id) != 'gestionnaire':
+        return jsonify({"error": "Accès interdit"}), 403
+    data = request.json or {}
+    try:
+        budget_service.db.execute(
+            "INSERT INTO budget_permissions (budget_id, user_id, role) VALUES (%s, %s, %s) "
+            "ON CONFLICT (budget_id, user_id) DO UPDATE SET role = EXCLUDED.role",
+            [budget_id, data.get('user_id'), data.get('role', 'lecteur')]
+        )
+        return jsonify({"success": True}), 201
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@routes.route('/budget/<int:budget_id>/permissions/<int:target_uid>', methods=['DELETE'])
+@require_auth()
+def delete_budget_permission(budget_id, target_uid):
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    if role != 'admin' and _user_budget_role(user_id, budget_id) != 'gestionnaire':
+        return jsonify({"error": "Accès interdit"}), 403
+    try:
+        budget_service.db.execute(
+            "DELETE FROM budget_permissions WHERE budget_id=%s AND user_id=%s",
+            [budget_id, target_uid]
+        )
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400

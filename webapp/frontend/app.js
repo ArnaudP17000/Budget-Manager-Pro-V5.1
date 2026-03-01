@@ -482,13 +482,38 @@ async function saveLigne() {
     }
 }
 
+let _currentBudgetPermId = null;
+
+function _currentUserRole() {
+    const p = decodeToken(getToken());
+    return p ? p.role : 'lecteur';
+}
+function _currentUserId() {
+    const p = decodeToken(getToken());
+    return p ? p.sub : null;
+}
+
 async function loadBudget() {
     try {
         const data = await apiFetch('/budget');
         _budgetsList = data.details || [];
-        // Alimenter le filtre budget de la vue lignes
+        const userRole = _currentUserRole();
+
+        // Afficher/masquer le formulaire "Nouveau budget"
+        const newCard = document.getElementById('budget-new-card');
+        if (newCard) newCard.style.display = userRole === 'lecteur' ? 'none' : '';
+
+        // Afficher message vide si aucun budget et non-admin
+        const emptyMsg  = document.getElementById('budget-empty-msg');
+        const tableWrap = document.getElementById('budget-table-wrap');
+        const isEmpty = _budgetsList.length === 0;
+        if (emptyMsg)  emptyMsg.style.display  = isEmpty ? '' : 'none';
+        if (tableWrap) tableWrap.style.display  = isEmpty ? 'none' : '';
+
+        // Alimenter le filtre budget de la vue lignes (reset + repeupler)
         const filterSel = document.getElementById('lignes-filter-budget');
-        if (filterSel && filterSel.options.length <= 1) {
+        if (filterSel) {
+            filterSel.innerHTML = '<option value="">-- Tous les budgets --</option>';
             _budgetsList.forEach(b => {
                 const opt = document.createElement('option');
                 opt.value = b.id;
@@ -496,12 +521,15 @@ async function loadBudget() {
                 filterSel.appendChild(opt);
             });
         }
+
         const tbody = document.getElementById('budget-tbody');
-        tbody.innerHTML = (data.details || []).map(b => {
-            const vote   = b.montant_vote   || 0;
-            const engage = b.montant_engage || 0;
+        tbody.innerHTML = _budgetsList.map(b => {
+            const vote     = b.montant_vote   || 0;
+            const engage   = b.montant_engage || 0;
             const label    = `${b.entite_code || b.entite_nom || '?'} — ${b.exercice || '?'} (${b.nature || '?'})`;
             const labelEsc = label.replace(/['\u2018\u2019]/g, "\\'");
+            const canWrite = userRole === 'admin' || b.user_perm === 'gestionnaire';
+            const canPerms = userRole === 'admin' || b.user_perm === 'gestionnaire';
             return `<tr>
                 <td>${b.id}</td>
                 <td>${b.entite_code || b.entite_nom || '-'}</td>
@@ -517,12 +545,77 @@ async function loadBudget() {
                     <button class="btn btn-info btn-sm" onclick="openBudgetDetail(${b.id}, '${labelEsc}')">Lignes &amp; BC</button>
                 </td>
                 <td style="white-space:nowrap;">
-                    <button class="btn btn-success btn-sm" onclick="openVoterBudget(${b.id}, ${vote})">Voter</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteBudget(${b.id})">Suppr.</button>
+                    ${canPerms ? `<button class="btn btn-sm" style="background:#6c757d;color:#fff;" onclick="openBudgetPerms(${b.id}, '${labelEsc}')">&#128274; Accès</button>` : ''}
+                    ${canWrite ? `<button class="btn btn-success btn-sm" onclick="openVoterBudget(${b.id}, ${vote})">Voter</button>` : ''}
+                    ${userRole === 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteBudget(${b.id})">Suppr.</button>` : ''}
                 </td>
             </tr>`;
         }).join('');
     } catch (e) { showMsg('Erreur chargement budgets', false); }
+}
+
+async function openBudgetPerms(budgetId, budgetLabel) {
+    _currentBudgetPermId = budgetId;
+    document.getElementById('budget-perms-titre').textContent = `Accès — ${budgetLabel}`;
+    openModal('modal-budget-perms');
+    await _refreshBudgetPerms();
+    // Peupler le select utilisateurs
+    const users = await _loadUsersActifs();
+    const sel = document.getElementById('perm-user-select');
+    sel.innerHTML = '<option value="">-- Sélectionner un utilisateur --</option>';
+    users.forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.id;
+        opt.textContent = `${u.nom} ${u.prenom || ''}${u.service_nom ? ' — ' + u.service_nom : ''}`;
+        sel.appendChild(opt);
+    });
+}
+
+async function _refreshBudgetPerms() {
+    const tbody = document.getElementById('budget-perms-tbody');
+    try {
+        const data = await apiFetch(`/budget/${_currentBudgetPermId}/permissions`);
+        const list = data.list || [];
+        if (!list.length) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;padding:12px;font-style:italic;">Aucun accès accordé.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = list.map(p => `<tr>
+            <td style="padding:5px 8px;">${p.nom || ''} ${p.prenom || ''}<br><small style="color:#888;">${p.login}</small></td>
+            <td style="padding:5px 8px;color:#555;font-size:.87em;">${p.service_nom || '-'}</td>
+            <td style="padding:5px 8px;text-align:center;">
+                <span style="background:${p.role==='gestionnaire'?'#2563a8':'#6c757d'};color:#fff;padding:2px 8px;border-radius:10px;font-size:.82em;">${p.role}</span>
+            </td>
+            <td style="padding:5px 8px;text-align:center;">
+                <button class="btn btn-danger btn-sm" onclick="removeBudgetPerm(${p.user_id})">Révoquer</button>
+            </td>
+        </tr>`).join('');
+    } catch(e) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#e74c3c;padding:12px;">Erreur de chargement.</td></tr>';
+    }
+}
+
+async function addBudgetPerm() {
+    const userId = document.getElementById('perm-user-select').value;
+    const role   = document.getElementById('perm-role-select').value;
+    if (!userId) { showMsg('Sélectionner un utilisateur', false); return; }
+    try {
+        await apiFetch(`/budget/${_currentBudgetPermId}/permissions`, {
+            method: 'POST', body: JSON.stringify({ user_id: parseInt(userId), role })
+        });
+        showMsg('Accès accordé');
+        await _refreshBudgetPerms();
+        document.getElementById('perm-user-select').value = '';
+    } catch(e) { showMsg(e.message, false); }
+}
+
+async function removeBudgetPerm(userId) {
+    if (!confirm('Révoquer cet accès ?')) return;
+    try {
+        await apiFetch(`/budget/${_currentBudgetPermId}/permissions/${userId}`, { method: 'DELETE' });
+        showMsg('Accès révoqué');
+        await _refreshBudgetPerms();
+    } catch(e) { showMsg(e.message, false); }
 }
 
 async function addBudget() {
