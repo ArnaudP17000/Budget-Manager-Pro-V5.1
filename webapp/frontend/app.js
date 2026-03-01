@@ -1419,6 +1419,7 @@ async function ficheProjet(id) {
                         <option value="">— Tous types de contact —</option>
                         <option value="Élu">Élu</option>
                         <option value="Direction">Direction</option>
+                        <option value="Service">Service</option>
                         <option value="Prestataire">Prestataire</option>
                         <option value="AMO">AMO</option>
                     </select>
@@ -1463,6 +1464,7 @@ async function ficheProjet(id) {
                         <option value="">— Tous types de contact —</option>
                         <option value="Élu">Élu</option>
                         <option value="Direction">Direction</option>
+                        <option value="Service">Service</option>
                         <option value="Prestataire">Prestataire</option>
                         <option value="AMO">AMO</option>
                     </select>
@@ -1511,6 +1513,7 @@ async function ficheProjet(id) {
                     <option value="">— Tous types de contact —</option>
                     <option value="Élu">Élu</option>
                     <option value="Direction">Direction</option>
+                    <option value="Service">Service</option>
                     <option value="Prestataire">Prestataire</option>
                     <option value="AMO">AMO</option>
                 </select>
