@@ -111,9 +111,13 @@ class ProjetService:
 
             # ── Contacts externes (projet_contacts) ─────────────────────────
             contacts_ext = self.db.fetch_all(
-                "SELECT pc.contact_id, pc.role, c.nom, c.prenom, c.email, c.telephone, c.organisation "
+                "SELECT pc.contact_id, pc.role, "
+                "  COALESCE(pc.contact_libre, TRIM(COALESCE(c.prenom,'') || ' ' || COALESCE(c.nom,''))) as nom_affiche, "
+                "  COALESCE(c.nom,'') as nom, COALESCE(c.prenom,'') as prenom, "
+                "  COALESCE(c.email,'') as email, COALESCE(c.telephone,'') as telephone, "
+                "  COALESCE(c.organisation,'') as organisation "
                 "FROM projet_contacts pc "
-                "JOIN contacts c ON c.id = pc.contact_id "
+                "LEFT JOIN contacts c ON c.id = pc.contact_id "
                 "WHERE pc.projet_id = %s",
                 [projet_id]
             )
@@ -157,14 +161,20 @@ class ProjetService:
             [membre_id, projet_id]
         )
 
-    def add_projet_contact(self, projet_id, contact_id, role=None):
+    def add_projet_contact(self, projet_id, contact_id=None, role=None, contact_libre=None):
         self.db.execute(
-            "INSERT INTO projet_contacts (projet_id, contact_id, role) VALUES (%s, %s, %s)",
-            [projet_id, contact_id, role or None]
+            "INSERT INTO projet_contacts (projet_id, contact_id, role, contact_libre) VALUES (%s, %s, %s, %s)",
+            [projet_id, contact_id or None, role or None, contact_libre or None]
         )
 
-    def remove_projet_contact(self, projet_id, contact_id):
-        self.db.execute(
-            "DELETE FROM projet_contacts WHERE projet_id=%s AND contact_id=%s",
-            [projet_id, contact_id]
-        )
+    def remove_projet_contact(self, projet_id, contact_id=None, contact_libre=None):
+        if contact_id:
+            self.db.execute(
+                "DELETE FROM projet_contacts WHERE projet_id=%s AND contact_id=%s",
+                [projet_id, contact_id]
+            )
+        else:
+            self.db.execute(
+                "DELETE FROM projet_contacts WHERE projet_id=%s AND contact_libre=%s",
+                [projet_id, contact_libre]
+            )

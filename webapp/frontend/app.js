@@ -1399,14 +1399,19 @@ async function ficheProjet(id) {
         })();
 
         // ── Contacts HTML ───────────────────────────────────────────────────
-        const contactRows = (p.contacts_externes || []).map(c => `<tr style="border-bottom:1px solid #eee;">
+        const contactRows = (p.contacts_externes || []).map(c => {
+            const delBtn = c.contact_id
+                ? `onclick="deleteProjetContact(${id},${c.contact_id},null)"`
+                : `onclick="deleteProjetContact(${id},null,'${(c.nom_affiche||'').replace(/'/g,"\\'")}')"`;
+            return `<tr style="border-bottom:1px solid #eee;">
                     <td style="padding:5px;font-weight:bold;color:#2563a8;">${c.role || '-'}</td>
-                    <td>${c.prenom || ''} ${c.nom || ''}</td>
+                    <td>${c.nom_affiche || (c.prenom + ' ' + c.nom).trim() || '-'}</td>
                     <td style="color:#666;">${c.organisation || '-'}</td>
                     <td style="color:#2563a8;">${c.email || '-'}</td>
                     <td>${c.telephone || '-'}</td>
-                    <td style="text-align:center;"><button onclick="deleteProjetContact(${id},${c.contact_id})" style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:1.1em;line-height:1;" title="Retirer">×</button></td>
-                </tr>`).join('');
+                    <td style="text-align:center;"><button ${delBtn} style="background:none;border:none;color:#e74c3c;cursor:pointer;font-size:1.1em;line-height:1;" title="Retirer">×</button></td>
+                </tr>`;
+        }).join('');
         const contactsHtml = `<div style="background:#fff;border-radius:8px;padding:12px;border:1px solid #eee;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <div style="font-size:.75em;font-weight:bold;color:#555;text-transform:uppercase;">📞 Contacts externes (${(p.contacts_externes||[]).length})</div>
@@ -1419,9 +1424,10 @@ async function ficheProjet(id) {
             : '<p style="color:#aaa;font-size:.85em;font-style:italic;margin:4px 0 8px;">Aucun contact externe lié.</p>'}
             <div id="add-contact-form-${id}" style="display:none;margin-top:10px;padding:10px;background:#f0f4ff;border-radius:6px;border:1px solid #c5d5f5;">
                 <div style="font-size:.78em;font-weight:bold;color:#2563a8;margin-bottom:6px;">Lier un contact</div>
-                <select id="new-contact-id-${id}" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
-                    <option value="">-- Sélectionner un contact --</option>
+                <select id="new-contact-id-${id}" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:4px;">
+                    <option value="">-- Sélectionner dans la liste --</option>
                 </select>
+                <input id="new-contact-libre-${id}" type="text" placeholder="Ou saisir un nom libre (si absent de la liste)" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
                 <input id="new-contact-role-${id}" type="text" placeholder="Rôle (ex: Chef de projet, Référent...)" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
                 <div style="display:flex;gap:6px;">
                     <button onclick="saveProjetContact(${id})" style="background:#27ae60;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Ajouter</button>
@@ -2260,20 +2266,28 @@ async function showAddContactForm(projetId) {
 }
 
 async function saveProjetContact(projetId) {
-    const contactId = document.getElementById(`new-contact-id-${projetId}`)?.value;
-    const role      = document.getElementById(`new-contact-role-${projetId}`)?.value?.trim();
-    if (!contactId) { showMsg('Sélectionnez un contact', false); return; }
-    await apiFetch(`/projet/${projetId}/contact`, {
-        method: 'POST',
-        body: JSON.stringify({ contact_id: parseInt(contactId), role })
-    });
+    const contactId    = document.getElementById(`new-contact-id-${projetId}`)?.value;
+    const contactLibre = document.getElementById(`new-contact-libre-${projetId}`)?.value?.trim();
+    const role         = document.getElementById(`new-contact-role-${projetId}`)?.value?.trim();
+    if (!contactId && !contactLibre) { showMsg('Sélectionnez un contact ou saisissez un nom', false); return; }
+    const body = { role };
+    if (contactId) body.contact_id = parseInt(contactId);
+    else body.contact_libre = contactLibre;
+    await apiFetch(`/projet/${projetId}/contact`, { method: 'POST', body: JSON.stringify(body) });
     await ficheProjet(projetId);
     switchProjTab('contacts');
 }
 
-async function deleteProjetContact(projetId, contactId) {
+async function deleteProjetContact(projetId, contactId, contactLibre) {
     if (!confirm('Retirer ce contact du projet ?')) return;
-    await apiFetch(`/projet/${projetId}/contact/${contactId}`, { method: 'DELETE' });
+    if (contactId) {
+        await apiFetch(`/projet/${projetId}/contact/${contactId}`, { method: 'DELETE' });
+    } else {
+        await apiFetch(`/projet/${projetId}/contact/libre`, {
+            method: 'DELETE',
+            body: JSON.stringify({ contact_libre: contactLibre })
+        });
+    }
     await ficheProjet(projetId);
     switchProjTab('contacts');
 }
