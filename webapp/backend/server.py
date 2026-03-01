@@ -108,6 +108,17 @@ def run_migrations():
     except Exception:
         pass
 
+    # ── Resync séquences (évite duplicate key après import CSV) ─
+    for table in ['projets', 'services', 'utilisateurs', 'contacts',
+                  'taches', 'contrats', 'bons_commande', 'fournisseurs']:
+        try:
+            db.execute(
+                f"SELECT setval('{table}_id_seq', "
+                f"GREATEST(1, (SELECT COALESCE(MAX(id), 1) FROM {table})))"
+            )
+        except Exception:
+            pass
+
     # ── Compte admin par défaut (idempotent) ────────────────
     try:
         existing = db.fetch_one(
