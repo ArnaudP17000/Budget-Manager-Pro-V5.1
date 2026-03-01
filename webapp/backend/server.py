@@ -68,6 +68,20 @@ def run_migrations():
     except Exception:
         pass
 
+    # ── Colonnes services (Unités) ──────────────────────────
+    try:
+        db.execute(
+            "ALTER TABLE services ADD COLUMN IF NOT EXISTS nb_personnes INTEGER"
+        )
+    except Exception:
+        pass
+    try:
+        db.execute(
+            "ALTER TABLE services ADD COLUMN IF NOT EXISTS membres_label TEXT"
+        )
+    except Exception:
+        pass
+
     # ── Colonne projet_contacts (contact libre + contact_id nullable) ─────
     try:
         db.execute(

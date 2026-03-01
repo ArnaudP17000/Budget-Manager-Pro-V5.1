@@ -683,20 +683,21 @@
     </div>
 </div>
 
-<!-- ══════════════════ SERVICES ══════════════════ -->
+<!-- ══════════════════ SERVICES / UNITÉS ══════════════════ -->
 <div id="view-services" class="view">
-    <h2>Services / Organisation</h2>
+    <h2>Services &amp; Unités</h2>
     <div class="form-card">
-        <h3>Nouveau service</h3>
+        <h3>Nouveau service / unité</h3>
         <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;">
             <input id="service-code" class="form-control" placeholder="Code (ex: DSI)">
-            <input id="service-nom" class="form-control" placeholder="Nom du service *">
+            <input id="service-nom" class="form-control" placeholder="Nom *">
             <select id="service-parent" class="form-control">
-                <option value="">-- Service parent (optionnel) --</option>
+                <option value="">-- Service parent → devient une Unité --</option>
             </select>
             <select id="service-responsable" class="form-control">
-                <option value="">-- Responsable (optionnel) --</option>
+                <option value="">-- Responsable d'unité (optionnel) --</option>
             </select>
+            <input id="service-nb-personnes" class="form-control" type="number" min="0" placeholder="Nb personnes">
             <div style="grid-column:1/-1;text-align:right;">
                 <button class="btn btn-primary" onclick="addService()">+ Ajouter</button>
             </div>
@@ -705,32 +706,44 @@
     <div class="tbl-wrap">
     <table>
         <thead><tr>
-            <th>Code</th><th>Nom</th><th>Responsable</th>
-            <th>Service parent</th><th>Nb projets</th><th>Actions</th>
+            <th>Type</th><th>Code</th><th>Nom</th><th>Responsable</th>
+            <th>Service parent</th><th>Nb personnes</th><th>Membres sys.</th><th>Actions</th>
         </tr></thead>
         <tbody id="services-tbody"></tbody>
     </table>
     </div>
 </div>
 
-<!-- ══════════════════ MODAL ÉDITER SERVICE ══════════════════ -->
+<!-- ══════════════════ MODAL ÉDITER SERVICE / UNITÉ ══════════════════ -->
 <div class="modal-overlay" id="modal-edit-service">
-    <div class="modal" style="max-width:480px;">
+    <div class="modal" style="max-width:580px;">
         <button class="modal-close" onclick="closeModal('modal-edit-service')">✕</button>
-        <h3>Modifier le service</h3>
+        <h3 id="edit-service-title">Modifier le service</h3>
         <input type="hidden" id="edit-service-id">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
             <div><label>Code</label><input id="edit-service-code" class="form-control" placeholder="Ex: DSI"></div>
-            <div><label>Nom *</label><input id="edit-service-nom" class="form-control" placeholder="Nom du service"></div>
-            <div style="grid-column:1/-1;"><label>Service parent</label>
+            <div><label>Nom *</label><input id="edit-service-nom" class="form-control" placeholder="Nom"></div>
+            <div style="grid-column:1/-1;"><label>Service parent <small style="color:#888;">(si renseigné → c'est une Unité)</small></label>
                 <select id="edit-service-parent" class="form-control">
                     <option value="">-- Aucun (service racine) --</option>
                 </select>
             </div>
-            <div style="grid-column:1/-1;"><label>Responsable</label>
+            <div style="grid-column:1/-1;"><label>Responsable d'unité</label>
                 <select id="edit-service-responsable" class="form-control">
                     <option value="">-- Aucun --</option>
                 </select>
+            </div>
+            <div><label>Nb personnes (effectif déclaré)</label>
+                <input id="edit-service-nb-personnes" class="form-control" type="number" min="0" placeholder="0">
+            </div>
+            <div></div>
+            <div style="grid-column:1/-1;"><label>Membres de l'unité <small style="color:#888;">(noms libres, un par ligne)</small></label>
+                <textarea id="edit-service-membres" class="form-control" rows="4"
+                    placeholder="Ex:&#10;Jean Dupont — Chef de projet&#10;Marie Martin — Développeuse"></textarea>
+            </div>
+            <div style="grid-column:1/-1;" id="edit-service-membres-sys-wrap">
+                <label>Membres avec compte système <small style="color:#888;">(liés via Admin Utilisateurs)</small></label>
+                <div id="edit-service-membres-sys" style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;padding:8px;min-height:36px;font-size:.85em;"></div>
             </div>
         </div>
         <div style="margin-top:16px;text-align:right;">
@@ -1357,6 +1370,6 @@
 
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
-<script src="app.js?v=5.61"></script>
+<script src="app.js?v=5.62"></script>
 </body>
 </html>
