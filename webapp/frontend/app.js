@@ -329,7 +329,7 @@ async function loadAllLignes() {
                 : '<span style="color:#27ae60;font-weight:bold;">✓ OK</span>';
             const solde = parseFloat(l.montant_solde || 0);
             const soldeColor = solde < 0 ? 'color:#e74c3c;font-weight:bold;' : 'color:#27ae60;';
-            return `<tr class="ligne-row${_lignesSelectId===l.id?' selected':''}" data-id="${l.id}" onclick="selectLigne(${l.id}, '${(l.libelle||'Ligne #'+l.id).replace(/'/g,"&#39;")}')">
+            return `<tr class="ligne-row${_lignesSelectId===l.id?' selected':''}" data-id="${l.id}" onclick="selectLigne(${l.id}, '${(l.libelle||'Ligne #'+l.id).replace(/['\u2018\u2019]/g,"&#39;")}')">
                 <td>${i+1}</td>
                 <td>${l.libelle || '-'}</td>
                 <td>${l.application_nom || '-'}</td>
@@ -501,7 +501,7 @@ async function loadBudget() {
             const vote   = b.montant_vote   || 0;
             const engage = b.montant_engage || 0;
             const label    = `${b.entite_code || b.entite_nom || '?'} — ${b.exercice || '?'} (${b.nature || '?'})`;
-            const labelEsc = label.replace(/'/g, "\\'");
+            const labelEsc = label.replace(/['\u2018\u2019]/g, "\\'");
             return `<tr>
                 <td>${b.id}</td>
                 <td>${b.entite_code || b.entite_nom || '-'}</td>
@@ -1487,7 +1487,7 @@ async function ficheProjet(id) {
         const contactRows = (p.contacts_externes || []).map(c => {
             const delBtn = c.contact_id
                 ? `onclick="deleteProjetContact(${id},${c.contact_id},null)"`
-                : `onclick="deleteProjetContact(${id},null,'${(c.nom_affiche||'').replace(/'/g,"\\'")}')"`;
+                : `onclick="deleteProjetContact(${id},null,'${(c.nom_affiche||'').replace(/['\u2018\u2019]/g,"\\'")}')"`;
             return `<tr style="border-bottom:1px solid #eee;">
                     <td style="padding:5px;font-weight:bold;color:#2563a8;">${c.role || '-'}</td>
                     <td>${c.nom_affiche || (c.prenom + ' ' + c.nom).trim() || '-'}</td>
