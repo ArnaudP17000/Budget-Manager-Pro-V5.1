@@ -577,15 +577,16 @@ def generer_fiche_projet(data: dict, output_path: str) -> str:
             elif crit >= 3:  niv, fc = 'Modere',   'F1C40F'
             else:             niv, fc = 'Faible',   '27AE60'
             bg = GRAY4 if i % 2 else WHITE
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
             _build_row(t, [
                 dict(text=rsk.get('description', ''), fill=bg, size=8),
                 dict(text=rsk.get('categorie', ''),   fill=bg, size=8),
-                dict(text=str(rsk.get('probabilite', '')), fill=bg, size=8, align='center'),
-                dict(text=str(rsk.get('impact', '')),      fill=bg, size=8, align='center'),
+                dict(text=str(rsk.get('probabilite', '')), fill=bg, size=8, align=WD_ALIGN_PARAGRAPH.CENTER),
+                dict(text=str(rsk.get('impact', '')),      fill=bg, size=8, align=WD_ALIGN_PARAGRAPH.CENTER),
                 dict(text=str(crit), fill='#' + fc, bold=True, size=9,
-                     color='FFFFFF', align='center'),
+                     color='FFFFFF', align=WD_ALIGN_PARAGRAPH.CENTER),
                 dict(text=rsk.get('action', ''), fill=bg, size=8),
-                dict(text=rsk.get('statut', ''), fill=PINK, size=8, align='center'),
+                dict(text=rsk.get('statut', ''), fill=PINK, size=8, align=WD_ALIGN_PARAGRAPH.CENTER),
             ])
     else:
         _build_row(t, [dict(text='Aucun risque enregistre dans le registre.',

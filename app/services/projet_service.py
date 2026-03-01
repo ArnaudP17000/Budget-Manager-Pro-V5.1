@@ -81,7 +81,7 @@ class ProjetService:
         try:
             query = "SELECT * FROM projets WHERE id = ?"
             result = self.db.fetch_one(query, (projet_id,))
-            return result
+            return row_to_dict(result) if result else None
         except Exception as e:
             logger.error(f"Erreur récupération projet {projet_id}: {e}")
             raise

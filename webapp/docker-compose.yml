@@ -1,0 +1,20 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: bmp_backend
+    restart: always
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    networks:
+      - default
+      - npm_net
+
+networks:
+  default: {}
+  npm_net:
+    external: true
+    name: ngxmanager_default
