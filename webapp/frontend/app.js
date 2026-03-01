@@ -1358,7 +1358,13 @@ async function ficheProjet(id) {
                 : '<p style="color:#aaa;font-size:.85em;font-style:italic;margin:4px 0 8px;">Aucun membre.</p>'}
                 <div id="add-membre-form-${id}" style="display:none;margin-top:10px;padding:10px;background:#f0f4ff;border-radius:6px;border:1px solid #c5d5f5;">
                     <div style="font-size:.78em;font-weight:bold;color:#2563a8;margin-bottom:6px;">Nouveau membre</div>
-                    <input id="new-membre-label-${id}" type="text" placeholder="Nom du membre" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
+                    <select id="new-membre-select-${id}" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:4px;">
+                        <option value="">-- Sélectionner un contact --</option>
+                    </select>
+                    <select id="new-service-select-${id}" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:4px;">
+                        <option value="">-- Ou sélectionner un service --</option>
+                    </select>
+                    <input id="new-membre-label-${id}" type="text" placeholder="Ou saisir un nom libre" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
                     <div style="display:flex;gap:6px;">
                         <button onclick="saveMembreEquipe(${id})" style="background:#27ae60;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Ajouter</button>
                         <button onclick="document.getElementById('add-membre-form-${id}').style.display='none'" style="background:#95a5a6;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Annuler</button>
@@ -1389,7 +1395,13 @@ async function ficheProjet(id) {
                 <p style="color:#aaa;font-size:.85em;font-style:italic;margin:4px 0 8px;">Aucun membre d'équipe renseigné.</p>
                 <div id="add-membre-form-${id}" style="display:none;margin-top:10px;padding:10px;background:#f0f4ff;border-radius:6px;border:1px solid #c5d5f5;">
                     <div style="font-size:.78em;font-weight:bold;color:#2563a8;margin-bottom:6px;">Nouveau membre</div>
-                    <input id="new-membre-label-${id}" type="text" placeholder="Nom du membre" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
+                    <select id="new-membre-select-${id}" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:4px;">
+                        <option value="">-- Sélectionner un contact --</option>
+                    </select>
+                    <select id="new-service-select-${id}" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:4px;">
+                        <option value="">-- Ou sélectionner un service --</option>
+                    </select>
+                    <input id="new-membre-label-${id}" type="text" placeholder="Ou saisir un nom libre" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
                     <div style="display:flex;gap:6px;">
                         <button onclick="saveMembreEquipe(${id})" style="background:#27ae60;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Ajouter</button>
                         <button onclick="document.getElementById('add-membre-form-${id}').style.display='none'" style="background:#95a5a6;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Annuler</button>
@@ -2216,20 +2228,47 @@ document.getElementById('header-date').textContent =
     new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
 // ─── Équipe projet ───────────────────────────────────────────────────────────
-function showAddMembreForm(projetId) {
+async function showAddMembreForm(projetId) {
     const form = document.getElementById(`add-membre-form-${projetId}`);
     if (!form) return;
     form.style.display = form.style.display === 'none' ? '' : 'none';
-    if (form.style.display !== 'none') {
-        const input = document.getElementById(`new-membre-label-${projetId}`);
-        if (input) { input.value = ''; input.focus(); }
-    }
+    if (form.style.display === 'none') return;
+
+    const contactSel = document.getElementById(`new-membre-select-${projetId}`);
+    const serviceSel = document.getElementById(`new-service-select-${projetId}`);
+    const labelInput = document.getElementById(`new-membre-label-${projetId}`);
+    if (contactSel) contactSel.innerHTML = '<option value="">-- Sélectionner un contact --</option>';
+    if (serviceSel) serviceSel.innerHTML = '<option value="">-- Ou sélectionner un service --</option>';
+    if (labelInput) labelInput.value = '';
+
+    try {
+        const [cData, sData] = await Promise.all([
+            apiFetch('/contact?limit=500'),
+            apiFetch('/service_org')
+        ]);
+        (cData.list || []).forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = `${c.prenom || ''} ${c.nom || ''}`.trim();
+            opt.textContent = `${c.prenom || ''} ${c.nom || ''}${c.organisation ? ' — ' + c.organisation : ''}`.trim();
+            contactSel?.appendChild(opt);
+        });
+        (sData.list || []).forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.nom || s.code || '';
+            opt.textContent = `${s.code ? s.code + ' — ' : ''}${s.nom || ''}`.trim();
+            serviceSel?.appendChild(opt);
+        });
+    } catch(e) {}
+
+    if (contactSel) contactSel.focus();
 }
 
 async function saveMembreEquipe(projetId) {
-    const input = document.getElementById(`new-membre-label-${projetId}`);
-    const label = input?.value?.trim();
-    if (!label) { if (input) input.focus(); return; }
+    const contactVal = document.getElementById(`new-membre-select-${projetId}`)?.value?.trim();
+    const serviceVal = document.getElementById(`new-service-select-${projetId}`)?.value?.trim();
+    const libreVal   = document.getElementById(`new-membre-label-${projetId}`)?.value?.trim();
+    const label = contactVal || serviceVal || libreVal;
+    if (!label) { showMsg('Renseignez un membre', false); return; }
     await apiFetch(`/projet/${projetId}/equipe`, {
         method: 'POST',
         body: JSON.stringify({ membre_label: label })
