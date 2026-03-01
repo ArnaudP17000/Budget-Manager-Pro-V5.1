@@ -707,11 +707,21 @@
             </div>
         </div>
     </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <input id="service-search" class="form-control" placeholder="🔍 Rechercher (code, nom, responsable…)"
+            oninput="filterServices()" style="max-width:340px;">
+        <button class="btn" onclick="document.getElementById('service-search').value='';filterServices();"
+            style="padding:6px 14px;font-size:.85em;">✕ Effacer</button>
+    </div>
     <div class="tbl-wrap">
-    <table>
+    <table id="services-table">
         <thead><tr>
-            <th>Type</th><th>Code</th><th>Nom</th><th>Responsable</th>
-            <th>Service parent</th><th>Nb personnes</th><th>Membres sys.</th><th>Actions</th>
+            <th onclick="sortServices('type')" style="cursor:pointer;user-select:none;" title="Trier">Type <span id="sort-services-type"></span></th>
+            <th onclick="sortServices('code')" style="cursor:pointer;user-select:none;" title="Trier">Code <span id="sort-services-code"></span></th>
+            <th onclick="sortServices('nom')" style="cursor:pointer;user-select:none;" title="Trier">Nom <span id="sort-services-nom"></span></th>
+            <th onclick="sortServices('responsable_nom')" style="cursor:pointer;user-select:none;" title="Trier">Responsable <span id="sort-services-responsable_nom"></span></th>
+            <th onclick="sortServices('parent_nom')" style="cursor:pointer;user-select:none;" title="Trier">Service parent <span id="sort-services-parent_nom"></span></th>
+            <th>Nb personnes</th><th>Membres sys.</th><th>Actions</th>
         </tr></thead>
         <tbody id="services-tbody"></tbody>
     </table>
@@ -1378,6 +1388,6 @@
 
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
-<script src="app.js?v=5.63"></script>
+<script src="app.js?v=5.64"></script>
 </body>
 </html>
