@@ -312,7 +312,7 @@
 
     <!-- ── Sous-onglet : Budgets annuels ── -->
     <div id="budget-sub-budgets" class="budget-subview active">
-        <div class="form-card">
+        <div class="form-card" id="budget-new-card">
             <h3>Nouveau budget</h3>
             <div class="form-grid">
                 <select id="budget-entite"><option value="">-- Entité --</option></select>
@@ -331,7 +331,10 @@
                 <button class="btn btn-primary" onclick="addBudget()">+ Ajouter</button>
             </div>
         </div>
-        <div class="tbl-wrap">
+        <div id="budget-empty-msg" style="display:none;text-align:center;color:#888;padding:32px 16px;font-style:italic;background:#f9f9f9;border-radius:8px;margin:12px 0;">
+            Aucun budget ne vous a été attribué. Contactez l'administrateur pour obtenir un accès.
+        </div>
+        <div class="tbl-wrap" id="budget-table-wrap">
         <table>
             <thead><tr>
                 <th>ID</th><th>Entité</th><th>Exercice</th><th>Nature</th>
@@ -963,6 +966,41 @@
     </div>
 </div>
 
+<!-- ══════════════════ MODAL PERMISSIONS BUDGET ══════════════════ -->
+<div class="modal-overlay" id="modal-budget-perms">
+    <div class="modal" style="max-width:620px;">
+        <button class="modal-close" onclick="closeModal('modal-budget-perms')">✕</button>
+        <h3 id="budget-perms-titre">Gestion des accès — Budget</h3>
+        <div class="modal-section">
+            <h4 style="margin:0 0 8px;font-size:.93em;color:#555;">Utilisateurs ayant accès</h4>
+            <table style="width:100%;border-collapse:collapse;font-size:.88em;">
+                <thead><tr style="background:#f0f4ff;">
+                    <th style="padding:6px 8px;text-align:left;">Utilisateur</th>
+                    <th style="padding:6px 8px;text-align:left;">Service</th>
+                    <th style="padding:6px 8px;text-align:center;">Rôle budget</th>
+                    <th style="padding:6px 8px;text-align:center;">Action</th>
+                </tr></thead>
+                <tbody id="budget-perms-tbody">
+                    <tr><td colspan="4" style="text-align:center;color:#999;padding:12px;">Chargement...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="modal-section" style="background:#f9f9f9;border-radius:6px;padding:12px;">
+            <h4 style="margin:0 0 10px;font-size:.93em;color:#555;">Accorder un accès</h4>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <select id="perm-user-select" style="flex:1;min-width:180px;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">-- Sélectionner un utilisateur --</option>
+                </select>
+                <select id="perm-role-select" style="width:140px;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="lecteur">Lecteur</option>
+                    <option value="gestionnaire">Gestionnaire</option>
+                </select>
+                <button class="btn btn-success" onclick="addBudgetPerm()" style="white-space:nowrap;">+ Accorder</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ══════════════════ MODAL ÉDITER BC ══════════════════ -->
 <div class="modal-overlay" id="modal-edit-bc">
     <div class="modal" style="max-width:680px;">
@@ -1417,6 +1455,6 @@
 
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
-<script src="app.js?v=5.69"></script>
+<script src="app.js?v=5.70"></script>
 </body>
 </html>

@@ -122,6 +122,21 @@ def run_migrations():
     except Exception:
         pass
 
+    # ── Permissions budgets (accès explicite par utilisateur) ───
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS budget_permissions (
+                id SERIAL PRIMARY KEY,
+                budget_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role VARCHAR(20) DEFAULT 'lecteur',
+                date_creation TIMESTAMP DEFAULT NOW(),
+                UNIQUE(budget_id, user_id)
+            )
+        """)
+    except Exception:
+        pass
+
     # ── Resync séquences (évite duplicate key après import CSV) ─
     for table in ['projets', 'services', 'utilisateurs', 'contacts',
                   'taches', 'contrats', 'bons_commande', 'fournisseurs']:
