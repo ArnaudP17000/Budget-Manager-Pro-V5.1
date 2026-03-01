@@ -517,23 +517,26 @@ def _ownership_where(user_id, role, service_id, alias='bc'):
     """
     Retourne (clause WHERE, params) pour filtrer par propriétaire.
     - admin        → voit tout
-    - gestionnaire → voit les siens + tous les membres de son service
+    - gestionnaire → voit les siens + tous les membres de son service/unité
     - lecteur      → voit uniquement les siens
-    Les enregistrements sans created_by_id (données historiques) sont visibles
-    aux admins et gestionnaires pour ne pas casser l'existant.
+    Les enregistrements sans created_by_id (NULL = données historiques)
+    sont visibles uniquement par admin. Les non-admins ne voient QUE
+    les enregistrements avec un created_by_id explicite.
     """
     p = alias + '.'
     if role == 'admin':
         return "1=1", []
-    elif role == 'gestionnaire':
+    elif role == 'gestionnaire' and service_id:
+        # Chef de service : voit tous les membres de son service/unité
         return (
             f"({p}created_by_id = %s "
-            f"OR {p}created_by_id IN (SELECT id FROM utilisateurs WHERE service_id = %s) "
-            f"OR {p}created_by_id IS NULL)",
+            f"OR {p}created_by_id IN "
+            f"(SELECT id FROM utilisateurs WHERE service_id = %s AND actif = true))",
             [user_id, service_id]
         )
-    else:  # lecteur
-        return f"({p}created_by_id = %s OR {p}created_by_id IS NULL)", [user_id]
+    else:
+        # lecteur (ou gestionnaire sans service) : uniquement les siens
+        return f"{p}created_by_id = %s", [user_id]
 
 
 @routes.route('/bon_commande', methods=['GET'])
@@ -1029,27 +1032,74 @@ def remove_projet_contact_libre(projet_id):
 # TÂCHES
 # ─────────────────────────────────────────────
 
+def _tache_visibility_where(user_id, role, service_id):
+    """
+    Filtre de visibilité pour les tâches :
+    - admin        → voit tout
+    - gestionnaire → voit toutes les tâches assignées à son service/unité (+ les siennes)
+    - lecteur      → voit uniquement les tâches qui lui sont assignées ou qu'il a créées
+    Les tâches sans assignee (NULL) sont visibles aux gestionnaires et admins.
+    """
+    if role == 'admin':
+        return "1=1", []
+    elif role == 'gestionnaire' and service_id:
+        return (
+            "(t.assignee_id = %s "
+            "OR t.created_by_id = %s "
+            "OR t.assignee_id IN (SELECT id FROM utilisateurs WHERE service_id = %s AND actif = true) "
+            "OR t.created_by_id IN (SELECT id FROM utilisateurs WHERE service_id = %s AND actif = true) "
+            "OR t.assignee_id IS NULL)",
+            [user_id, user_id, service_id, service_id]
+        )
+    else:
+        # lecteur ou gestionnaire sans service : uniquement les siennes
+        return "(t.assignee_id = %s OR t.created_by_id = %s)", [user_id, user_id]
+
+
 @routes.route('/tache', methods=['GET'])
 @require_auth()
 def get_taches():
-    taches = tache_service.get_all()
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    if role == 'admin':
+        taches = tache_service.get_all()
+    else:
+        where, params = _tache_visibility_where(user_id, role, service_id)
+        rows = tache_service.db.fetch_all(
+            "SELECT t.*, p.nom as projet_nom, p.code as projet_code, "
+            "u.nom || ' ' || u.prenom as assignee_nom, "
+            "u.id as assignee_user_id, "
+            "s.nom as assignee_service_nom, s.code as assignee_service_code, "
+            "s.is_unite as assignee_is_unite "
+            "FROM taches t "
+            "LEFT JOIN projets p ON p.id = t.projet_id "
+            "LEFT JOIN utilisateurs u ON u.id = t.assignee_id "
+            "LEFT JOIN services s ON s.id = u.service_id "
+            f"WHERE {where} "
+            "ORDER BY t.date_echeance ASC NULLS LAST, t.id DESC",
+            params
+        )
+        taches = [dict(r) for r in (rows or [])]
     return jsonify({"count": len(taches), "list": taches})
+
 
 @routes.route('/tache', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def create_tache():
-    data = request.json
+    data    = request.json
+    user_id = g.user.get('sub')
     try:
         tache_service.db.execute(
             "INSERT INTO taches (projet_id, titre, statut, priorite, date_debut, date_echeance, "
-            "estimation_heures, avancement, responsable_label, assignee_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "estimation_heures, avancement, responsable_label, assignee_id, created_by_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             [data.get('projet_id') or None, data.get('titre'),
              data.get('statut', 'A faire'), data.get('priorite'),
              data.get('date_debut') or None, data.get('date_echeance') or None,
              data.get('estimation_heures') or None, data.get('avancement') or 0,
              data.get('responsable_label') or None,
-             data.get('assignee_id') or None]
+             data.get('assignee_id') or None, user_id]
         )
         return jsonify({"success": True}), 201
     except Exception as e:
@@ -1285,9 +1335,30 @@ def get_referentiels():
 @routes.route('/kanban', methods=['GET'])
 @require_auth()
 def kanban():
-    projet_id = request.args.get('projet_id')
-    user_id   = request.args.get('user_id')
-    taches = tache_service.get_all()
+    cur_user_id = g.user.get('sub')
+    role        = g.user.get('role')
+    service_id  = g.user.get('service_id')
+    projet_id   = request.args.get('projet_id')
+    user_id     = request.args.get('user_id')
+
+    if role == 'admin':
+        taches = tache_service.get_all()
+    else:
+        where, params = _tache_visibility_where(cur_user_id, role, service_id)
+        rows = tache_service.db.fetch_all(
+            "SELECT t.*, p.nom as projet_nom, p.code as projet_code, "
+            "u.nom || ' ' || u.prenom as assignee_nom, u.id as assignee_user_id, "
+            "s.nom as assignee_service_nom, s.code as assignee_service_code, "
+            "s.is_unite as assignee_is_unite "
+            "FROM taches t "
+            "LEFT JOIN projets p ON p.id = t.projet_id "
+            "LEFT JOIN utilisateurs u ON u.id = t.assignee_id "
+            "LEFT JOIN services s ON s.id = u.service_id "
+            f"WHERE {where} ORDER BY t.date_echeance ASC NULLS LAST",
+            params
+        )
+        taches = [dict(r) for r in (rows or [])]
+
     if projet_id:
         taches = [t for t in taches if str(t.get('projet_id', '')) == str(projet_id)]
     if user_id:
