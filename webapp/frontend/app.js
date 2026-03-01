@@ -701,6 +701,7 @@ async function loadBC() {
                 <td>${fmt(b.montant_ht)}</td>
                 <td>${fmt(b.montant_ttc)}</td>
                 <td>${badge(b.statut)}</td>
+                <td style="font-size:.78em;color:#555;">${b.createur_nom ? b.createur_nom.trim() : '<span style="color:#bbb">—</span>'}</td>
                 <td style="white-space:nowrap;">
                     <button class="btn btn-info btn-sm" onclick="ficheBc(${b.id})">Fiche</button>
                     <button class="btn btn-sm" style="background:#6c757d;color:#fff;" onclick="editBC(${b.id})">Modifier</button>
@@ -922,6 +923,7 @@ async function loadContrats() {
                 <td>${badge(c.statut)}</td>
                 <td style="font-size:.78em;">${c.type_contrat || '-'}</td>
                 <td>${alerteBadge(niveau)}</td>
+                <td style="font-size:.78em;color:#555;">${c.createur_nom ? c.createur_nom.trim() : '<span style="color:#bbb">—</span>'}</td>
                 <td style="white-space:nowrap;">
                     <button class="btn btn-info btn-sm" onclick="ficheContrat(${c.id})">Fiche</button>
                     <button class="btn btn-warning btn-sm" onclick="editContrat(${c.id})">Éditer</button>
