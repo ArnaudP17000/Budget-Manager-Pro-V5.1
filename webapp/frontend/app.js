@@ -2690,35 +2690,57 @@ async function deleteAdminUser(id) {
 }
 
 function _buildServiceOptions(sel, selectedId) {
-    const parents  = _adminServicesCache.filter(s => !s.parent_id);
-    const children = _adminServicesCache.filter(s =>  s.parent_id);
+    const all      = _adminServicesCache;
+    const byId     = Object.fromEntries(all.map(s => [s.id, s]));
+
     sel.innerHTML  = '';
-    const blankOpt = document.createElement('option');
-    blankOpt.value = ''; blankOpt.textContent = 'Aucun (accès global)';
-    sel.appendChild(blankOpt);
-    parents.forEach(p => {
-        const grp = document.createElement('optgroup');
-        grp.label = `${p.code ? p.code + ' - ' : ''}${p.nom}`;
-        const pOpt = document.createElement('option');
-        pOpt.value = p.id; pOpt.textContent = p.nom;
-        if (selectedId && p.id === selectedId) pOpt.selected = true;
-        grp.appendChild(pOpt);
-        children.filter(c => c.parent_id === p.id).forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = c.id; opt.textContent = `└─ ${c.nom}`;
-            if (selectedId && c.id === selectedId) opt.selected = true;
-            grp.appendChild(opt);
+    sel.appendChild(Object.assign(document.createElement('option'),
+        { value: '', textContent: 'Aucun (accès global)' }));
+
+    function _opt(s, prefix) {
+        const o = document.createElement('option');
+        o.value = s.id;
+        const parentLabel = s.parent_id && byId[s.parent_id]
+            ? ` (${byId[s.parent_id].code || byId[s.parent_id].nom})` : '';
+        o.textContent = prefix + (s.code ? s.code + ' – ' : '') + s.nom + parentLabel;
+        if (selectedId && s.id == selectedId) o.selected = true;
+        return o;
+    }
+
+    // ── Section Services ──────────────────────────────────────
+    const svcList = all.filter(s => !s.is_unite);
+    if (svcList.length) {
+        const grpSvc = document.createElement('optgroup');
+        grpSvc.label = '── Services ──';
+        const roots = svcList.filter(s => !s.parent_id);
+        const kids  = svcList.filter(s =>  s.parent_id);
+        const rootIds = new Set(roots.map(r => r.id));
+        roots.forEach(p => {
+            grpSvc.appendChild(_opt(p, ''));
+            kids.filter(c => c.parent_id === p.id).forEach(c => grpSvc.appendChild(_opt(c, '  └─ ')));
         });
-        sel.appendChild(grp);
-    });
-    // Orphan children (parent not in list)
-    const parentIds = new Set(parents.map(p => p.id));
-    children.filter(c => !parentIds.has(c.parent_id)).forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c.id; opt.textContent = c.nom;
-        if (selectedId && c.id === selectedId) opt.selected = true;
-        sel.appendChild(opt);
-    });
+        kids.filter(c => !rootIds.has(c.parent_id)).forEach(c => grpSvc.appendChild(_opt(c, '  └─ ')));
+        sel.appendChild(grpSvc);
+    }
+
+    // ── Section Unités ────────────────────────────────────────
+    const uniList = all.filter(s => s.is_unite);
+    if (uniList.length) {
+        const grpUni = document.createElement('optgroup');
+        grpUni.label = '── Unités ──';
+        // Trier : d'abord celles sans parent, puis les autres
+        const uRoots = uniList.filter(s => !s.parent_id);
+        const uKids  = uniList.filter(s =>  s.parent_id);
+        const uRootIds = new Set(uRoots.map(r => r.id));
+        uRoots.forEach(u => grpUni.appendChild(_opt(u, '')));
+        uKids.forEach(u => grpUni.appendChild(_opt(u, '  └─ ')));
+        // Unités enfants dont le parent est un Service (pas Unité)
+        all.filter(s => !s.is_unite).forEach(p => {
+            all.filter(c => c.is_unite && c.parent_id === p.id && !uRootIds.has(c.id))
+               .forEach(c => grpUni.appendChild(_opt(c, '  └─ ')));
+        });
+        sel.appendChild(grpUni);
+    }
 }
 
 function _populateNewUserServiceSelect() {
