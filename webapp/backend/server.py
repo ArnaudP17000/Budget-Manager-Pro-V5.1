@@ -66,6 +66,17 @@ def run_migrations():
 
 run_migrations()
 
+# Réinitialiser la connexion DB après les migrations
+# (psycopg2 n'est pas fork-safe : chaque worker gunicorn doit créer sa propre connexion)
+try:
+    from app.services.database_service import DatabaseService
+    if DatabaseService._connection and not DatabaseService._connection.closed:
+        DatabaseService._connection.close()
+    DatabaseService._connection = None
+    DatabaseService._instance = None
+except Exception:
+    pass
+
 
 @app.route('/')
 def index():
