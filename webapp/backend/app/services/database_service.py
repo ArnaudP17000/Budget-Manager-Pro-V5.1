@@ -41,50 +41,92 @@ class DatabaseService:
             self._connect()
         return self._connection
 
-    def fetch_all(self, query, params=None):
-        conn = self.get_connection()
+    def _reset_connection(self):
+        """Force la fermeture et réinitialise la connexion."""
         try:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(query, params or [])
-                return [dict(r) for r in cur.fetchall()]
-        except Exception as e:
-            conn.rollback()
-            raise
+            if self._connection and not self._connection.closed:
+                self._connection.close()
+        except Exception:
+            pass
+        DatabaseService._connection = None
+
+    def fetch_all(self, query, params=None):
+        for attempt in range(2):
+            conn = self.get_connection()
+            try:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(query, params or [])
+                    return [dict(r) for r in cur.fetchall()]
+            except psycopg2.InterfaceError:
+                self._reset_connection()
+                if attempt == 1:
+                    raise
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    self._reset_connection()
+                raise
 
     def fetch_one(self, query, params=None):
-        conn = self.get_connection()
-        try:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(query, params or [])
-                row = cur.fetchone()
-                return dict(row) if row else None
-        except Exception as e:
-            conn.rollback()
-            raise
+        for attempt in range(2):
+            conn = self.get_connection()
+            try:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(query, params or [])
+                    row = cur.fetchone()
+                    return dict(row) if row else None
+            except psycopg2.InterfaceError:
+                self._reset_connection()
+                if attempt == 1:
+                    raise
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    self._reset_connection()
+                raise
 
     def execute(self, query, params=None):
         """Exécute une requête d'écriture (INSERT/UPDATE/DELETE) et commit."""
-        conn = self.get_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(query, params or [])
-            conn.commit()
-        except Exception as e:
-            conn.rollback()
-            raise
+        for attempt in range(2):
+            conn = self.get_connection()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(query, params or [])
+                conn.commit()
+                return
+            except psycopg2.InterfaceError:
+                self._reset_connection()
+                if attempt == 1:
+                    raise
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    self._reset_connection()
+                raise
 
     def execute_returning(self, query, params=None):
         """Exécute un INSERT ... RETURNING et retourne la première ligne."""
-        conn = self.get_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(query, params or [])
-                result = cur.fetchone()
-            conn.commit()
-            return result
-        except Exception as e:
-            conn.rollback()
-            raise
+        for attempt in range(2):
+            conn = self.get_connection()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(query, params or [])
+                    result = cur.fetchone()
+                conn.commit()
+                return result
+            except psycopg2.InterfaceError:
+                self._reset_connection()
+                if attempt == 1:
+                    raise
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    self._reset_connection()
+                raise
 
 
 # Singleton partagé entre tous les services
