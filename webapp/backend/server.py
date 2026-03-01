@@ -54,6 +54,20 @@ def run_migrations():
     except Exception:
         pass
 
+    # ── Colonnes taches (Gantt) ─────────────────────────────
+    try:
+        db.execute(
+            "ALTER TABLE taches ADD COLUMN IF NOT EXISTS date_debut DATE"
+        )
+    except Exception:
+        pass
+    try:
+        db.execute(
+            "ALTER TABLE taches ADD COLUMN IF NOT EXISTS responsable_label TEXT"
+        )
+    except Exception:
+        pass
+
     # ── Colonne projet_contacts (contact libre + contact_id nullable) ─────
     try:
         db.execute(

@@ -209,7 +209,15 @@
         .lignes-bc-table tr:hover td { background: #2d3748; }
         .opp-field label { font-size: .78em; font-weight: bold; color: #555; text-transform: uppercase; display: block; margin-bottom: 3px; }
         .opp-field .opp-val { font-size: .88em; color: #333; white-space: pre-wrap; }
+        /* ── Gantt ── */
+        .gantt-wrap { overflow-x: auto; padding: 12px 0; }
+        .gantt .bar-label { font-size: .75em !important; }
+        .gantt-filter-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 10px 0 14px; }
+        .gantt-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: .8em; padding: 8px 0 4px; }
+        .gantt-legend-item { display: flex; align-items: center; gap: 5px; }
+        .gantt-legend-dot { width: 12px; height: 12px; border-radius: 3px; }
     </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
 </head>
 <body>
 
@@ -267,6 +275,7 @@
     <button onclick="showView('contacts')">Contacts</button>
     <button onclick="showView('services')">Services</button>
     <button onclick="showView('etp')">ETP</button>
+    <button onclick="showView('gantt')">Gantt</button>
     <button onclick="showView('notifications')">Notifications</button>
     <button id="nav-admin" onclick="showView('admin')" style="display:none;background:#c0392b;">Admin</button>
 </nav>
@@ -516,10 +525,24 @@
             <button class="btn btn-primary" onclick="addProjet()">+ Ajouter</button>
         </div>
     </div>
+    <div style="padding:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <select id="proj-filter-statut" class="form-control" style="width:auto;" onchange="applyProjetFilters()">
+            <option value="">Tous les statuts</option>
+            <option value="ACTIF">Actif</option>
+            <option value="EN_ATTENTE">En attente</option>
+            <option value="TERMINE">Terminé</option>
+            <option value="ANNULE">Annulé</option>
+        </select>
+        <select id="proj-filter-service" class="form-control" style="width:auto;" onchange="applyProjetFilters()">
+            <option value="">Tous les services</option>
+        </select>
+        <input id="proj-filter-search" class="form-control" style="width:220px;" placeholder="Recherche nom / code..." oninput="applyProjetFilters()">
+        <button class="btn" onclick="resetProjetFilters()" style="background:#e9ecef;border:1px solid #ccc;">✕ Réinitialiser</button>
+    </div>
     <div class="tbl-wrap">
     <table>
         <thead><tr>
-            <th>ID</th><th>Code</th><th>Nom</th><th>Type</th><th>Phase</th>
+            <th>Code</th><th>Nom</th><th>Type</th><th>Phase</th>
             <th>Statut</th><th>Priorité</th><th>Service</th>
             <th>Budget est. (€)</th><th>Avancement</th><th>Début</th><th>Fin prévue</th><th>Actions</th>
         </tr></thead>
@@ -549,8 +572,10 @@
                 <option value="NORMALE">Normale</option>
                 <option value="BASSE">Basse</option>
             </select>
-            <input id="tache-echeance" type="date">
+            <input id="tache-debut" type="date" title="Date début">
+            <input id="tache-echeance" type="date" title="Date échéance">
             <input id="tache-heures" placeholder="Heures estimées" type="number" step="0.5">
+            <input id="tache-responsable" placeholder="Responsable (nom libre)">
             <button class="btn btn-primary" onclick="addTache()">+ Ajouter</button>
         </div>
     </div>
@@ -661,20 +686,55 @@
     <h2>Services / Organisation</h2>
     <div class="form-card">
         <h3>Nouveau service</h3>
-        <div class="form-grid">
-            <input id="service-code" placeholder="Code (ex: DSI)">
-            <input id="service-nom" placeholder="Nom du service">
-            <button class="btn btn-primary" onclick="addService()">+ Ajouter</button>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;">
+            <input id="service-code" class="form-control" placeholder="Code (ex: DSI)">
+            <input id="service-nom" class="form-control" placeholder="Nom du service *">
+            <select id="service-parent" class="form-control">
+                <option value="">-- Service parent (optionnel) --</option>
+            </select>
+            <select id="service-responsable" class="form-control">
+                <option value="">-- Responsable (optionnel) --</option>
+            </select>
+            <div style="grid-column:1/-1;text-align:right;">
+                <button class="btn btn-primary" onclick="addService()">+ Ajouter</button>
+            </div>
         </div>
     </div>
     <div class="tbl-wrap">
     <table>
         <thead><tr>
-            <th>ID</th><th>Code</th><th>Nom</th><th>Responsable</th>
+            <th>Code</th><th>Nom</th><th>Responsable</th>
             <th>Service parent</th><th>Nb projets</th><th>Actions</th>
         </tr></thead>
         <tbody id="services-tbody"></tbody>
     </table>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL ÉDITER SERVICE ══════════════════ -->
+<div class="modal-overlay" id="modal-edit-service">
+    <div class="modal" style="max-width:480px;">
+        <button class="modal-close" onclick="closeModal('modal-edit-service')">✕</button>
+        <h3>Modifier le service</h3>
+        <input type="hidden" id="edit-service-id">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+            <div><label>Code</label><input id="edit-service-code" class="form-control" placeholder="Ex: DSI"></div>
+            <div><label>Nom *</label><input id="edit-service-nom" class="form-control" placeholder="Nom du service"></div>
+            <div style="grid-column:1/-1;"><label>Service parent</label>
+                <select id="edit-service-parent" class="form-control">
+                    <option value="">-- Aucun (service racine) --</option>
+                </select>
+            </div>
+            <div style="grid-column:1/-1;"><label>Responsable</label>
+                <select id="edit-service-responsable" class="form-control">
+                    <option value="">-- Aucun --</option>
+                </select>
+            </div>
+        </div>
+        <div style="margin-top:16px;text-align:right;">
+            <button class="btn" onclick="closeModal('modal-edit-service')" style="margin-right:8px;">Annuler</button>
+            <button class="btn btn-primary" onclick="saveEditService()">Enregistrer</button>
+        </div>
     </div>
 </div>
 
@@ -692,6 +752,38 @@
         <tbody id="etp-tbody"></tbody>
     </table>
     </div>
+</div>
+
+<!-- ══════════════════ GANTT ══════════════════ -->
+<div id="view-gantt" class="view">
+    <h2>Diagramme de Gantt</h2>
+    <div class="gantt-filter-bar">
+        <select id="gantt-filter-service" class="form-control" style="width:auto;" onchange="loadGantt()">
+            <option value="">Tous les services</option>
+        </select>
+        <select id="gantt-filter-period" class="form-control" style="width:auto;" onchange="loadGantt()">
+            <option value="quarter">Ce trimestre</option>
+            <option value="month">Ce mois</option>
+            <option value="semester">Ce semestre</option>
+            <option value="year">Cette année</option>
+            <option value="all">Tout afficher</option>
+        </select>
+        <select id="gantt-mode" class="form-control" style="width:auto;" onchange="loadGantt()">
+            <option value="projets">Vue par projet</option>
+            <option value="taches">Vue par tâche</option>
+        </select>
+        <select id="gantt-view-mode" class="form-control" style="width:auto;" onchange="updateGanttViewMode()">
+            <option value="Week">Semaine</option>
+            <option value="Month">Mois</option>
+            <option value="Day">Jour</option>
+        </select>
+        <button class="btn" onclick="loadGantt()" style="background:#2563a8;color:#fff;border:none;">Actualiser</button>
+    </div>
+    <div class="gantt-legend" id="gantt-legend"></div>
+    <div class="gantt-wrap" id="gantt-wrap">
+        <svg id="gantt-global"></svg>
+    </div>
+    <p id="gantt-empty" style="color:#aaa;font-style:italic;display:none;">Aucune donnée à afficher. Renseignez des dates de début et fin sur vos projets/tâches.</p>
 </div>
 
 <!-- ══════════════════ NOTIFICATIONS ══════════════════ -->
@@ -1061,12 +1153,16 @@
                     <option value="NORMALE">Normale</option>
                     <option value="BASSE">Basse</option>
                 </select></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Date début</label>
+                <input id="edit-tache-debut" type="date" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
             <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Échéance</label>
                 <input id="edit-tache-echeance" type="date" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
             <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Heures estimées</label>
                 <input id="edit-tache-heures" type="number" step="0.5" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
             <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Avancement (%)</label>
                 <input id="edit-tache-avancement" type="number" min="0" max="100" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:2;min-width:200px;"><label style="font-size:.82em;color:#666;">Responsable (nom libre)</label>
+                <input id="edit-tache-responsable" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;" placeholder="Ex: Jean Dupont"></div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-success" onclick="saveTache()">Enregistrer</button>
@@ -1257,6 +1353,7 @@
 </div>
 
 <div id="msg"></div>
-<script src="app.js?v=5.5"></script>
+<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+<script src="app.js?v=5.6"></script>
 </body>
 </html>

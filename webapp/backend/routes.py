@@ -678,12 +678,13 @@ def create_tache():
     data = request.json
     try:
         tache_service.db.execute(
-            "INSERT INTO taches (projet_id, titre, statut, priorite, date_echeance, "
-            "estimation_heures, avancement) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            "INSERT INTO taches (projet_id, titre, statut, priorite, date_debut, date_echeance, "
+            "estimation_heures, avancement, responsable_label) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             [data.get('projet_id') or None, data.get('titre'),
              data.get('statut', 'A faire'), data.get('priorite'),
-             data.get('date_echeance') or None,
-             data.get('estimation_heures') or None, data.get('avancement') or 0]
+             data.get('date_debut') or None, data.get('date_echeance') or None,
+             data.get('estimation_heures') or None, data.get('avancement') or 0,
+             data.get('responsable_label') or None]
         )
         return jsonify({"success": True}), 201
     except Exception as e:
@@ -711,10 +712,13 @@ def update_tache(tache_id):
     try:
         tache_service.db.execute(
             "UPDATE taches SET projet_id=%s, titre=%s, statut=%s, priorite=%s, "
-            "date_echeance=%s, estimation_heures=%s, avancement=%s, updated_at=NOW() WHERE id=%s",
+            "date_debut=%s, date_echeance=%s, estimation_heures=%s, avancement=%s, "
+            "responsable_label=%s, updated_at=NOW() WHERE id=%s",
             [data.get('projet_id') or None, data.get('titre'), data.get('statut'),
-             data.get('priorite'), data.get('date_echeance') or None,
-             data.get('estimation_heures') or None, data.get('avancement') or 0, tache_id]
+             data.get('priorite'), data.get('date_debut') or None,
+             data.get('date_echeance') or None,
+             data.get('estimation_heures') or None, data.get('avancement') or 0,
+             data.get('responsable_label') or None, tache_id]
         )
         return jsonify({"success": True})
     except Exception as e:
@@ -980,3 +984,89 @@ def lire_notification(notif_id):
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
+
+
+# ─────────────────────────────────────────────
+# GANTT
+# ─────────────────────────────────────────────
+
+@routes.route('/gantt', methods=['GET'])
+@require_auth()
+def get_gantt():
+    """Retourne projets + tâches pour le diagramme de Gantt."""
+    service_id = request.args.get('service_id', type=int)
+    date_debut = request.args.get('date_debut')   # YYYY-MM-DD
+    date_fin   = request.args.get('date_fin')     # YYYY-MM-DD
+    projet_id  = request.args.get('projet_id', type=int)
+
+    db = budget_service.db
+
+    # ── Projets ─────────────────────────────────────────────
+    proj_where = ["p.date_debut IS NOT NULL OR p.date_fin_prevue IS NOT NULL"]
+    proj_params = []
+    if service_id:
+        proj_where.append("p.service_id = %s")
+        proj_params.append(service_id)
+    if date_debut:
+        proj_where.append("(p.date_fin_prevue IS NULL OR p.date_fin_prevue >= %s)")
+        proj_params.append(date_debut)
+    if date_fin:
+        proj_where.append("(p.date_debut IS NULL OR p.date_debut <= %s)")
+        proj_params.append(date_fin)
+    proj_sql = (
+        "SELECT p.id, p.code, p.nom, p.date_debut, p.date_fin_prevue, "
+        "p.avancement, p.statut, s.nom as service_nom "
+        "FROM projets p "
+        "LEFT JOIN services s ON s.id = p.service_id "
+        "WHERE " + " AND ".join(proj_where) +
+        " ORDER BY p.date_debut NULLS LAST"
+    )
+    try:
+        projets = db.fetch_all(proj_sql, proj_params) or []
+    except Exception:
+        projets = []
+
+    # ── Tâches ──────────────────────────────────────────────
+    tache_where = ["t.date_echeance IS NOT NULL"]
+    tache_params = []
+    if projet_id:
+        tache_where.append("t.projet_id = %s")
+        tache_params.append(projet_id)
+    elif service_id:
+        tache_where.append("p.service_id = %s")
+        tache_params.append(service_id)
+    if date_debut:
+        tache_where.append("(t.date_echeance IS NULL OR t.date_echeance >= %s)")
+        tache_params.append(date_debut)
+    if date_fin:
+        tache_where.append("(t.date_debut IS NULL OR t.date_debut <= %s)")
+        tache_params.append(date_fin)
+    tache_sql = (
+        "SELECT t.id, t.titre, t.statut, t.priorite, t.avancement, "
+        "t.date_debut, t.date_echeance, t.responsable_label, "
+        "t.projet_id, p.nom as projet_nom, p.code as projet_code "
+        "FROM taches t "
+        "JOIN projets p ON p.id = t.projet_id "
+        "WHERE " + " AND ".join(tache_where) +
+        " ORDER BY t.date_debut NULLS LAST, t.date_echeance"
+    )
+    try:
+        taches = db.fetch_all(tache_sql, tache_params) or []
+    except Exception:
+        taches = []
+
+    def _str(v):
+        return str(v) if v is not None else None
+
+    return jsonify({
+        "projets": [
+            {**dict(r), "date_debut": _str(r.get("date_debut")),
+             "date_fin_prevue": _str(r.get("date_fin_prevue"))}
+            for r in projets
+        ],
+        "taches": [
+            {**dict(r), "date_debut": _str(r.get("date_debut")),
+             "date_echeance": _str(r.get("date_echeance"))}
+            for r in taches
+        ],
+    })
