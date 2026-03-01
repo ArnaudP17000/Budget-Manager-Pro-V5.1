@@ -510,28 +510,112 @@ def delete_budget_permission(budget_id, target_uid):
 
 
 # ─────────────────────────────────────────────
-# BONS DE COMMANDE
+# BONS DE COMMANDE  — filtre par propriétaire
 # ─────────────────────────────────────────────
+
+def _ownership_where(user_id, role, service_id, alias='bc'):
+    """
+    Retourne (clause WHERE, params) pour filtrer par propriétaire.
+    - admin        → voit tout
+    - gestionnaire → voit les siens + tous les membres de son service
+    - lecteur      → voit uniquement les siens
+    Les enregistrements sans created_by_id (données historiques) sont visibles
+    aux admins et gestionnaires pour ne pas casser l'existant.
+    """
+    p = alias + '.'
+    if role == 'admin':
+        return "1=1", []
+    elif role == 'gestionnaire':
+        return (
+            f"({p}created_by_id = %s "
+            f"OR {p}created_by_id IN (SELECT id FROM utilisateurs WHERE service_id = %s) "
+            f"OR {p}created_by_id IS NULL)",
+            [user_id, service_id]
+        )
+    else:  # lecteur
+        return f"({p}created_by_id = %s OR {p}created_by_id IS NULL)", [user_id]
+
 
 @routes.route('/bon_commande', methods=['GET'])
 @require_auth()
 def get_bon_commande():
-    filters = {k: v for k, v in request.args.items() if v}
-    bc_list = bc_service.get_all_bons_commande(filters)
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    filters    = {k: v for k, v in request.args.items() if v}
+
+    if role == 'admin':
+        bc_list = bc_service.get_all_bons_commande(filters)
+    else:
+        # Récupérer tous les BCs accessibles puis appliquer filtres supplémentaires
+        where, params = _ownership_where(user_id, role, service_id, 'bc')
+        extra_where = [where]
+        extra_params = list(params)
+        if filters.get('statut'):
+            extra_where.append("bc.statut = %s")
+            extra_params.append(filters['statut'])
+        if filters.get('entite_id'):
+            extra_where.append("bc.entite_id = %s")
+            extra_params.append(filters['entite_id'])
+        rows = bc_service.db.fetch_all(
+            "SELECT bc.*, f.nom as fournisseur_nom, e.code as entite_code, "
+            "e.nom as entite_nom, p.nom as projet_nom, c.numero_contrat, "
+            "u.nom || ' ' || COALESCE(u.prenom,'') as createur_nom "
+            "FROM bons_commande bc "
+            "LEFT JOIN fournisseurs f ON f.id = bc.fournisseur_id "
+            "LEFT JOIN entites e ON e.id = bc.entite_id "
+            "LEFT JOIN projets p ON p.id = bc.projet_id "
+            "LEFT JOIN contrats c ON c.id = bc.contrat_id "
+            "LEFT JOIN utilisateurs u ON u.id = bc.created_by_id "
+            f"WHERE {' AND '.join(extra_where)} ORDER BY bc.date_creation DESC",
+            extra_params
+        )
+        bc_list = [dict(r) for r in (rows or [])]
     return jsonify({"count": len(bc_list), "list": bc_list})
+
 
 @routes.route('/bon_commande/stats', methods=['GET'])
 @require_auth()
 def get_bc_stats():
-    return jsonify(bc_service.get_stats())
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    if role == 'admin':
+        return jsonify(bc_service.get_stats())
+    where, params = _ownership_where(user_id, role, service_id, 'bc')
+    row = bc_service.db.fetch_one(
+        f"SELECT COUNT(*) as total, "
+        f"SUM(CASE WHEN bc.statut='BROUILLON' THEN 1 ELSE 0 END) as brouillon, "
+        f"SUM(CASE WHEN bc.statut='VALIDE' THEN 1 ELSE 0 END) as valide, "
+        f"SUM(CASE WHEN bc.statut='SOLDE' THEN 1 ELSE 0 END) as solde, "
+        f"COALESCE(SUM(bc.montant_ht),0) as total_ht "
+        f"FROM bons_commande bc WHERE {where}",
+        params
+    )
+    return jsonify(dict(row) if row else {})
+
 
 @routes.route('/bon_commande/<int:bc_id>', methods=['GET'])
 @require_auth()
 def get_bon_commande_by_id(bc_id):
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
     bc = bc_service.get_by_id(bc_id)
-    if bc:
-        return jsonify(bc)
-    return jsonify({"error": "BC introuvable"}), 404
+    if not bc:
+        return jsonify({"error": "BC introuvable"}), 404
+    if role != 'admin':
+        creator = bc.get('created_by_id')
+        if creator is not None:
+            where, params = _ownership_where(user_id, role, service_id, 'bc')
+            row = bc_service.db.fetch_one(
+                f"SELECT id FROM bons_commande bc WHERE bc.id=%s AND {where}",
+                [bc_id] + params
+            )
+            if not row:
+                return jsonify({"error": "Accès interdit"}), 403
+    return jsonify(bc)
+
 
 @routes.route('/bon_commande/<int:bc_id>/valider', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
@@ -541,6 +625,7 @@ def valider_bc(bc_id):
         return jsonify({"success": True, "statut": new_statut})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
+
 
 @routes.route('/bon_commande/<int:bc_id>/imputer', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
@@ -555,30 +640,43 @@ def imputer_bc(bc_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+
 @routes.route('/bon_commande', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def create_bon_commande():
-    data = request.json
+    data    = request.json
+    user_id = g.user.get('sub')
     try:
         montant_ht  = float(data.get('montant_ht') or 0)
         montant_ttc = float(data.get('montant_ttc') or montant_ht * 1.2)
         bc_service.db.execute(
             "INSERT INTO bons_commande (numero_bc, objet, fournisseur_id, entite_id, "
-            "projet_id, ligne_budgetaire_id, contrat_id, montant_ht, montant_ttc, statut) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "projet_id, ligne_budgetaire_id, contrat_id, montant_ht, montant_ttc, statut, created_by_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             [data.get('numero_bc'), data.get('objet'), data.get('fournisseur_id') or None,
              data.get('entite_id') or None, data.get('projet_id') or None,
              data.get('ligne_budgetaire_id') or None, data.get('contrat_id') or None,
-             montant_ht, montant_ttc, data.get('statut', 'BROUILLON')]
+             montant_ht, montant_ttc, data.get('statut', 'BROUILLON'), user_id]
         )
         return jsonify({"success": True}), 201
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+
 @routes.route('/bon_commande/<int:bc_id>', methods=['PUT'])
 @require_auth('admin', 'gestionnaire')
 def update_bon_commande(bc_id):
-    data = request.json
+    data       = request.json
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    if role != 'admin':
+        where, params = _ownership_where(user_id, role, service_id, 'bc')
+        row = bc_service.db.fetch_one(
+            f"SELECT id FROM bons_commande bc WHERE bc.id=%s AND {where}", [bc_id] + params
+        )
+        if not row:
+            return jsonify({"error": "Accès interdit"}), 403
     try:
         montant_ht  = float(data.get('montant_ht') or 0)
         montant_ttc = float(data.get('montant_ttc') or montant_ht * 1.2)
@@ -595,9 +693,20 @@ def update_bon_commande(bc_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+
 @routes.route('/bon_commande/<int:bc_id>', methods=['DELETE'])
-@require_auth('admin')
+@require_auth('admin', 'gestionnaire')
 def delete_bon_commande(bc_id):
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    if role != 'admin':
+        where, params = _ownership_where(user_id, role, service_id, 'bc')
+        row = bc_service.db.fetch_one(
+            f"SELECT id FROM bons_commande bc WHERE bc.id=%s AND {where}", [bc_id] + params
+        )
+        if not row:
+            return jsonify({"error": "Accès interdit"}), 403
     try:
         bc_service.db.execute("DELETE FROM bons_commande WHERE id=%s", [bc_id])
         return jsonify({"success": True})
@@ -606,31 +715,83 @@ def delete_bon_commande(bc_id):
 
 
 # ─────────────────────────────────────────────
-# CONTRATS
+# CONTRATS — filtre par propriétaire
 # ─────────────────────────────────────────────
 
 @routes.route('/contrat', methods=['GET'])
 @require_auth()
 def get_contrats():
-    contrats = contrat_service.get_all()
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    if role == 'admin':
+        contrats = contrat_service.get_all()
+    else:
+        where, params = _ownership_where(user_id, role, service_id, 'c')
+        rows = contrat_service.db.fetch_all(
+            "SELECT c.*, f.nom as fournisseur_nom, "
+            "u.nom || ' ' || COALESCE(u.prenom,'') as createur_nom "
+            "FROM contrats c "
+            "LEFT JOIN fournisseurs f ON f.id = c.fournisseur_id "
+            "LEFT JOIN utilisateurs u ON u.id = c.created_by_id "
+            f"WHERE {where} ORDER BY c.date_creation DESC",
+            params
+        )
+        contrats = [dict(r) for r in (rows or [])]
     return jsonify({"count": len(contrats), "list": contrats})
+
 
 @routes.route('/contrat/<int:contrat_id>', methods=['GET'])
 @require_auth()
 def get_contrat_by_id(contrat_id):
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
     c = contrat_service.get_by_id(contrat_id)
     if not c:
         return jsonify({"error": "Contrat introuvable"}), 404
+    if role != 'admin' and c.get('created_by_id') is not None:
+        where, params = _ownership_where(user_id, role, service_id, 'c')
+        row = contrat_service.db.fetch_one(
+            f"SELECT id FROM contrats c WHERE c.id=%s AND {where}", [contrat_id] + params
+        )
+        if not row:
+            return jsonify({"error": "Accès interdit"}), 403
     return jsonify(c)
+
 
 @routes.route('/contrat/alertes', methods=['GET'])
 @require_auth()
 def get_contrat_alertes():
-    return jsonify({"list": contrat_service.get_alertes()})
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    if role == 'admin':
+        return jsonify({"list": contrat_service.get_alertes()})
+    where, params = _ownership_where(user_id, role, service_id, 'c')
+    rows = contrat_service.db.fetch_all(
+        "SELECT c.*, f.nom as fournisseur_nom FROM contrats c "
+        "LEFT JOIN fournisseurs f ON f.id = c.fournisseur_id "
+        f"WHERE c.date_fin IS NOT NULL AND c.date_fin <= NOW() + INTERVAL '60 days' AND {where} "
+        "ORDER BY c.date_fin",
+        params
+    )
+    return jsonify({"list": [dict(r) for r in (rows or [])]})
+
 
 @routes.route('/contrat/<int:contrat_id>/reconduire', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def reconduire_contrat(contrat_id):
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    if role != 'admin':
+        where, params = _ownership_where(user_id, role, service_id, 'c')
+        row = contrat_service.db.fetch_one(
+            f"SELECT id FROM contrats c WHERE c.id=%s AND {where}", [contrat_id] + params
+        )
+        if not row:
+            return jsonify({"error": "Accès interdit"}), 403
     data = request.json
     nouvelle_date_fin = data.get('nouvelle_date_fin')
     if not nouvelle_date_fin:
@@ -641,29 +802,42 @@ def reconduire_contrat(contrat_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+
 @routes.route('/contrat', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def create_contrat():
-    data = request.json
+    data    = request.json
+    user_id = g.user.get('sub')
     try:
         montant_ht = float(data.get('montant_total_ht') or 0)
         contrat_service.db.execute(
             "INSERT INTO contrats (numero_contrat, objet, fournisseur_id, montant_initial_ht, "
-            "montant_total_ht, montant_ttc, date_debut, date_fin, statut) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "montant_total_ht, montant_ttc, date_debut, date_fin, statut, created_by_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             [data.get('numero_contrat'), data.get('objet'), data.get('fournisseur_id') or None,
              montant_ht, montant_ht, round(montant_ht * 1.2, 2),
              data.get('date_debut') or None, data.get('date_fin') or None,
-             data.get('statut', 'ACTIF')]
+             data.get('statut', 'ACTIF'), user_id]
         )
         return jsonify({"success": True}), 201
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+
 @routes.route('/contrat/<int:contrat_id>', methods=['PUT'])
 @require_auth('admin', 'gestionnaire')
 def update_contrat(contrat_id):
-    data = request.json
+    data       = request.json
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    if role != 'admin':
+        where, params = _ownership_where(user_id, role, service_id, 'c')
+        row = contrat_service.db.fetch_one(
+            f"SELECT id FROM contrats c WHERE c.id=%s AND {where}", [contrat_id] + params
+        )
+        if not row:
+            return jsonify({"error": "Accès interdit"}), 403
     try:
         montant_ht = float(data.get('montant_total_ht') or 0)
         contrat_service.db.execute(
@@ -679,9 +853,20 @@ def update_contrat(contrat_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
+
 @routes.route('/contrat/<int:contrat_id>', methods=['DELETE'])
-@require_auth('admin')
+@require_auth('admin', 'gestionnaire')
 def delete_contrat(contrat_id):
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    if role != 'admin':
+        where, params = _ownership_where(user_id, role, service_id, 'c')
+        row = contrat_service.db.fetch_one(
+            f"SELECT id FROM contrats c WHERE c.id=%s AND {where}", [contrat_id] + params
+        )
+        if not row:
+            return jsonify({"error": "Accès interdit"}), 403
     try:
         contrat_service.db.execute("DELETE FROM contrats WHERE id=%s", [contrat_id])
         return jsonify({"success": True})

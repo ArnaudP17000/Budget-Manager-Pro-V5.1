@@ -122,6 +122,13 @@ def run_migrations():
     except Exception:
         pass
 
+    # ── Propriété des enregistrements (created_by_id) ───────────
+    for tbl in ['bons_commande', 'contrats', 'projets', 'contacts']:
+        try:
+            db.execute(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS created_by_id INTEGER")
+        except Exception:
+            pass
+
     # ── Permissions budgets (accès explicite par utilisateur) ───
     try:
         db.execute("""
