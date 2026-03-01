@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budget Manager Pro V5</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; }
+
+        header {
+            background: #1a3c5e; color: #fff;
+            padding: 12px 24px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        header h1 { font-size: 1.2em; letter-spacing: 1px; }
+        #notif-badge {
+            background: #e74c3c; color: #fff; border-radius: 50%;
+            padding: 2px 7px; font-size: .75em; margin-left: 6px;
+            display: none; cursor: pointer;
+        }
+
+        nav {
+            background: #2563a8;
+            display: flex; flex-wrap: wrap; gap: 2px; padding: 0 8px;
+        }
+        nav button {
+            background: none; border: none; color: #cde;
+            padding: 10px 14px; cursor: pointer; font-size: 0.85em;
+            transition: background .2s, color .2s;
+        }
+        nav button:hover, nav button.active { background: #1a3c5e; color: #fff; }
+
+        #dashboard-kpis { display: flex; gap: 12px; padding: 16px 24px; flex-wrap: wrap; }
+        .kpi-card {
+            background: #fff; border-radius: 8px; padding: 14px 22px;
+            box-shadow: 0 2px 6px rgba(0,0,0,.08); min-width: 140px; text-align: center;
+        }
+        .kpi-card .kpi-value { font-size: 1.8em; font-weight: bold; color: #2563a8; }
+        .kpi-card .kpi-label { font-size: .8em; color: #666; margin-top: 4px; }
+        .kpi-card.alert .kpi-value { color: #e74c3c; }
+        .kpi-card.warning .kpi-value { color: #f39c12; }
+
+        #dashboard-alerts { padding: 0 24px 16px; }
+        #dashboard-alerts h3 { color: #1a3c5e; margin-bottom: 8px; font-size: .95em; }
+
+        .view { display: none; padding: 16px 24px; }
+        .view.active { display: block; }
+        .view h2 { margin-bottom: 12px; color: #1a3c5e; font-size: 1.1em; }
+
+        .toolbar {
+            display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+            margin-bottom: 12px;
+        }
+        .toolbar input, .toolbar select {
+            padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px;
+            font-size: .85em;
+        }
+        .toolbar input { min-width: 180px; }
+        .btn { padding: 7px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: .85em; }
+        .btn-primary { background: #2563a8; color: #fff; }
+        .btn-primary:hover { background: #1a3c5e; }
+        .btn-success { background: #27ae60; color: #fff; }
+        .btn-success:hover { background: #1e8449; }
+        .btn-warning { background: #f39c12; color: #fff; }
+        .btn-warning:hover { background: #d68910; }
+        .btn-danger  { background: #c0392b; color: #fff; }
+        .btn-danger:hover  { background: #96281b; }
+        .btn-info    { background: #2980b9; color: #fff; }
+        .btn-info:hover    { background: #1a5276; }
+        .btn-sm { padding: 3px 9px; font-size: .78em; }
+
+        .kpi-bar {
+            display: flex; gap: 10px; flex-wrap: wrap;
+            background: #fff; padding: 10px 16px; border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 12px; font-size: .85em;
+        }
+        .kpi-bar span { padding: 4px 10px; border-radius: 12px; background: #e8f0fe; color: #1a3c5e; }
+        .kpi-bar .kpi-num { font-weight: bold; }
+
+        .form-card {
+            background: #fff; padding: 14px; border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 12px;
+        }
+        .form-card h3 { font-size: .9em; color: #2563a8; margin-bottom: 10px; }
+        .form-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+        .form-grid input, .form-grid select {
+            padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px;
+            font-size: .85em; flex: 1; min-width: 130px;
+        }
+        .form-grid input.wide { flex: 2; min-width: 220px; }
+
+        table {
+            width: 100%; border-collapse: collapse; background: #fff;
+            border-radius: 8px; overflow: hidden;
+            box-shadow: 0 1px 4px rgba(0,0,0,.06); font-size: .83em;
+        }
+        th { background: #1a3c5e; color: #fff; padding: 9px 10px; text-align: left; }
+        td { padding: 8px 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #f7f9fc; }
+
+        /* Alert row colors for contrats */
+        tr.alerte-expire td  { background: #fde8e8 !important; }
+        tr.alerte-critique td{ background: #fef3cd !important; }
+        tr.alerte-attention td{ background: #fff8e1 !important; }
+        tr.alerte-info td    { background: #e3f2fd !important; }
+
+        .tbl-wrap { overflow-x: auto; }
+
+        .badge {
+            display: inline-block; padding: 2px 8px; border-radius: 12px;
+            font-size: .75em; font-weight: bold; white-space: nowrap;
+        }
+        .bg-brouillon { background: #e2e3e5; color: #383d41; }
+        .bg-en-attente{ background: #fff3cd; color: #856404; }
+        .bg-valide    { background: #d4edda; color: #155724; }
+        .bg-impute    { background: #cce5ff; color: #004085; }
+        .bg-solde     { background: #d1ecf1; color: #0c5460; }
+        .bg-annule    { background: #f8d7da; color: #721c24; }
+        .bg-actif     { background: #d4edda; color: #155724; }
+        .bg-expire    { background: #f8d7da; color: #721c24; }
+        .bg-critique  { background: #fde8e8; color: #c0392b; }
+        .bg-attention { background: #fff3cd; color: #856404; }
+        .bg-info      { background: #cce5ff; color: #004085; }
+        .bg-ok        { background: #d4edda; color: #155724; }
+        .bg-vote      { background: #d4edda; color: #155724; }
+        .bg-en-cours  { background: #d4edda; color: #155724; }
+        .bg-termine   { background: #cce5ff; color: #004085; }
+        .bg-default   { background: #e2e3e5; color: #383d41; }
+
+        .progress-bar-wrap { background: #e0e0e0; border-radius: 4px; height: 8px; min-width: 80px; }
+        .progress-bar-fill { height: 8px; border-radius: 4px; background: #2563a8; }
+        .progress-bar-fill.alert { background: #e74c3c; }
+        .progress-bar-fill.warning { background: #f39c12; }
+
+        /* MODAL */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,.45); z-index: 1000;
+            align-items: center; justify-content: center;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: #fff; border-radius: 10px;
+            padding: 24px; width: 90%; max-width: 680px;
+            max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,.2);
+        }
+        .modal h3 { color: #1a3c5e; margin-bottom: 16px; font-size: 1.05em; }
+        .modal-close {
+            float: right; background: none; border: none;
+            font-size: 1.4em; cursor: pointer; color: #666; margin-top: -4px;
+        }
+        .modal-footer { margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end; }
+        .modal-section { margin-bottom: 12px; }
+        .modal-section label { font-size: .82em; color: #666; display: block; margin-bottom: 3px; }
+        .modal-section .val { font-weight: bold; }
+        .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+        #msg {
+            position: fixed; bottom: 20px; right: 20px;
+            background: #27ae60; color: #fff;
+            padding: 10px 20px; border-radius: 6px;
+            display: none; z-index: 9999; font-size: .9em;
+            max-width: 400px;
+        }
+
+        /* ONGLETS FICHE PROJET */
+        .proj-tabs { display: flex; gap: 4px; border-bottom: 2px solid #2563a8; margin-bottom: 14px; flex-wrap: wrap; }
+        .proj-tab {
+            padding: 6px 14px; cursor: pointer; border-radius: 6px 6px 0 0;
+            font-size: .82em; font-weight: 600; background: #e8edf4; color: #555;
+            border: 1px solid #ccd; border-bottom: none;
+            transition: background .15s, color .15s;
+        }
+        .proj-tab.active { background: #2563a8; color: #fff; border-color: #2563a8; }
+        .proj-tab-content { display: none; }
+        .proj-tab-content.active { display: block; }
+        .opp-field { margin-bottom: 10px; }
+
+        /* SOUS-ONGLETS BUDGET */
+        .budget-subtabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid #1a7a4a; }
+        .budget-subtab {
+            padding: 7px 18px; cursor: pointer; border-radius: 6px 6px 0 0;
+            font-size: .84em; font-weight: 600; background: #e6f2ec; color: #1a7a4a;
+            border: 1px solid #a8d5b8; border-bottom: none;
+        }
+        .budget-subtab.active { background: #1a7a4a; color: #fff; border-color: #1a7a4a; }
+        .budget-subview { display: none; }
+        .budget-subview.active { display: block; }
+
+        /* LIGNES BUDGÉTAIRES */
+        .ligne-row { cursor: pointer; }
+        .ligne-row:hover { background: #eef4ff !important; }
+        .ligne-row.selected { background: #dbeafe !important; }
+        .lignes-bc-panel {
+            margin-top: 0; background: #1e2430; border-radius: 0 0 8px 8px;
+            padding: 0; overflow: hidden;
+        }
+        .lignes-bc-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 16px; background: #252d3d; color: #e2e8f0;
+            font-size: .82em; font-weight: 600;
+        }
+        .lignes-bc-table { width: 100%; border-collapse: collapse; font-size: .8em; color: #e2e8f0; }
+        .lignes-bc-table th { background: #2d3748; padding: 6px 10px; text-align: left; color: #94a3b8; font-weight: 600; }
+        .lignes-bc-table td { padding: 6px 10px; border-bottom: 1px solid #2d3748; }
+        .lignes-bc-table tr:hover td { background: #2d3748; }
+        .opp-field label { font-size: .78em; font-weight: bold; color: #555; text-transform: uppercase; display: block; margin-bottom: 3px; }
+        .opp-field .opp-val { font-size: .88em; color: #333; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Budget Manager Pro V5
+        <span id="notif-badge" onclick="showView('notifications')">0</span>
+    </h1>
+    <span id="header-date" style="font-size:.8em;opacity:.8;"></span>
+</header>
+
+<nav>
+    <button class="active" onclick="showView('dashboard')">Tableau de bord</button>
+    <button onclick="showView('budget')">Budgets</button>
+    <button onclick="showView('bc')">Bons de commande</button>
+    <button onclick="showView('contrats')">Contrats</button>
+    <button onclick="showView('projets')">Projets</button>
+    <button onclick="showView('taches')">Tâches</button>
+    <button onclick="showView('kanban')">Kanban</button>
+    <button onclick="showView('fournisseurs')">Fournisseurs</button>
+    <button onclick="showView('contacts')">Contacts</button>
+    <button onclick="showView('services')">Services</button>
+    <button onclick="showView('etp')">ETP</button>
+    <button onclick="showView('notifications')">Notifications</button>
+</nav>
+
+<!-- ══════════════════ DASHBOARD ══════════════════ -->
+<div id="view-dashboard" class="view active">
+    <div id="dashboard-kpis">
+        <div class="kpi-card"><div class="kpi-value" id="kpi-projets">-</div><div class="kpi-label">Projets actifs</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-budget">-</div><div class="kpi-label">Budget voté (€)</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-bc">-</div><div class="kpi-label">Bons de commande</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-montant-bc">-</div><div class="kpi-label">Engagé BC TTC (€)</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-contrats">-</div><div class="kpi-label">Contrats actifs</div></div>
+        <div class="kpi-card alert"><div class="kpi-value" id="kpi-alertes">-</div><div class="kpi-label">Alertes contrats</div></div>
+        <div class="kpi-card warning"><div class="kpi-value" id="kpi-bc-attente">-</div><div class="kpi-label">BC en attente</div></div>
+    </div>
+    <div id="dashboard-alerts">
+        <h3>Contrats expirant prochainement</h3>
+        <div class="tbl-wrap">
+        <table id="dashboard-alertes-table">
+            <thead><tr><th>N° Contrat</th><th>Objet</th><th>Fournisseur</th><th>Fin</th><th>Jours restants</th><th>Alerte</th></tr></thead>
+            <tbody id="dashboard-alertes-tbody"></tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ BUDGETS ANNUELS ══════════════════ -->
+<div id="view-budget" class="view">
+    <h2>Gestion Budgétaire</h2>
+    <div class="budget-subtabs">
+        <div class="budget-subtab active" onclick="switchBudgetSubTab('budgets')">&#128200; Budgets annuels</div>
+        <div class="budget-subtab" onclick="switchBudgetSubTab('lignes')">&#9776; Lignes budgétaires</div>
+    </div>
+
+    <!-- ── Sous-onglet : Budgets annuels ── -->
+    <div id="budget-sub-budgets" class="budget-subview active">
+        <div class="form-card">
+            <h3>Nouveau budget</h3>
+            <div class="form-grid">
+                <select id="budget-entite"><option value="">-- Entité --</option></select>
+                <input id="budget-exercice" placeholder="Exercice (ex: 2026)" type="number">
+                <select id="budget-nature">
+                    <option value="">Nature</option>
+                    <option value="FONCTIONNEMENT">Fonctionnement</option>
+                    <option value="INVESTISSEMENT">Investissement</option>
+                </select>
+                <input id="budget-montant-prev" placeholder="Prévisionnel (€)" type="number" step="0.01">
+                <select id="budget-statut">
+                    <option value="BROUILLON">Brouillon</option>
+                    <option value="SOUMIS">Soumis</option>
+                    <option value="VOTE">Voté</option>
+                </select>
+                <button class="btn btn-primary" onclick="addBudget()">+ Ajouter</button>
+            </div>
+        </div>
+        <div class="tbl-wrap">
+        <table>
+            <thead><tr>
+                <th>ID</th><th>Entité</th><th>Exercice</th><th>Nature</th>
+                <th>Prévu (€)</th><th>Voté (€)</th><th>Engagé (€)</th><th>Payé (€)</th>
+                <th>Engagement</th><th>Statut</th><th>Nb lignes</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="budget-tbody"></tbody>
+        </table>
+        </div>
+    </div>
+
+    <!-- ── Sous-onglet : Lignes budgétaires ── -->
+    <div id="budget-sub-lignes" class="budget-subview">
+        <div class="toolbar" style="margin-bottom:10px;">
+            <select id="lignes-filter-budget" onchange="loadAllLignes()">
+                <option value="">-- Tous les budgets --</option>
+            </select>
+            <input id="lignes-search" placeholder="Rechercher libellé, app, fournisseur..." oninput="loadAllLignes()" style="min-width:260px;">
+            <button class="btn btn-primary" onclick="openAddLigne()" style="margin-left:auto;">+ Nouvelle ligne</button>
+        </div>
+        <div class="tbl-wrap" style="max-height:420px;overflow-y:auto;">
+        <table id="lignes-table">
+            <thead><tr>
+                <th>#</th>
+                <th>Libellé</th>
+                <th>Application</th>
+                <th>Fournisseur</th>
+                <th style="text-align:right;">Voté (€)</th>
+                <th style="text-align:right;">Engagé (€)</th>
+                <th style="text-align:right;">Solde (€)</th>
+                <th style="text-align:center;">Taux %</th>
+                <th style="text-align:center;">Alerte</th>
+                <th>Réf. D.S.I</th>
+                <th>Budget imputé</th>
+                <th style="text-align:center;">Action</th>
+            </tr></thead>
+            <tbody id="lignes-tbody"></tbody>
+        </table>
+        </div>
+        <div class="lignes-bc-panel" id="lignes-bc-panel">
+            <div class="lignes-bc-header">
+                <span id="lignes-bc-titre">Sélectionnez une ligne pour voir l'historique des BC</span>
+                <button class="btn btn-sm" id="lignes-bc-ouvrir-btn" style="display:none;background:#2563a8;color:#fff;" onclick="ouvrirBCdeLigne()">&#128203; Ouvrir BC</button>
+            </div>
+            <div id="lignes-bc-content" style="padding:0;">
+                <table class="lignes-bc-table">
+                    <thead><tr>
+                        <th>N° BC</th><th>Objet</th><th>Fournisseur</th>
+                        <th>Montant TTC</th><th>Date imputation</th><th>Date solde</th>
+                        <th>Statut</th><th>Projet</th><th>Contrat</th>
+                    </tr></thead>
+                    <tbody id="lignes-bc-tbody"><tr><td colspan="9" style="text-align:center;color:#555;padding:14px;font-style:italic;">Aucune ligne sélectionnée</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ BONS DE COMMANDE ══════════════════ -->
+<div id="view-bc" class="view">
+    <h2>Bons de commande</h2>
+    <div class="form-card">
+        <h3>Nouveau BC</h3>
+        <div class="form-grid">
+            <input id="bc-numero" placeholder="N° BC (ex: BC-2026-001)">
+            <input id="bc-objet" class="wide" placeholder="Objet">
+            <select id="bc-fournisseur"><option value="">-- Fournisseur --</option></select>
+            <select id="bc-entite"><option value="">-- Entité --</option></select>
+            <input id="bc-montant-ht" placeholder="Montant HT (€)" type="number" step="0.01">
+            <select id="bc-statut">
+                <option value="BROUILLON">Brouillon</option>
+                <option value="EN_ATTENTE">En attente</option>
+                <option value="VALIDE">Validé</option>
+            </select>
+            <select id="bc-ligne" style="grid-column:span 2;">
+                <option value="">-- Ligne budgétaire (imputation) --</option>
+            </select>
+            <button class="btn btn-primary" onclick="addBC()">+ Ajouter</button>
+        </div>
+    </div>
+    <div class="toolbar">
+        <select id="bc-filter-statut" onchange="loadBC()">
+            <option value="">Tous statuts</option>
+            <option value="BROUILLON">Brouillon</option>
+            <option value="EN_ATTENTE">En attente</option>
+            <option value="VALIDE">Validé</option>
+            <option value="IMPUTE">Imputé</option>
+            <option value="SOLDE">Soldé</option>
+            <option value="ANNULE">Annulé</option>
+        </select>
+        <select id="bc-filter-entite" onchange="loadBC()">
+            <option value="">Toutes entités</option>
+        </select>
+        <input id="bc-search" placeholder="Rechercher..." oninput="loadBC()">
+    </div>
+    <div id="bc-kpi-bar" class="kpi-bar"></div>
+    <div class="tbl-wrap">
+    <table>
+        <thead><tr>
+            <th>ID</th><th>N° BC</th><th>Objet</th><th>Fournisseur</th><th>Entité</th>
+            <th>HT (€)</th><th>TTC (€)</th><th>Statut</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="bc-tbody"></tbody>
+    </table>
+    </div>
+</div>
+
+<!-- ══════════════════ CONTRATS ══════════════════ -->
+<div id="view-contrats" class="view">
+    <h2>Contrats</h2>
+    <div class="form-card">
+        <h3>Nouveau contrat</h3>
+        <div class="form-grid">
+            <input id="contrat-numero" placeholder="N° Contrat">
+            <input id="contrat-objet" class="wide" placeholder="Objet">
+            <select id="contrat-fournisseur"><option value="">-- Fournisseur --</option></select>
+            <input id="contrat-montant" placeholder="Montant HT (€)" type="number" step="0.01">
+            <input id="contrat-date-debut" type="date">
+            <input id="contrat-date-fin" type="date">
+            <select id="contrat-type">
+                <option value="">Type</option>
+                <option value="MARCHE_PUBLIC">Marché public</option>
+                <option value="MAPA">MAPA</option>
+                <option value="ACCORD_CADRE">Accord-cadre</option>
+                <option value="CONVENTION">Convention</option>
+                <option value="DSP">DSP</option>
+            </select>
+            <select id="contrat-statut">
+                <option value="ACTIF">Actif</option>
+                <option value="RECONDUIT">Reconduit</option>
+                <option value="EXPIRE">Expiré</option>
+                <option value="RESILIE">Résilié</option>
+            </select>
+            <button class="btn btn-primary" onclick="addContrat()">+ Ajouter</button>
+        </div>
+    </div>
+    <div class="tbl-wrap">
+    <table>
+        <thead><tr>
+            <th>ID</th><th>N° Contrat</th><th>Objet</th><th>Fournisseur</th>
+            <th>Montant HT (€)</th><th>Début</th><th>Fin</th><th>J. restants</th>
+            <th>Statut</th><th>Type</th><th>Alerte</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="contrats-tbody"></tbody>
+    </table>
+    </div>
+</div>
+
+<!-- ══════════════════ PROJETS ══════════════════ -->
+<div id="view-projets" class="view">
+    <h2>Projets</h2>
+    <div class="form-card">
+        <h3>Nouveau projet</h3>
+        <div class="form-grid">
+            <input id="projet-code" placeholder="Code (PRJ-2026-001)">
+            <input id="projet-nom" class="wide" placeholder="Nom du projet *">
+            <select id="projet-type">
+                <option value="">Type</option>
+                <option value="Infrastructure">Infrastructure</option>
+                <option value="Application">Application</option>
+                <option value="Réseau">Réseau</option>
+                <option value="Sécurité">Sécurité</option>
+                <option value="Support">Support</option>
+                <option value="Autre">Autre</option>
+            </select>
+            <select id="projet-phase">
+                <option value="">Phase</option>
+                <option value="ETUDE">Étude</option>
+                <option value="CONCEPTION">Conception</option>
+                <option value="REALISATION">Réalisation</option>
+                <option value="RECETTE">Recette</option>
+                <option value="CLOTURE">Clôture</option>
+            </select>
+            <select id="projet-statut">
+                <option value="ACTIF">Actif</option>
+                <option value="EN_ATTENTE">En attente</option>
+                <option value="TERMINE">Terminé</option>
+                <option value="ANNULE">Annulé</option>
+            </select>
+            <select id="projet-priorite">
+                <option value="">Priorité</option>
+                <option value="CRITIQUE">Critique</option>
+                <option value="HAUTE">Haute</option>
+                <option value="MOYENNE">Normale</option>
+                <option value="BASSE">Basse</option>
+            </select>
+            <select id="projet-service"><option value="">— Service —</option></select>
+            <input id="projet-budget" placeholder="Budget estimé (€)" type="number" step="0.01">
+            <input id="projet-debut" type="date">
+            <input id="projet-fin" type="date">
+            <button class="btn btn-primary" onclick="addProjet()">+ Ajouter</button>
+        </div>
+    </div>
+    <div class="tbl-wrap">
+    <table>
+        <thead><tr>
+            <th>ID</th><th>Code</th><th>Nom</th><th>Type</th><th>Phase</th>
+            <th>Statut</th><th>Priorité</th><th>Service</th>
+            <th>Budget est. (€)</th><th>Avancement</th><th>Début</th><th>Fin prévue</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="projets-tbody"></tbody>
+    </table>
+    </div>
+</div>
+
+<!-- ══════════════════ TÂCHES ══════════════════ -->
+<div id="view-taches" class="view">
+    <h2>Tâches</h2>
+    <div class="form-card">
+        <h3>Nouvelle tâche</h3>
+        <div class="form-grid">
+            <input id="tache-titre" class="wide" placeholder="Titre de la tâche">
+            <select id="tache-projet"><option value="">-- Projet --</option></select>
+            <select id="tache-statut">
+                <option value="A faire">A faire</option>
+                <option value="En cours">En cours</option>
+                <option value="En attente">En attente</option>
+                <option value="Bloqué">Bloqué</option>
+                <option value="Terminé">Terminé</option>
+            </select>
+            <select id="tache-priorite">
+                <option value="">Priorité</option>
+                <option value="HAUTE">Haute</option>
+                <option value="NORMALE">Normale</option>
+                <option value="BASSE">Basse</option>
+            </select>
+            <input id="tache-echeance" type="date">
+            <input id="tache-heures" placeholder="Heures estimées" type="number" step="0.5">
+            <button class="btn btn-primary" onclick="addTache()">+ Ajouter</button>
+        </div>
+    </div>
+    <div class="toolbar">
+        <select id="tache-filter-projet" onchange="loadTaches()">
+            <option value="">Tous projets</option>
+        </select>
+        <select id="tache-filter-statut" onchange="loadTaches()">
+            <option value="">Tous statuts</option>
+            <option value="A faire">A faire</option>
+            <option value="En cours">En cours</option>
+            <option value="Terminé">Terminé</option>
+        </select>
+    </div>
+    <div class="tbl-wrap">
+    <table>
+        <thead><tr>
+            <th>ID</th><th>Titre</th><th>Projet</th><th>Statut</th>
+            <th>Priorité</th><th>Échéance</th><th>Heures est.</th><th>Avancement</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="taches-tbody"></tbody>
+    </table>
+    </div>
+</div>
+
+<!-- ══════════════════ KANBAN ══════════════════ -->
+<div id="view-kanban" class="view">
+    <h2>Kanban des tâches</h2>
+    <div class="toolbar">
+        <select id="kanban-filter-projet" onchange="loadKanban()">
+            <option value="">Tous les projets</option>
+        </select>
+    </div>
+    <div id="kanban-board" style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;"></div>
+</div>
+
+<!-- ══════════════════ FOURNISSEURS ══════════════════ -->
+<div id="view-fournisseurs" class="view">
+    <h2>Fournisseurs</h2>
+    <div class="form-card">
+        <h3>Nouveau fournisseur</h3>
+        <div class="form-grid">
+            <input id="fournisseur-nom" placeholder="Nom">
+            <input id="fournisseur-contact" placeholder="Contact principal">
+            <input id="fournisseur-email" placeholder="Email" type="email">
+            <input id="fournisseur-telephone" placeholder="Téléphone">
+            <input id="fournisseur-adresse" placeholder="Adresse">
+            <input id="fournisseur-ville" placeholder="Ville">
+            <button class="btn btn-primary" onclick="addFournisseur()">+ Ajouter</button>
+        </div>
+    </div>
+    <div class="tbl-wrap">
+    <table>
+        <thead><tr>
+            <th>ID</th><th>Nom</th><th>Contact</th><th>Email</th>
+            <th>Téléphone</th><th>Ville</th><th>Nb contrats</th><th>Nb BC</th><th>Total TTC (€)</th><th>Statut</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="fournisseurs-tbody"></tbody>
+    </table>
+    </div>
+</div>
+
+<!-- ══════════════════ CONTACTS ══════════════════ -->
+<div id="view-contacts" class="view">
+    <h2>Contacts</h2>
+    <div class="form-card">
+        <h3>Nouveau contact</h3>
+        <div class="form-grid">
+            <input id="contact-nom" placeholder="Nom">
+            <input id="contact-prenom" placeholder="Prénom">
+            <input id="contact-fonction" placeholder="Fonction">
+            <select id="contact-type">
+                <option value="">Type</option>
+                <option value="ELU">Élu</option>
+                <option value="DIRECTION">Direction</option>
+                <option value="PRESTATAIRE">Prestataire</option>
+                <option value="AMO">AMO</option>
+            </select>
+            <input id="contact-telephone" placeholder="Téléphone">
+            <input id="contact-email" placeholder="Email" type="email">
+            <input id="contact-organisation" placeholder="Organisation">
+            <button class="btn btn-primary" onclick="addContact()">+ Ajouter</button>
+        </div>
+    </div>
+    <div class="toolbar">
+        <select id="contact-filter-type" onchange="loadContacts()">
+            <option value="">Tous types</option>
+            <option value="ELU">Élu</option>
+            <option value="DIRECTION">Direction</option>
+            <option value="PRESTATAIRE">Prestataire</option>
+            <option value="AMO">AMO</option>
+        </select>
+        <input id="contact-search" placeholder="Rechercher..." oninput="loadContacts()">
+    </div>
+    <div class="tbl-wrap">
+    <table>
+        <thead><tr>
+            <th>ID</th><th>Nom</th><th>Prénom</th><th>Fonction</th>
+            <th>Type</th><th>Téléphone</th><th>Email</th><th>Organisation</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="contacts-tbody"></tbody>
+    </table>
+    </div>
+</div>
+
+<!-- ══════════════════ SERVICES ══════════════════ -->
+<div id="view-services" class="view">
+    <h2>Services / Organisation</h2>
+    <div class="form-card">
+        <h3>Nouveau service</h3>
+        <div class="form-grid">
+            <input id="service-code" placeholder="Code (ex: DSI)">
+            <input id="service-nom" placeholder="Nom du service">
+            <button class="btn btn-primary" onclick="addService()">+ Ajouter</button>
+        </div>
+    </div>
+    <div class="tbl-wrap">
+    <table>
+        <thead><tr>
+            <th>ID</th><th>Code</th><th>Nom</th><th>Responsable</th>
+            <th>Service parent</th><th>Nb projets</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="services-tbody"></tbody>
+    </table>
+    </div>
+</div>
+
+<!-- ══════════════════ ETP / CHARGE ══════════════════ -->
+<div id="view-etp" class="view">
+    <h2>ETP / Charge de travail</h2>
+    <div id="etp-kpi-bar" class="kpi-bar"></div>
+    <div class="tbl-wrap">
+    <table>
+        <thead><tr>
+            <th>Code</th><th>Projet</th><th>Statut</th>
+            <th>Nb tâches</th><th>Heures estimées</th><th>Heures réelles</th>
+            <th>Jours estimés</th><th>ETP annuel</th>
+        </tr></thead>
+        <tbody id="etp-tbody"></tbody>
+    </table>
+    </div>
+</div>
+
+<!-- ══════════════════ NOTIFICATIONS ══════════════════ -->
+<div id="view-notifications" class="view">
+    <h2>Notifications</h2>
+    <div id="notif-list"></div>
+</div>
+
+<!-- ══════════════════ MODAL FICHE BC ══════════════════ -->
+<div class="modal-overlay" id="modal-bc-fiche">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('modal-bc-fiche')">✕</button>
+        <h3 id="modal-bc-titre">Fiche Bon de Commande</h3>
+        <div id="modal-bc-content"></div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL VOTER BUDGET ══════════════════ -->
+<div class="modal-overlay" id="modal-voter-budget">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('modal-voter-budget')">✕</button>
+        <h3>Voter le budget</h3>
+        <div class="modal-section">
+            <label>Montant voté (€)</label>
+            <input id="voter-montant" type="number" step="0.01" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-success" onclick="confirmVoterBudget()">Valider le vote</button>
+            <button class="btn btn-danger" onclick="closeModal('modal-voter-budget')">Annuler</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL ÉDITER BC ══════════════════ -->
+<div class="modal-overlay" id="modal-edit-bc">
+    <div class="modal" style="max-width:680px;">
+        <button class="modal-close" onclick="closeModal('modal-edit-bc')">✕</button>
+        <h3 id="edit-bc-titre">Modifier le bon de commande</h3>
+        <input type="hidden" id="edit-bc-id">
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">N° BC *</label>
+                <input id="edit-bc-numero" placeholder="BC-2026-001" style="width:100%;margin-top:4px;">
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Statut</label>
+                <select id="edit-bc-statut" style="width:100%;margin-top:4px;">
+                    <option value="BROUILLON">Brouillon</option>
+                    <option value="EN_ATTENTE">En attente</option>
+                    <option value="VALIDE">Validé</option>
+                    <option value="IMPUTE">Imputé</option>
+                    <option value="SOLDE">Soldé</option>
+                    <option value="ANNULE">Annulé</option>
+                </select>
+            </div>
+            <div style="grid-column:1/-1;">
+                <label style="font-size:.8em;font-weight:600;color:#555;">Objet *</label>
+                <input id="edit-bc-objet" placeholder="Objet du bon de commande" style="width:100%;margin-top:4px;">
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Fournisseur</label>
+                <select id="edit-bc-fournisseur" style="width:100%;margin-top:4px;">
+                    <option value="">-- Aucun --</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Entité</label>
+                <select id="edit-bc-entite" style="width:100%;margin-top:4px;">
+                    <option value="">-- Aucune --</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Montant HT (€) *</label>
+                <input id="edit-bc-montant-ht" type="number" step="0.01" placeholder="0.00" style="width:100%;margin-top:4px;" oninput="updateTtcPreview()">
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">TVA (%)</label>
+                <input id="edit-bc-tva" type="number" step="0.1" value="20" placeholder="20" style="width:100%;margin-top:4px;" oninput="updateTtcPreview()">
+            </div>
+            <div style="grid-column:1/-1;background:#fff8e1;border-radius:6px;padding:10px;display:flex;align-items:center;gap:12px;">
+                <span style="font-size:.82em;color:#888;">Montant TTC calculé :</span>
+                <strong id="edit-bc-ttc-preview" style="color:#e67e22;font-size:1.1em;">0,00 €</strong>
+                <input type="hidden" id="edit-bc-montant-ttc">
+            </div>
+            <div style="grid-column:1/-1;">
+                <label style="font-size:.8em;font-weight:600;color:#555;">&#128464; Ligne budgétaire (imputation)</label>
+                <select id="edit-bc-ligne" style="width:100%;margin-top:4px;">
+                    <option value="">-- Aucune ligne --</option>
+                </select>
+                <div id="edit-bc-ligne-info" style="font-size:.78em;color:#2563a8;margin-top:4px;"></div>
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Projet lié</label>
+                <select id="edit-bc-projet" style="width:100%;margin-top:4px;">
+                    <option value="">-- Aucun --</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Contrat lié</label>
+                <select id="edit-bc-contrat" style="width:100%;margin-top:4px;">
+                    <option value="">-- Aucun --</option>
+                </select>
+            </div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+            <button class="btn" onclick="closeModal('modal-edit-bc')" style="background:#eee;color:#333;">Annuler</button>
+            <button class="btn btn-primary" onclick="saveBC()">&#128190; Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL IMPUTER BC ══════════════════ -->
+<div class="modal-overlay" id="modal-imputer-bc">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('modal-imputer-bc')">✕</button>
+        <h3>Imputer le bon de commande</h3>
+        <div class="modal-section">
+            <label>Sélectionner la ligne budgétaire</label>
+            <select id="imputer-ligne" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;">
+                <option value="">-- Choisir une ligne --</option>
+            </select>
+        </div>
+        <div id="imputer-info" style="font-size:.85em;color:#555;margin-top:8px;"></div>
+        <div class="modal-footer">
+            <button class="btn btn-success" onclick="confirmImputer()">Imputer</button>
+            <button class="btn btn-danger" onclick="closeModal('modal-imputer-bc')">Annuler</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL RECONDUIRE CONTRAT ══════════════════ -->
+<div class="modal-overlay" id="modal-reconduire">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('modal-reconduire')">✕</button>
+        <h3>Reconduire le contrat</h3>
+        <div class="modal-section">
+            <label>Nouvelle date de fin</label>
+            <input id="reconduire-date" type="date" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-success" onclick="confirmReconduire()">Reconduire</button>
+            <button class="btn btn-danger" onclick="closeModal('modal-reconduire')">Annuler</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL FICHE PROJET ══════════════════ -->
+<div class="modal-overlay" id="modal-fiche-projet">
+    <div class="modal" style="max-width:860px;">
+        <button class="modal-close" onclick="closeModal('modal-fiche-projet')">✕</button>
+        <h3 id="fiche-projet-titre">Fiche Projet</h3>
+        <div id="fiche-projet-content"></div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL ÉDITION PROJET ══════════════════ -->
+<div class="modal-overlay" id="modal-edit-projet">
+    <div class="modal" style="max-width:780px;">
+        <button class="modal-close" onclick="closeModal('modal-edit-projet')">✕</button>
+        <h3>Modifier le projet</h3>
+        <input type="hidden" id="edit-projet-id">
+
+        <div style="font-size:.82em;font-weight:bold;color:#2563a8;margin:8px 0 4px;">Identification</div>
+        <div class="form-grid" style="gap:8px;">
+            <div style="flex:1;min-width:120px;"><label style="font-size:.82em;color:#666;">Code</label>
+                <input id="edit-projet-code" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:2;min-width:200px;"><label style="font-size:.82em;color:#666;">Nom *</label>
+                <input id="edit-projet-nom" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:140px;"><label style="font-size:.82em;color:#666;">Type</label>
+                <select id="edit-projet-type" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">— Type —</option>
+                    <option value="Infrastructure">Infrastructure</option>
+                    <option value="Application">Application</option>
+                    <option value="Réseau">Réseau</option>
+                    <option value="Sécurité">Sécurité</option>
+                    <option value="Support">Support</option>
+                    <option value="Autre">Autre</option>
+                </select></div>
+            <div style="flex:1;min-width:140px;"><label style="font-size:.82em;color:#666;">Phase</label>
+                <select id="edit-projet-phase" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">— Phase —</option>
+                    <option value="ETUDE">Étude</option>
+                    <option value="CONCEPTION">Conception</option>
+                    <option value="REALISATION">Réalisation</option>
+                    <option value="RECETTE">Recette</option>
+                    <option value="CLOTURE">Clôture</option>
+                </select></div>
+            <div style="flex:1;min-width:140px;"><label style="font-size:.82em;color:#666;">Statut</label>
+                <select id="edit-projet-statut" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="ACTIF">Actif</option>
+                    <option value="EN_ATTENTE">En attente</option>
+                    <option value="TERMINE">Terminé</option>
+                    <option value="ANNULE">Annulé</option>
+                </select></div>
+            <div style="flex:1;min-width:140px;"><label style="font-size:.82em;color:#666;">Priorité</label>
+                <select id="edit-projet-priorite" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">—</option>
+                    <option value="CRITIQUE">Critique</option>
+                    <option value="HAUTE">Haute</option>
+                    <option value="MOYENNE">Normale</option>
+                    <option value="BASSE">Basse</option>
+                </select></div>
+            <div style="flex:1;min-width:140px;"><label style="font-size:.82em;color:#666;">Service bénéficiaire</label>
+                <select id="edit-projet-service" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">— Service —</option>
+                </select></div>
+            <div style="flex:3;min-width:100%;"><label style="font-size:.82em;color:#666;">Description</label>
+                <textarea id="edit-projet-description" rows="2" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;resize:vertical;"></textarea></div>
+        </div>
+
+        <div style="font-size:.82em;font-weight:bold;color:#2563a8;margin:12px 0 4px;">Calendrier &amp; Avancement</div>
+        <div class="form-grid" style="gap:8px;">
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Date début</label>
+                <input id="edit-projet-debut" type="date" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Date fin prévue</label>
+                <input id="edit-projet-fin" type="date" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Date fin réelle</label>
+                <input id="edit-projet-fin-reelle" type="date" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Avancement (%)</label>
+                <input id="edit-projet-avancement" type="number" min="0" max="100" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+        </div>
+
+        <div style="font-size:.82em;font-weight:bold;color:#2563a8;margin:12px 0 4px;">Budget</div>
+        <div class="form-grid" style="gap:8px;">
+            <div style="flex:1;min-width:140px;"><label style="font-size:.82em;color:#666;">Budget prévisionnel (€)</label>
+                <input id="edit-projet-budget-initial" type="number" step="0.01" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:140px;"><label style="font-size:.82em;color:#666;">Budget estimé (€)</label>
+                <input id="edit-projet-budget" type="number" step="0.01" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:140px;"><label style="font-size:.82em;color:#666;">Budget voté (€)</label>
+                <input id="edit-projet-budget-actuel" type="number" step="0.01" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+        </div>
+
+        <div style="font-size:.82em;font-weight:bold;color:#7b2d8b;margin:12px 0 4px;">Opportunité &amp; Risques</div>
+        <div class="form-grid" style="gap:8px;">
+            <div style="flex:1;min-width:48%;"><label style="font-size:.82em;color:#666;">Objectifs</label>
+                <textarea id="edit-projet-objectifs" rows="3" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;resize:vertical;"></textarea></div>
+            <div style="flex:1;min-width:48%;"><label style="font-size:.82em;color:#666;">Enjeux</label>
+                <textarea id="edit-projet-enjeux" rows="3" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;resize:vertical;"></textarea></div>
+            <div style="flex:1;min-width:48%;"><label style="font-size:.82em;color:#666;">Gains attendus</label>
+                <textarea id="edit-projet-gains" rows="3" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;resize:vertical;"></textarea></div>
+            <div style="flex:1;min-width:48%;"><label style="font-size:.82em;color:#666;">Risques</label>
+                <textarea id="edit-projet-risques" rows="3" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;resize:vertical;"></textarea></div>
+            <div style="flex:1;min-width:48%;"><label style="font-size:.82em;color:#666;">Contraintes</label>
+                <textarea id="edit-projet-contraintes" rows="3" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;resize:vertical;"></textarea></div>
+            <div style="flex:1;min-width:48%;"><label style="font-size:.82em;color:#666;">Solutions envisagées</label>
+                <textarea id="edit-projet-solutions" rows="3" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;resize:vertical;"></textarea></div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn btn-success" onclick="saveProjet()">Enregistrer</button>
+            <button class="btn btn-danger" onclick="closeModal('modal-edit-projet')">Annuler</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL ÉDITION TÂCHE ══════════════════ -->
+<div class="modal-overlay" id="modal-edit-tache">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('modal-edit-tache')">✕</button>
+        <h3>Modifier la tâche</h3>
+        <input type="hidden" id="edit-tache-id">
+        <div class="form-grid" style="gap:10px;">
+            <div style="flex:3;min-width:100%;"><label style="font-size:.82em;color:#666;">Titre *</label>
+                <input id="edit-tache-titre" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:150px;"><label style="font-size:.82em;color:#666;">Projet</label>
+                <select id="edit-tache-projet" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">-- Aucun --</option>
+                </select></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Statut</label>
+                <select id="edit-tache-statut" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="A faire">A faire</option>
+                    <option value="En cours">En cours</option>
+                    <option value="En attente">En attente</option>
+                    <option value="Bloqué">Bloqué</option>
+                    <option value="Terminé">Terminé</option>
+                </select></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Priorité</label>
+                <select id="edit-tache-priorite" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">—</option>
+                    <option value="HAUTE">Haute</option>
+                    <option value="NORMALE">Normale</option>
+                    <option value="BASSE">Basse</option>
+                </select></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Échéance</label>
+                <input id="edit-tache-echeance" type="date" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Heures estimées</label>
+                <input id="edit-tache-heures" type="number" step="0.5" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Avancement (%)</label>
+                <input id="edit-tache-avancement" type="number" min="0" max="100" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-success" onclick="saveTache()">Enregistrer</button>
+            <button class="btn btn-danger" onclick="closeModal('modal-edit-tache')">Annuler</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL ÉDITION CONTRAT ══════════════════ -->
+<div class="modal-overlay" id="modal-edit-contrat">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('modal-edit-contrat')">✕</button>
+        <h3>Modifier le contrat</h3>
+        <input type="hidden" id="edit-contrat-id">
+        <div class="form-grid" style="gap:10px;">
+            <div style="flex:1;min-width:140px;"><label style="font-size:.82em;color:#666;">N° Contrat *</label>
+                <input id="edit-contrat-numero" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:2;min-width:200px;"><label style="font-size:.82em;color:#666;">Objet *</label>
+                <input id="edit-contrat-objet" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:150px;"><label style="font-size:.82em;color:#666;">Fournisseur</label>
+                <select id="edit-contrat-fournisseur" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">-- Aucun --</option>
+                </select></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Montant HT (€)</label>
+                <input id="edit-contrat-montant" type="number" step="0.01" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Date début</label>
+                <input id="edit-contrat-debut" type="date" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Date fin</label>
+                <input id="edit-contrat-fin" type="date" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Statut</label>
+                <select id="edit-contrat-statut" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="ACTIF">Actif</option>
+                    <option value="RECONDUIT">Reconduit</option>
+                    <option value="EXPIRE">Expiré</option>
+                    <option value="RESILIE">Résilié</option>
+                    <option value="TERMINE">Terminé</option>
+                </select></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-success" onclick="saveContrat()">Enregistrer</button>
+            <button class="btn btn-danger" onclick="closeModal('modal-edit-contrat')">Annuler</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL ÉDITION CONTACT ══════════════════ -->
+<div class="modal-overlay" id="modal-edit-contact">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('modal-edit-contact')">✕</button>
+        <h3>Modifier le contact</h3>
+        <input type="hidden" id="edit-contact-id">
+        <div class="form-grid" style="gap:10px;">
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Nom *</label>
+                <input id="edit-contact-nom" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Prénom</label>
+                <input id="edit-contact-prenom" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Fonction</label>
+                <input id="edit-contact-fonction" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:120px;"><label style="font-size:.82em;color:#666;">Type</label>
+                <select id="edit-contact-type" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">—</option>
+                    <option value="ELU">Élu</option>
+                    <option value="DIRECTION">Direction</option>
+                    <option value="PRESTATAIRE">Prestataire</option>
+                    <option value="AMO">AMO</option>
+                </select></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Téléphone</label>
+                <input id="edit-contact-telephone" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:180px;"><label style="font-size:.82em;color:#666;">Email</label>
+                <input id="edit-contact-email" type="email" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:2;min-width:200px;"><label style="font-size:.82em;color:#666;">Organisation</label>
+                <input id="edit-contact-organisation" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-success" onclick="saveContact()">Enregistrer</button>
+            <button class="btn btn-danger" onclick="closeModal('modal-edit-contact')">Annuler</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL ÉDITION FOURNISSEUR ══════════════════ -->
+<div class="modal-overlay" id="modal-edit-fournisseur">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('modal-edit-fournisseur')">✕</button>
+        <h3>Modifier le fournisseur</h3>
+        <input type="hidden" id="edit-fournisseur-id">
+        <div class="form-grid" style="gap:10px;">
+            <div style="flex:2;min-width:200px;"><label style="font-size:.82em;color:#666;">Nom *</label>
+                <input id="edit-fournisseur-nom" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:150px;"><label style="font-size:.82em;color:#666;">Contact principal</label>
+                <input id="edit-fournisseur-contact" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:180px;"><label style="font-size:.82em;color:#666;">Email</label>
+                <input id="edit-fournisseur-email" type="email" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Téléphone</label>
+                <input id="edit-fournisseur-telephone" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:2;min-width:200px;"><label style="font-size:.82em;color:#666;">Adresse</label>
+                <input id="edit-fournisseur-adresse" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Ville</label>
+                <input id="edit-fournisseur-ville" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-success" onclick="saveFournisseur()">Enregistrer</button>
+            <button class="btn btn-danger" onclick="closeModal('modal-edit-fournisseur')">Annuler</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL FICHE CONTRAT ══════════════════ -->
+<div class="modal-overlay" id="modal-fiche-contrat">
+    <div class="modal" style="max-width:860px;">
+        <button class="modal-close" onclick="closeModal('modal-fiche-contrat')">✕</button>
+        <h3 id="fiche-contrat-titre">Fiche Contrat</h3>
+        <div id="fiche-contrat-content"></div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL CRÉER / MODIFIER LIGNE BUDGÉTAIRE ══════════════════ -->
+<div class="modal-overlay" id="modal-edit-ligne">
+    <div class="modal" style="max-width:680px;">
+        <button class="modal-close" onclick="closeModal('modal-edit-ligne')">✕</button>
+        <h3 id="edit-ligne-titre">Nouvelle ligne budgétaire</h3>
+        <input type="hidden" id="edit-ligne-id">
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+            <div style="grid-column:1/-1;">
+                <label style="font-size:.8em;font-weight:600;color:#555;">Budget (Entité — Nature Exercice) *</label>
+                <select id="edit-ligne-budget" style="width:100%;margin-top:4px;">
+                    <option value="">-- Sélectionner un budget --</option>
+                </select>
+            </div>
+            <div style="grid-column:1/-1;">
+                <label style="font-size:.8em;font-weight:600;color:#555;">Libellé *</label>
+                <input id="edit-ligne-libelle" placeholder="Intitulé de la ligne budgétaire" style="width:100%;margin-top:4px;">
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Application</label>
+                <select id="edit-ligne-application" style="width:100%;margin-top:4px;">
+                    <option value="">-- Aucune --</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Fournisseur</label>
+                <select id="edit-ligne-fournisseur" style="width:100%;margin-top:4px;">
+                    <option value="">-- Aucun --</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Montant prévu (€)</label>
+                <input id="edit-ligne-montant-prevu" type="number" step="0.01" placeholder="0" style="width:100%;margin-top:4px;">
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Montant voté (€)</label>
+                <input id="edit-ligne-montant-vote" type="number" step="0.01" placeholder="0" style="width:100%;margin-top:4px;">
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Nature</label>
+                <select id="edit-ligne-nature" style="width:100%;margin-top:4px;">
+                    <option value="FONCTIONNEMENT">Fonctionnement</option>
+                    <option value="INVESTISSEMENT">Investissement</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Référence D.S.I</label>
+                <input id="edit-ligne-note" placeholder="Ex: 26F109" style="width:100%;margin-top:4px;">
+            </div>
+            <div>
+                <label style="font-size:.8em;font-weight:600;color:#555;">Statut</label>
+                <select id="edit-ligne-statut" style="width:100%;margin-top:4px;">
+                    <option value="ACTIF">Actif</option>
+                    <option value="INACTIF">Inactif</option>
+                    <option value="CLOTURE">Clôturé</option>
+                </select>
+            </div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+            <button class="btn" onclick="closeModal('modal-edit-ligne')" style="background:#eee;color:#333;">Annuler</button>
+            <button class="btn btn-primary" onclick="saveLigne()">&#128190; Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════ MODAL DÉTAIL BUDGET (LIGNES + BC) ══════════════════ -->
+<div class="modal-overlay" id="modal-budget-detail">
+    <div class="modal" style="max-width:920px;">
+        <button class="modal-close" onclick="closeModal('modal-budget-detail')">✕</button>
+        <h3 id="budget-detail-titre">Lignes budgétaires</h3>
+        <div id="budget-detail-content"></div>
+    </div>
+</div>
+
+<div id="msg"></div>
+<script src="app.js"></script>
+</body>
+</html>

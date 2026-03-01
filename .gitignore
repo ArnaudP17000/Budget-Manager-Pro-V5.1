@@ -1,39 +1,81 @@
-# Python
+# ── Python ────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-.Python
 *.egg-info/
 dist/
 build/
 .eggs/
 
-# Base de données (ne pas versionner les données)
-data/*.db
-data/*.db-shm
-data/*.db-wal
-backups/
-
-# Environnements
+# ── Environnements ────────────────────────────────────
 .env
 .venv
 venv/
 env/
 
-# IDE
+# ── Bases de données ──────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+app/database/*.db
+
+# ── Exports CSV ───────────────────────────────────────
+*.csv
+
+# ── Fichiers OLD / backups ────────────────────────────
+*OLD.py
+*OLD*.py
+backup_*/
+
+# ── Scripts one-shot (racine) ─────────────────────────
+clean_*.py
+cleanup_*.py
+export_*.py
+import_*.py
+list_*.py
+fill_*.py
+remove_*.py
+fix_*.py
+migrate_*.py
+patch_*.py
+recalc_*.py
+repair_*.py
+diagnostic.py
+create_test*.py
+api.py
+push_all.ps1
+
+# ── Artefacts PyInstaller ─────────────────────────────
+*.spec
+run.spec
+
+# ── Préférences utilisateur locales ───────────────────
+config/user_preferences.json
+
+# ── Fichiers SQL de migration (données sensibles) ─────
+migration_postgres.sql
+
+# ── Claude / mémoire de session ───────────────────────
+.claude/
+memory/
+
+# ── Fichier gitignore sans point (erreur de nom) ──────
+gitignore
+
+# ── IDE ───────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 
-# OS
+# ── OS ────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# Logs
+# ── Logs ──────────────────────────────────────────────
 *.log
-"migration/*.exe" 
-"migration/*.msi" 
-"migration/*.zip" 
-migration/*.exe 
-migration/*.msi 
+
+# ── Binaires de migration ─────────────────────────────
+migration/*.exe
+migration/*.msi
+migration/*.zip

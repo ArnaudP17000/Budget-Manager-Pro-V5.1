@@ -34,6 +34,9 @@ class ProjetDialog(QDialog):
     
     def __init__(self, parent=None, projet=None):
         super().__init__(parent)
+        # Convertir sqlite3.Row en dict si necessaire
+        if projet is not None and hasattr(projet, 'keys'):
+            projet = dict(projet)
         self.projet = projet
         self.projet_id = projet['id'] if projet else None
         self.setWindowTitle("Nouveau Projet" if not projet else "Modifier Projet")
@@ -1127,30 +1130,193 @@ class ProjetDialog(QDialog):
         kpi_layout.addStretch()
         layout.addLayout(kpi_layout)
         
-        # Table des tâches (lecture seule)
+        # Table des taches
         self.taches_table = QTableWidget(0, 6)
-        self.taches_table.setHorizontalHeaderLabels(["ID", "Titre", "Statut", "Priorité", "Échéance", "Avancement %"])
+        self.taches_table.setHorizontalHeaderLabels(["ID", "Titre", "Statut", "Priorite", "Echeance", "Avancement %"])
         self.taches_table.setColumnHidden(0, True)
         self.taches_table.horizontalHeader().setStretchLastSection(True)
         self.taches_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.taches_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.taches_table.doubleClicked.connect(self.edit_tache_projet)
         layout.addWidget(self.taches_table)
-        
+
         # Boutons
         btn_layout = QHBoxLayout()
-        btn_create_tache = QPushButton("➕ Créer tâche")
+
+        btn_create_tache = QPushButton("➕ Creer tache")
         btn_create_tache.setStyleSheet("background:#27ae60;color:white;font-weight:bold;padding:6px 12px;")
         btn_create_tache.clicked.connect(self.create_tache)
         btn_layout.addWidget(btn_create_tache)
 
-        btn_new_bc = QPushButton("🛒 Nouveau BC lié au projet")
+        btn_edit_tache = QPushButton("✏️ Modifier")
+        btn_edit_tache.setStyleSheet("background:#3498db;color:white;font-weight:bold;padding:6px 12px;")
+        btn_edit_tache.clicked.connect(self.edit_tache_projet)
+        btn_layout.addWidget(btn_edit_tache)
+
+        btn_done_tache = QPushButton("✅ Marquer terminee")
+        btn_done_tache.setStyleSheet("background:#16a085;color:white;font-weight:bold;padding:6px 12px;")
+        btn_done_tache.clicked.connect(self.terminer_tache_projet)
+        btn_layout.addWidget(btn_done_tache)
+
+        btn_del_tache = QPushButton("🗑️ Supprimer")
+        btn_del_tache.setStyleSheet("background:#e74c3c;color:white;font-weight:bold;padding:6px 12px;")
+        btn_del_tache.clicked.connect(self.supprimer_tache_projet)
+        btn_layout.addWidget(btn_del_tache)
+
+        btn_new_bc = QPushButton("🛒 Nouveau BC lie au projet")
         btn_new_bc.setStyleSheet("background:#8e44ad;color:white;font-weight:bold;padding:6px 12px;")
         btn_new_bc.clicked.connect(self.create_bc_projet)
         btn_layout.addWidget(btn_new_bc)
+
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
-        
+
         return widget
+
+    def _get_tache_selectionnee_id(self):
+        """Retourne l ID de la tache selectionnee ou None."""
+        row = self.taches_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Attention", "Selectionnez une tache.")
+            return None
+        item = self.taches_table.item(row, 0)
+        return int(item.text()) if item else None
+
+    def edit_tache_projet(self):
+        """Ouvre un dialog inline pour modifier la tache selectionnee."""
+        tache_id = self._get_tache_selectionnee_id()
+        if not tache_id:
+            return
+        try:
+            from app.services.tache_service import tache_service
+            tache = tache_service.get_by_id(tache_id)
+            if not tache:
+                QMessageBox.warning(self, "Erreur", "Tache introuvable.")
+                return
+
+            # Dialog inline simple
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Modifier la tache")
+            dlg.setMinimumWidth(500)
+            lay = QVBoxLayout(dlg)
+            form = QFormLayout()
+
+            # Titre
+            titre_edit = QLineEdit(tache.get('titre', '') or '')
+            form.addRow("Titre :", titre_edit)
+
+            # Statut
+            statut_combo = QComboBox()
+            for s in ['A_FAIRE', 'EN_COURS', 'EN_ATTENTE', 'TERMINE', 'ANNULE']:
+                statut_combo.addItem(s)
+            idx = statut_combo.findText(tache.get('statut', 'A_FAIRE') or 'A_FAIRE')
+            if idx >= 0: statut_combo.setCurrentIndex(idx)
+            form.addRow("Statut :", statut_combo)
+
+            # Priorite
+            priorite_combo = QComboBox()
+            for p in ['BASSE', 'MOYENNE', 'HAUTE', 'CRITIQUE']:
+                priorite_combo.addItem(p)
+            idx = priorite_combo.findText(tache.get('priorite', 'MOYENNE') or 'MOYENNE')
+            if idx >= 0: priorite_combo.setCurrentIndex(idx)
+            form.addRow("Priorite :", priorite_combo)
+
+            # Echeance
+            from PyQt5.QtWidgets import QDateEdit
+            from PyQt5.QtCore import QDate
+            echeance_edit = QDateEdit()
+            echeance_edit.setCalendarPopup(True)
+            echeance_edit.setDisplayFormat("yyyy-MM-dd")
+            date_str = tache.get('date_echeance', '') or ''
+            if date_str:
+                echeance_edit.setDate(QDate.fromString(date_str, "yyyy-MM-dd"))
+            else:
+                echeance_edit.setDate(QDate.currentDate())
+            form.addRow("Echeance :", echeance_edit)
+
+            # Avancement
+            from PyQt5.QtWidgets import QSpinBox
+            avanc_spin = QSpinBox()
+            avanc_spin.setRange(0, 100)
+            avanc_spin.setSuffix(" %")
+            avanc_spin.setValue(int(tache.get('avancement', 0) or 0))
+            form.addRow("Avancement :", avanc_spin)
+
+            # Estimation heures
+            from PyQt5.QtWidgets import QDoubleSpinBox
+            heures_spin = QDoubleSpinBox()
+            heures_spin.setRange(0, 9999)
+            heures_spin.setSuffix(" h")
+            heures_spin.setValue(float(tache.get('estimation_heures', 0) or 0))
+            form.addRow("Estimation heures :", heures_spin)
+
+            # Description
+            desc_edit = QTextEdit()
+            desc_edit.setPlainText(tache.get('description', '') or '')
+            desc_edit.setMaximumHeight(80)
+            form.addRow("Description :", desc_edit)
+
+            lay.addLayout(form)
+
+            # Boutons
+            btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            btns.button(QDialogButtonBox.Ok).setText("Enregistrer")
+            btns.button(QDialogButtonBox.Ok).setStyleSheet(
+                "background:#27ae60;color:white;font-weight:bold;padding:5px 16px;")
+            btns.accepted.connect(dlg.accept)
+            btns.rejected.connect(dlg.reject)
+            lay.addWidget(btns)
+
+            if dlg.exec_() == QDialog.Accepted:
+                data = {
+                    'titre':             titre_edit.text().strip(),
+                    'statut':            statut_combo.currentText(),
+                    'priorite':          priorite_combo.currentText(),
+                    'date_echeance':     echeance_edit.date().toString("yyyy-MM-dd"),
+                    'avancement':        avanc_spin.value(),
+                    'estimation_heures': heures_spin.value(),
+                    'description':       desc_edit.toPlainText().strip() or None,
+                }
+                tache_service.update(tache_id, data)
+                self.load_taches()
+
+        except Exception as e:
+            import traceback
+            logger.error("edit_tache_projet : %s\n%s", e, traceback.format_exc())
+            QMessageBox.critical(self, "Erreur", f"Impossible de modifier la tache :\n{e}")
+
+    def terminer_tache_projet(self):
+        """Marque la tache selectionnee comme TERMINE."""
+        tache_id = self._get_tache_selectionnee_id()
+        if not tache_id:
+            return
+        try:
+            from app.services.tache_service import tache_service
+            tache_service.update(tache_id, {'statut': 'TERMINE', 'avancement': 100})
+            self.load_taches()
+        except Exception as e:
+            logger.error("terminer_tache_projet : %s", e)
+            QMessageBox.critical(self, "Erreur", f"Impossible de terminer la tache :\n{e}")
+
+    def supprimer_tache_projet(self):
+        """Supprime la tache selectionnee apres confirmation."""
+        tache_id = self._get_tache_selectionnee_id()
+        if not tache_id:
+            return
+        row = self.taches_table.currentRow()
+        titre = self.taches_table.item(row, 1).text() if self.taches_table.item(row, 1) else ''
+        reply = QMessageBox.question(self, "Confirmer",
+            f"Supprimer la tache :\n{titre} ?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            from app.services.tache_service import tache_service
+            tache_service.delete(tache_id)
+            self.load_taches()
+        except Exception as e:
+            logger.error("supprimer_tache_projet : %s", e)
+            QMessageBox.critical(self, "Erreur", f"Impossible de supprimer la tache :\n{e}")
     
     def load_projet_data(self):
         """Charge les données du projet."""
@@ -1504,12 +1670,22 @@ class ProjetDialog(QDialog):
                 data['service_id'] = service_id
             
             # Sauvegarder
+            logger.info("SAVE projet_id=%s statut=%s avancement=%s chk=%s",
+                self.projet_id, data.get('statut'), data.get('avancement'),
+                self.chk_termine.isChecked())
+            logger.debug("DATA COMPLÈTE : %s", {k:v for k,v in data.items()
+                if k not in ('registre_risques','contraintes_6axes','triangle_tensions')})
             if self.projet_id:
                 projet_service.update(self.projet_id, data)
-                logger.info(f"Projet {self.projet_id} mis à jour")
+                # Vérification immédiate en base
+                verif = projet_service.get_by_id(self.projet_id)
+                logger.info("VERIF après update : statut=%s avancement=%s",
+                    verif.get('statut') if verif else 'INTROUVABLE',
+                    verif.get('avancement') if verif else '?')
+                logger.info(f"Projet {self.projet_id} mis a jour")
             else:
                 self.projet_id = projet_service.create(data)
-                logger.info(f"Projet créé: {self.projet_id}")
+                logger.info(f"Projet cree: {self.projet_id}")
             
             # Sauvegarder équipe DSI
             self.save_equipe()
@@ -1522,8 +1698,9 @@ class ProjetDialog(QDialog):
         except ValueError as e:
             QMessageBox.warning(self, "Erreur", str(e))
         except Exception as e:
-            logger.error(f"Erreur sauvegarde projet: {e}")
-            QMessageBox.critical(self, "Erreur", f"Impossible d'enregistrer le projet:\n{e}")
+            import traceback
+            logger.error("Erreur sauvegarde projet: %s\n%s", e, traceback.format_exc())
+            QMessageBox.critical(self, "Erreur", f"Impossible d enregistrer le projet:\n{e}")
     
 
     def _charger_personnes(self, combo):
