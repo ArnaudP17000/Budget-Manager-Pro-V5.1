@@ -108,7 +108,13 @@ def run_migrations():
     except Exception:
         pass
 
-    # ── Nettoyer emails vides → NULL (évite contrainte UNIQUE sur '') ─
+    # ── Email optionnel : supprimer NOT NULL + nettoyer valeurs vides ─
+    try:
+        db.execute(
+            "ALTER TABLE utilisateurs ALTER COLUMN email DROP NOT NULL"
+        )
+    except Exception:
+        pass
     try:
         db.execute(
             "UPDATE utilisateurs SET email = NULL WHERE email = ''"
