@@ -630,11 +630,12 @@ def remove_projet_equipe(projet_id, membre_id):
 @require_auth('admin', 'gestionnaire')
 def add_projet_contact(projet_id):
     data = request.json or {}
-    contact_id = data.get('contact_id')
-    if not contact_id:
-        return jsonify({"error": "contact_id requis"}), 400
+    contact_id    = data.get('contact_id') or None
+    contact_libre = (data.get('contact_libre') or '').strip() or None
+    if not contact_id and not contact_libre:
+        return jsonify({"error": "contact_id ou contact_libre requis"}), 400
     try:
-        projet_service.add_projet_contact(projet_id, contact_id, data.get('role'))
+        projet_service.add_projet_contact(projet_id, contact_id, data.get('role'), contact_libre)
         return jsonify({"ok": True}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -644,7 +645,18 @@ def add_projet_contact(projet_id):
 @require_auth('admin', 'gestionnaire')
 def remove_projet_contact(projet_id, contact_id):
     try:
-        projet_service.remove_projet_contact(projet_id, contact_id)
+        projet_service.remove_projet_contact(projet_id, contact_id=contact_id)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@routes.route('/projet/<int:projet_id>/contact/libre', methods=['DELETE'])
+@require_auth('admin', 'gestionnaire')
+def remove_projet_contact_libre(projet_id):
+    data = request.json or {}
+    try:
+        projet_service.remove_projet_contact(projet_id, contact_libre=data.get('contact_libre'))
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 400

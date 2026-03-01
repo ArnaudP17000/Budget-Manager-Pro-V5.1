@@ -50,6 +50,10 @@ class DatabaseService:
             pass
         DatabaseService._connection = None
 
+    def _should_retry(self, exc):
+        """Retourne True si l'exception mérite une reconnexion + retry."""
+        return isinstance(exc, (psycopg2.InterfaceError, psycopg2.OperationalError))
+
     def fetch_all(self, query, params=None):
         for attempt in range(2):
             conn = self.get_connection()
@@ -57,16 +61,17 @@ class DatabaseService:
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                     cur.execute(query, params or [])
                     return [dict(r) for r in cur.fetchall()]
-            except psycopg2.InterfaceError:
-                self._reset_connection()
-                if attempt == 1:
-                    raise
-            except Exception:
-                try:
-                    conn.rollback()
-                except Exception:
+            except Exception as e:
+                if self._should_retry(e):
                     self._reset_connection()
-                raise
+                    if attempt == 1:
+                        raise
+                else:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        self._reset_connection()
+                    raise
 
     def fetch_one(self, query, params=None):
         for attempt in range(2):
@@ -76,16 +81,17 @@ class DatabaseService:
                     cur.execute(query, params or [])
                     row = cur.fetchone()
                     return dict(row) if row else None
-            except psycopg2.InterfaceError:
-                self._reset_connection()
-                if attempt == 1:
-                    raise
-            except Exception:
-                try:
-                    conn.rollback()
-                except Exception:
+            except Exception as e:
+                if self._should_retry(e):
                     self._reset_connection()
-                raise
+                    if attempt == 1:
+                        raise
+                else:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        self._reset_connection()
+                    raise
 
     def execute(self, query, params=None):
         """Exécute une requête d'écriture (INSERT/UPDATE/DELETE) et commit."""
@@ -96,16 +102,17 @@ class DatabaseService:
                     cur.execute(query, params or [])
                 conn.commit()
                 return
-            except psycopg2.InterfaceError:
-                self._reset_connection()
-                if attempt == 1:
-                    raise
-            except Exception:
-                try:
-                    conn.rollback()
-                except Exception:
+            except Exception as e:
+                if self._should_retry(e):
                     self._reset_connection()
-                raise
+                    if attempt == 1:
+                        raise
+                else:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        self._reset_connection()
+                    raise
 
     def execute_returning(self, query, params=None):
         """Exécute un INSERT ... RETURNING et retourne la première ligne."""
@@ -117,16 +124,17 @@ class DatabaseService:
                     result = cur.fetchone()
                 conn.commit()
                 return result
-            except psycopg2.InterfaceError:
-                self._reset_connection()
-                if attempt == 1:
-                    raise
-            except Exception:
-                try:
-                    conn.rollback()
-                except Exception:
+            except Exception as e:
+                if self._should_retry(e):
                     self._reset_connection()
-                raise
+                    if attempt == 1:
+                        raise
+                else:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        self._reset_connection()
+                    raise
 
 
 # Singleton partagé entre tous les services

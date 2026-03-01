@@ -54,6 +54,20 @@ def run_migrations():
     except Exception:
         pass
 
+    # ── Colonne projet_contacts (contact libre + contact_id nullable) ─────
+    try:
+        db.execute(
+            "ALTER TABLE projet_contacts ADD COLUMN IF NOT EXISTS contact_libre TEXT"
+        )
+    except Exception:
+        pass
+    try:
+        db.execute(
+            "ALTER TABLE projet_contacts ALTER COLUMN contact_id DROP NOT NULL"
+        )
+    except Exception:
+        pass
+
     # ── Compte admin par défaut (idempotent) ────────────────
     try:
         existing = db.fetch_one(
