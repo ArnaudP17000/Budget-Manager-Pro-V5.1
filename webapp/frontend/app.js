@@ -2127,12 +2127,9 @@ let _servicesSortAsc = true;
 
 async function loadServices() {
     try {
-        const [data, contactsData] = await Promise.all([
-            apiFetch('/service_org'),
-            apiFetch('/contact?limit=500')
-        ]);
+        // Services (critique — séparé des contacts)
+        const data = await apiFetch('/service_org');
         const services = data.list || [];
-        const contacts = contactsData.list || [];
 
         // Build ordered rows (parents → enfants)
         const parents = services.filter(s => !s.parent_id);
@@ -2149,18 +2146,27 @@ async function loadServices() {
         _servicesSortAsc = true;
         renderServicesTable();
 
-        // Populate "add" form selects
+        // Select service parent (formulaire ajout)
         const parentSel = document.getElementById('service-parent');
         if (parentSel) {
             parentSel.innerHTML = '<option value="">-- Service parent (optionnel) --</option>' +
                 services.map(s => `<option value="${s.id}">${s.code ? s.code + ' - ' : ''}${s.nom}</option>`).join('');
         }
-        const respSel = document.getElementById('service-responsable');
-        if (respSel) {
-            respSel.innerHTML = '<option value="">-- Responsable d\'unité (optionnel) --</option>' +
-                contacts.map(c => `<option value="${c.id}">${(c.prenom || '')} ${(c.nom || '')}${c.organisation ? ' — ' + c.organisation : ''}</option>`).join('');
-        }
-    } catch (e) { showMsg('Erreur chargement services', false); }
+
+        // Contacts pour responsable (non-bloquant)
+        apiFetch('/contact?limit=500').then(contactsData => {
+            const contacts = contactsData.list || [];
+            const respSel = document.getElementById('service-responsable');
+            if (respSel) {
+                respSel.innerHTML = '<option value="">-- Responsable (optionnel) --</option>' +
+                    contacts.map(c => `<option value="${c.id}">${(c.prenom || '')} ${(c.nom || '')}${c.organisation ? ' — ' + c.organisation : ''}</option>`).join('');
+            }
+        }).catch(() => {});
+
+    } catch (e) {
+        console.error('loadServices error:', e);
+        showMsg('Erreur chargement services: ' + e.message, false);
+    }
 }
 
 function _serviceRowHtml(s) {
