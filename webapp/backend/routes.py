@@ -884,36 +884,61 @@ def delete_contrat(contrat_id):
 @routes.route('/projet', methods=['GET'])
 @require_auth()
 def get_projets():
-    filters = request.args.to_dict()
-    # Restriction par service pour les non-admin
-    if g.user.get('service_id') and g.user.get('role') != 'admin':
-        filters['service_id'] = g.user['service_id']
-    projets = projet_service.get_all(filters)
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    filters    = request.args.to_dict()
+
+    if role == 'admin':
+        projets = projet_service.get_all(filters)
+    else:
+        where, params = _ownership_where(user_id, role, service_id, 'p')
+        extra = []
+        if filters.get('statut'):
+            extra.append("p.statut = %s")
+            params.append(filters['statut'])
+        clause = f"({where})" + (" AND " + " AND ".join(extra) if extra else "")
+        rows = projet_service.db.fetch_all(
+            "SELECT p.*, s.nom as service_nom, s.code as service_code "
+            "FROM projets p "
+            "LEFT JOIN services s ON s.id = p.service_id "
+            f"WHERE {clause} ORDER BY p.date_creation DESC",
+            params
+        )
+        projets = [dict(r) for r in (rows or [])]
     return jsonify({"count": len(projets), "list": projets})
+
 
 @routes.route('/projet/<int:projet_id>', methods=['GET'])
 @require_auth()
 def get_projet(projet_id):
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
     p = projet_service.get_by_id(projet_id)
     if not p:
         return jsonify({"error": "Projet introuvable"}), 404
-    # Restriction par service pour les non-admin
-    if (g.user.get('service_id') and g.user.get('role') != 'admin'
-            and p.get('service_id') != g.user['service_id']):
-        return jsonify({"error": "Accès interdit"}), 403
+    if role != 'admin' and p.get('created_by_id') is not None:
+        where, params = _ownership_where(user_id, role, service_id, 'p')
+        row = projet_service.db.fetch_one(
+            f"SELECT id FROM projets p WHERE p.id=%s AND {where}", [projet_id] + params
+        )
+        if not row:
+            return jsonify({"error": "Accès interdit"}), 403
     return jsonify(p)
 
 @routes.route('/projet', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def create_projet():
-    data = request.json
+    data    = request.json
+    user_id = g.user.get('sub')
     try:
         projet_service.db.execute(
             "INSERT INTO projets (code, nom, description, statut, priorite, type_projet, phase, "
             "service_id, date_debut, date_fin_prevue, date_fin_reelle, "
             "budget_initial, budget_estime, budget_actuel, avancement, "
-            "objectifs, enjeux, gains, risques, contraintes, solutions) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "objectifs, enjeux, gains, risques, contraintes, solutions, created_by_id) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             [data.get('code'), data.get('nom'), data.get('description'), data.get('statut'),
              data.get('priorite'), data.get('type_projet') or None, data.get('phase') or None,
              data.get('service_id') or None,
@@ -923,7 +948,7 @@ def create_projet():
              data.get('budget_actuel') or None, data.get('avancement') or 0,
              data.get('objectifs') or None, data.get('enjeux') or None,
              data.get('gains') or None, data.get('risques') or None,
-             data.get('contraintes') or None, data.get('solutions') or None]
+             data.get('contraintes') or None, data.get('solutions') or None, user_id]
         )
         return jsonify({"success": True}), 201
     except Exception as e:
@@ -1157,29 +1182,39 @@ def delete_tache(tache_id):
 @routes.route('/fournisseur', methods=['GET'])
 @require_auth()
 def get_fournisseurs_list():
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
     try:
+        if role == 'admin':
+            w_clause, w_params = "1=1", []
+        else:
+            w_clause, w_params = _ownership_where(user_id, role, service_id, 'f')
         rows = referentiel_service.db.fetch_all(
             "SELECT f.*, "
             "(SELECT COUNT(*) FROM contrats c WHERE c.fournisseur_id=f.id) as nb_contrats, "
             "(SELECT COUNT(*) FROM bons_commande bc WHERE bc.fournisseur_id=f.id) as nb_bc, "
             "(SELECT COALESCE(SUM(bc.montant_ttc),0) FROM bons_commande bc WHERE bc.fournisseur_id=f.id) as montant_total "
-            "FROM fournisseurs f ORDER BY f.nom"
+            f"FROM fournisseurs f WHERE {w_clause} ORDER BY f.nom",
+            w_params
         )
         result = [dict(r) for r in rows] if rows else []
         return jsonify({"count": len(result), "list": result})
     except Exception as e:
         return jsonify({"count": 0, "list": [], "error": str(e)})
 
+
 @routes.route('/fournisseur', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def create_fournisseur():
-    data = request.json
+    data    = request.json
+    user_id = g.user.get('sub')
     try:
         referentiel_service.db.execute(
-            "INSERT INTO fournisseurs (nom, contact_principal, email, telephone, adresse, ville, statut) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            "INSERT INTO fournisseurs (nom, contact_principal, email, telephone, adresse, ville, statut, created_by_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
             [data.get('nom'), data.get('contact_principal'), data.get('email'),
-             data.get('telephone'), data.get('adresse'), data.get('ville'), 'ACTIF']
+             data.get('telephone'), data.get('adresse'), data.get('ville'), 'ACTIF', user_id]
         )
         return jsonify({"success": True}), 201
     except Exception as e:

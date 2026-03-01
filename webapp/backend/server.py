@@ -123,7 +123,7 @@ def run_migrations():
         pass
 
     # ── Propriété des enregistrements (created_by_id) ───────────
-    for tbl in ['bons_commande', 'contrats', 'projets', 'contacts', 'taches']:
+    for tbl in ['bons_commande', 'contrats', 'projets', 'contacts', 'taches', 'fournisseurs']:
         try:
             db.execute(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS created_by_id INTEGER")
         except Exception:
