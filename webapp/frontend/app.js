@@ -2106,7 +2106,7 @@ async function deleteFournisseur(id) {
     } catch (e) { showMsg(e.message, false); }
 }
 
-function editFournisseur(id) {
+async function editFournisseur(id) {
     const data = _cache.fournisseurs.find(f => f.id === id);
     if (!data) { showMsg('Données non chargées, rechargez', false); return; }
     document.getElementById('edit-fournisseur-id').value       = data.id;
@@ -2116,7 +2116,66 @@ function editFournisseur(id) {
     document.getElementById('edit-fournisseur-telephone').value= data.telephone || '';
     document.getElementById('edit-fournisseur-adresse').value  = data.adresse || '';
     document.getElementById('edit-fournisseur-ville').value    = data.ville || '';
+
+    // Charger les contacts existants dans le select
+    const sel = document.getElementById('fournisseur-contact-select');
+    sel.innerHTML = '<option value="">— Sélectionner un contact existant —</option>';
+    try {
+        const cd = await apiFetch('/contact');
+        (cd.list || []).forEach(c => {
+            const label = [c.nom, c.prenom, c.societe || c.organisation].filter(Boolean).join(' – ');
+            sel.innerHTML += `<option value="${c.id}">${label}</option>`;
+        });
+    } catch(e) {}
+
+    await loadFournisseurContacts(id);
     openModal('modal-edit-fournisseur');
+}
+
+async function loadFournisseurContacts(fournisseurId) {
+    const container = document.getElementById('fournisseur-contacts-list');
+    try {
+        const data = await apiFetch(`/fournisseur/${fournisseurId}/contacts`);
+        const list = data.list || [];
+        if (!list.length) {
+            container.innerHTML = '<p style="color:#aaa;font-size:.82em;font-style:italic;">Aucun contact lié.</p>';
+            return;
+        }
+        container.innerHTML = list.map(c => `
+            <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #f0f0f0;">
+                <span style="flex:1;font-size:.85em;">
+                    <strong>${c.nom || ''}${c.prenom ? ' ' + c.prenom : ''}</strong>
+                    ${c.fonction ? `<span style="color:#666;"> · ${c.fonction}</span>` : ''}
+                    ${c.societe || c.email ? `<span style="color:#888;font-size:.9em;"> — ${c.societe || c.email}</span>` : ''}
+                </span>
+                <button class="btn btn-danger btn-sm" onclick="unlinkContactFournisseur(${fournisseurId},${c.id})">✕</button>
+            </div>`).join('');
+    } catch(e) {
+        container.innerHTML = '<p style="color:#c00;font-size:.82em;">Erreur chargement contacts.</p>';
+    }
+}
+
+async function linkContactFournisseur() {
+    const fournisseurId = document.getElementById('edit-fournisseur-id').value;
+    const contactId = document.getElementById('fournisseur-contact-select').value;
+    if (!contactId) { showMsg('Sélectionnez un contact', false); return; }
+    try {
+        const res = await apiFetch(`/fournisseur/${fournisseurId}/contacts`, {
+            method: 'POST', body: JSON.stringify({ contact_id: parseInt(contactId) })
+        });
+        if (res.success) {
+            document.getElementById('fournisseur-contact-select').value = '';
+            await loadFournisseurContacts(parseInt(fournisseurId));
+        } else showMsg(res.error || 'Erreur', false);
+    } catch(e) { showMsg(e.message, false); }
+}
+
+async function unlinkContactFournisseur(fournisseurId, contactId) {
+    try {
+        const res = await apiFetch(`/fournisseur/${fournisseurId}/contacts/${contactId}`, { method: 'DELETE' });
+        if (res.success) await loadFournisseurContacts(fournisseurId);
+        else showMsg(res.error || 'Erreur', false);
+    } catch(e) { showMsg(e.message, false); }
 }
 
 async function saveFournisseur() {
