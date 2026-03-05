@@ -1442,10 +1442,24 @@ def kanban():
 @routes.route('/etp', methods=['GET'])
 @require_auth()
 def etp():
-    mode = request.args.get('mode', 'projet')  # 'projet' ou 'personne'
+    mode       = request.args.get('mode', 'projet')  # 'projet' ou 'personne'
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
     try:
         if mode == 'personne':
-            # Charge par personne (utilisateurs actifs + tâches assignées)
+            # Filtre utilisateurs selon rôle
+            if role == 'admin':
+                user_where  = "u.actif = true"
+                user_params = []
+            elif role == 'gestionnaire' and service_id:
+                user_where  = "u.actif = true AND u.service_id = %s"
+                user_params = [service_id]
+            else:
+                # lecteur : uniquement soi-même
+                user_where  = "u.actif = true AND u.id = %s"
+                user_params = [user_id]
+
             rows = projet_service.db.fetch_all(
                 "SELECT u.id, u.nom, u.prenom, u.email, u.role, "
                 "s.nom as service_nom, s.code as service_code, "
@@ -1457,10 +1471,11 @@ def etp():
                 "LEFT JOIN services s ON s.id = u.service_id "
                 "LEFT JOIN taches t ON t.assignee_id = u.id "
                 "  AND t.statut NOT IN ('Terminé', 'Annulé') "
-                "WHERE u.actif = true "
+                f"WHERE {user_where} "
                 "GROUP BY u.id, u.nom, u.prenom, u.email, u.role, "
                 "  s.nom, s.code, s.is_unite "
-                "ORDER BY heures_estimees DESC, u.nom"
+                "ORDER BY heures_estimees DESC, u.nom",
+                user_params
             )
             result = [dict(r) for r in rows] if rows else []
             HEURES_AN = 1540  # 1 ETP = ~220 jours * 7h
@@ -1472,7 +1487,14 @@ def etp():
             return jsonify({"list": result, "mode": "personne",
                             "heures_an": HEURES_AN})
         else:
-            # Charge par projet (mode existant)
+            # Charge par projet — filtré par ownership
+            if role == 'admin':
+                proj_where  = "p.statut NOT IN ('Terminé', 'Annulé')"
+                proj_params = []
+            else:
+                own_w, own_p = _ownership_where(user_id, role, service_id, 'p')
+                proj_where   = f"p.statut NOT IN ('Terminé', 'Annulé') AND ({own_w})"
+                proj_params  = own_p
             rows = projet_service.db.fetch_all(
                 "SELECT p.id, p.code, p.nom, p.statut, "
                 "COALESCE(SUM(t.estimation_heures), 0) as heures_estimees, "
@@ -1480,9 +1502,10 @@ def etp():
                 "COUNT(t.id) as nb_taches "
                 "FROM projets p "
                 "LEFT JOIN taches t ON t.projet_id = p.id "
-                "WHERE p.statut NOT IN ('Terminé', 'Annulé') "
+                f"WHERE {proj_where} "
                 "GROUP BY p.id, p.code, p.nom, p.statut "
-                "ORDER BY heures_estimees DESC"
+                "ORDER BY heures_estimees DESC",
+                proj_params
             )
             result = [dict(r) for r in rows] if rows else []
             total_h = sum(r.get('heures_estimees', 0) or 0 for r in result)
@@ -1550,6 +1573,10 @@ def lire_notification(notif_id):
 @require_auth()
 def get_gantt():
     """Retourne projets + tâches pour le diagramme de Gantt."""
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    svc_id     = g.user.get('service_id')
+
     service_id = request.args.get('service_id', type=int)
     date_debut = request.args.get('date_debut')   # YYYY-MM-DD
     date_fin   = request.args.get('date_fin')     # YYYY-MM-DD
@@ -1558,8 +1585,13 @@ def get_gantt():
     db = budget_service.db
 
     # ── Projets ─────────────────────────────────────────────
-    proj_where = ["p.date_debut IS NOT NULL OR p.date_fin_prevue IS NOT NULL"]
+    proj_where = ["(p.date_debut IS NOT NULL OR p.date_fin_prevue IS NOT NULL)"]
     proj_params = []
+    # Filtre propriétaire (non-admin)
+    if role != 'admin':
+        own_w, own_p = _ownership_where(user_id, role, svc_id, 'p')
+        proj_where.append(f"({own_w})")
+        proj_params.extend(own_p)
     if service_id:
         proj_where.append("p.service_id = %s")
         proj_params.append(service_id)
@@ -1585,6 +1617,11 @@ def get_gantt():
     # ── Tâches ──────────────────────────────────────────────
     tache_where = ["t.date_echeance IS NOT NULL"]
     tache_params = []
+    # Filtre visibilité tâches (non-admin)
+    if role != 'admin':
+        t_w, t_p = _tache_visibility_where(user_id, role, svc_id)
+        tache_where.append(f"({t_w})")
+        tache_params.extend(t_p)
     if projet_id:
         tache_where.append("t.projet_id = %s")
         tache_params.append(projet_id)
