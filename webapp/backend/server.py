@@ -204,6 +204,12 @@ def security_headers(response):
     return response
 
 
+@app.errorhandler(404)
+def not_found(e):
+    from flask import request as req
+    return jsonify({"error": f"Route introuvable: {req.path}"}), 404
+
+
 @app.route('/')
 def index():
     return send_from_directory(FRONTEND_DIR, 'index.html')
