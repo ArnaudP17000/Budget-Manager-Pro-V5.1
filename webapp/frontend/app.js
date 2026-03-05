@@ -506,7 +506,7 @@ async function saveLigne() {
     };
     const url    = id ? `/ligne/${id}` : '/ligne';
     const method = id ? 'PUT' : 'POST';
-    const res = await apiFetch(url, method, body);
+    const res = await apiFetch(url, { method, body: JSON.stringify(body) });
     if (res.success) {
         showMsg(id ? 'Ligne mise à jour' : 'Ligne créée');
         closeModal('modal-edit-ligne');
