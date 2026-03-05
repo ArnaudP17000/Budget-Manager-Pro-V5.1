@@ -417,7 +417,16 @@
 <div id="view-bc" class="view">
     <h2>Bons de commande</h2>
     <div class="form-card">
-        <h3>Nouveau BC</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <h3 style="margin:0;">Nouveau BC</h3>
+            <button class="btn btn-sm" onclick="document.getElementById('bc-pdf-input').click()"
+                    style="background:#0ea5e9;color:#fff;white-space:nowrap;">
+                &#128196; Importer depuis PDF
+            </button>
+            <input type="file" id="bc-pdf-input" accept=".pdf" style="display:none"
+                   onchange="importBCfromPDF(this)">
+        </div>
+        <div id="bc-pdf-info" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:.85em;color:#1e40af;"></div>
         <div class="form-grid">
             <input id="bc-numero" placeholder="N° BC (ex: BC-2026-001)">
             <input id="bc-objet" class="wide" placeholder="Objet">
@@ -1491,6 +1500,6 @@
 
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
-<script src="app.js?v=5.80"></script>
+<script src="app.js?v=5.81"></script>
 </body>
 </html>

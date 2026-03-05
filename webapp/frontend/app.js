@@ -776,6 +776,54 @@ async function loadBC() {
     } catch (e) { showMsg('Erreur chargement BC', false); }
 }
 
+async function importBCfromPDF(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const info = document.getElementById('bc-pdf-info');
+    info.style.display = '';
+    info.textContent = '⏳ Analyse du PDF en cours…';
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const token = getToken();
+        const resp = await fetch('/api/bon_commande/parse_pdf', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token },
+            body: formData
+        });
+        const res = await resp.json();
+        if (!resp.ok || !res.success) {
+            info.style.background = '#fef2f2'; info.style.borderColor = '#fecaca'; info.style.color = '#dc2626';
+            info.textContent = '❌ ' + (res.error || 'Erreur analyse PDF');
+            input.value = '';
+            return;
+        }
+        const d = res.data;
+        const set = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined && val !== null) el.value = val; };
+        set('bc-numero',     d.numero_bc);
+        set('bc-objet',      d.objet);
+        set('bc-montant-ht', d.montant_ht);
+        if (d.fournisseur_id) set('bc-fournisseur', d.fournisseur_id);
+        if (d.ligne_budgetaire_id) set('bc-ligne', d.ligne_budgetaire_id);
+
+        const extraits = [];
+        if (d.numero_bc)         extraits.push(`N° BC : ${d.numero_bc}`);
+        if (d.montant_ht)        extraits.push(`HT : ${d.montant_ht} €`);
+        if (d.montant_ttc)       extraits.push(`TTC : ${d.montant_ttc} €`);
+        if (d.tva)               extraits.push(`TVA : ${d.tva}%`);
+        if (d.fournisseur_nom)   extraits.push(`Fournisseur : ${d.fournisseur_nom}`);
+        else if (d.fournisseur_nom_brut) extraits.push(`Fournisseur non trouvé (texte: "${d.fournisseur_nom_brut}")`);
+        if (d.ligne_libelle)     extraits.push(`Ligne suggérée : ${d.ligne_libelle}`);
+
+        info.style.background = '#eff6ff'; info.style.borderColor = '#bfdbfe'; info.style.color = '#1e40af';
+        info.innerHTML = '✅ PDF analysé — Vérifiez et complétez les champs :<br><small>' + extraits.join(' &nbsp;|&nbsp; ') + '</small>';
+    } catch (e) {
+        info.style.background = '#fef2f2'; info.style.borderColor = '#fecaca'; info.style.color = '#dc2626';
+        info.textContent = '❌ Erreur : ' + e.message;
+    }
+    input.value = '';
+}
+
 async function addBC() {
     const montant_ht = parseFloat(document.getElementById('bc-montant-ht').value) || 0;
     const body = {
