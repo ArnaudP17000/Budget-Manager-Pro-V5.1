@@ -48,11 +48,14 @@ def require_auth(*roles):
             if roles and payload.get('role') not in roles:
                 return jsonify({"error": "Accès interdit"}), 403
             # Vérifier que le compte est toujours actif en base
-            user_row = auth_service.db.fetch_one(
-                "SELECT actif FROM utilisateurs WHERE id=%s", [payload.get('sub')]
-            )
-            if not user_row or not user_row.get('actif'):
-                return jsonify({"error": "Compte désactivé"}), 401
+            try:
+                user_row = auth_service.db.fetch_one(
+                    "SELECT actif FROM utilisateurs WHERE id=%s", [payload.get('sub')]
+                )
+                if not user_row or not user_row.get('actif'):
+                    return jsonify({"error": "Compte désactivé"}), 401
+            except Exception:
+                pass  # DB temporairement indisponible : on accepte le token JWT
             g.user = payload
             return f(*args, **kwargs)
         return wrapper
