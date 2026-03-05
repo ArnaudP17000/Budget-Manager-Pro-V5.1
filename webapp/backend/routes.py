@@ -749,6 +749,143 @@ def imputer_bc(bc_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@routes.route('/bon_commande/parse_pdf', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
+def parse_bc_pdf():
+    import io, re
+    from difflib import get_close_matches
+    try:
+        import pdfplumber
+    except ImportError:
+        return jsonify({"error": "pdfplumber non installé — redéployez l'application"}), 500
+
+    if 'file' not in request.files:
+        return jsonify({"error": "Fichier PDF manquant"}), 400
+    f = request.files['file']
+    if not f.filename.lower().endswith('.pdf'):
+        return jsonify({"error": "Format PDF requis (.pdf)"}), 400
+
+    try:
+        text = ""
+        with pdfplumber.open(io.BytesIO(f.read())) as pdf:
+            for page in pdf.pages:
+                text += (page.extract_text() or "") + "\n"
+
+        if not text.strip():
+            return jsonify({"error": "Impossible d'extraire le texte du PDF (document scanné ?)"}), 422
+
+        def _montant(val):
+            if not val: return None
+            try: return round(float(str(val).strip().replace(' ', '').replace('\xa0', '').replace(',', '.')), 2)
+            except: return None
+
+        result = {}
+
+        # ── N° BC ──────────────────────────────────────────────
+        for p in [
+            r'(?:bon\s+de\s+commande|commande\s+n[o°]?)[^\w]*([\w][\w\s\-\/]{1,30})',
+            r'n[o°°]\s*(?:bc|commande|de\s+commande)\s*:?\s*([\w][\w\s\-\/]{1,30})',
+            r'\bBC[\s\-]*([\d][\w\-\/]{1,20})',
+        ]:
+            m = re.search(p, text, re.IGNORECASE)
+            if m:
+                result['numero_bc'] = m.group(1).strip()[:50]
+                break
+
+        # ── Objet ───────────────────────────────────────────────
+        for p in [
+            r'(?:objet|d[ée]signation|libell[ée]|prestation)\s*:?\s*(.{5,200}?)(?:\n|$)',
+        ]:
+            m = re.search(p, text, re.IGNORECASE)
+            if m:
+                result['objet'] = m.group(1).strip()[:200]
+                break
+
+        # ── Montant TTC ─────────────────────────────────────────
+        for p in [
+            r'(?:total|montant)?\s*TTC\s*[:\s]+([\d][\d\s\.,]+)',
+            r'T\.T\.C\.?\s*[:\s]+([\d][\d\s\.,]+)',
+            r'([\d][\d\s\.,]+)\s*(?:€|EUR)\s*TTC',
+        ]:
+            m = re.search(p, text, re.IGNORECASE)
+            if m:
+                v = _montant(m.group(1))
+                if v and v > 0: result['montant_ttc'] = v; break
+
+        # ── Montant HT ──────────────────────────────────────────
+        for p in [
+            r'(?:total|montant)?\s*HT\s*[:\s]+([\d][\d\s\.,]+)',
+            r'H\.T\.?\s*[:\s]+([\d][\d\s\.,]+)',
+            r'([\d][\d\s\.,]+)\s*(?:€|EUR)\s*HT',
+        ]:
+            m = re.search(p, text, re.IGNORECASE)
+            if m:
+                v = _montant(m.group(1))
+                if v and v > 0: result['montant_ht'] = v; break
+
+        # ── Taux TVA ────────────────────────────────────────────
+        m = re.search(r'TVA\s*:?\s*(\d+(?:[,\.]\d+)?)\s*%', text, re.IGNORECASE)
+        if m:
+            v = _montant(m.group(1))
+            if v: result['tva'] = v
+
+        # ── Déduire HT depuis TTC si manquant ───────────────────
+        if result.get('montant_ttc') and not result.get('montant_ht'):
+            tva = result.get('tva', 20)
+            result['montant_ht'] = round(result['montant_ttc'] / (1 + tva / 100), 2)
+        elif result.get('montant_ht') and not result.get('montant_ttc'):
+            tva = result.get('tva', 20)
+            result['montant_ttc'] = round(result['montant_ht'] * (1 + tva / 100), 2)
+
+        # ── Fournisseur : fuzzy match ────────────────────────────
+        fournisseurs = bc_service.db.fetch_all(
+            "SELECT id, nom FROM fournisseurs ORDER BY nom"
+        ) or []
+        noms_fourn = [f['nom'] for f in fournisseurs]
+
+        fourn_brut = None
+        # 1) Chercher mot-clé "fournisseur:"
+        for p in [r'(?:fournisseur|vendeur|prestataire|[ée]metteur)\s*:?\s*(.{3,80}?)(?:\n|$)']:
+            m = re.search(p, text, re.IGNORECASE)
+            if m: fourn_brut = m.group(1).strip(); break
+        # 2) Chercher les 10 premières lignes non vides du PDF
+        if not fourn_brut:
+            lines = [l.strip() for l in text.split('\n') if l.strip() and len(l.strip()) > 3][:15]
+            best_score = 0
+            for line in lines:
+                matches = get_close_matches(line, noms_fourn, n=1, cutoff=0.55)
+                if matches:
+                    fourn_brut = line
+                    break
+
+        result['fournisseur_nom_brut'] = fourn_brut
+        if fourn_brut:
+            matches = get_close_matches(fourn_brut, noms_fourn, n=1, cutoff=0.5)
+            if matches:
+                fourn = next((f for f in fournisseurs if f['nom'] == matches[0]), None)
+                if fourn:
+                    result['fournisseur_id']  = fourn['id']
+                    result['fournisseur_nom'] = fourn['nom']
+
+        # ── Suggestion ligne budgétaire (historique fournisseur) ─
+        if result.get('fournisseur_id'):
+            hist = bc_service.db.fetch_one(
+                "SELECT lb.id, lb.libelle, COUNT(*) as cnt "
+                "FROM bons_commande bc "
+                "JOIN lignes_budgetaires lb ON lb.id = bc.ligne_budgetaire_id "
+                "WHERE bc.fournisseur_id = %s AND bc.ligne_budgetaire_id IS NOT NULL "
+                "GROUP BY lb.id, lb.libelle ORDER BY cnt DESC LIMIT 1",
+                [result['fournisseur_id']]
+            )
+            if hist:
+                result['ligne_budgetaire_id'] = hist['id']
+                result['ligne_libelle']       = hist['libelle']
+
+        return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @routes.route('/bon_commande', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def create_bon_commande():
