@@ -1313,6 +1313,55 @@ def delete_fournisseur(fournisseur_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+# ── Contacts liés à un fournisseur ──────────────────────────
+
+@routes.route('/fournisseur/<int:fournisseur_id>/contacts', methods=['GET'])
+@require_auth()
+def get_fournisseur_contacts(fournisseur_id):
+    try:
+        rows = referentiel_service.db.fetch_all(
+            "SELECT c.id, c.nom, c.prenom, c.fonction, c.type, c.telephone, c.email, c.societe "
+            "FROM contacts c "
+            "JOIN fournisseur_contacts fc ON fc.contact_id = c.id "
+            "WHERE fc.fournisseur_id = %s ORDER BY c.nom, c.prenom",
+            [fournisseur_id]
+        )
+        return jsonify({"list": [dict(r) for r in rows] if rows else []})
+    except Exception as e:
+        return jsonify({"list": [], "error": str(e)})
+
+
+@routes.route('/fournisseur/<int:fournisseur_id>/contacts', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
+def add_fournisseur_contact(fournisseur_id):
+    data = request.json
+    contact_id = data.get('contact_id')
+    if not contact_id:
+        return jsonify({"error": "contact_id requis"}), 400
+    try:
+        referentiel_service.db.execute(
+            "INSERT INTO fournisseur_contacts (fournisseur_id, contact_id) "
+            "VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            [fournisseur_id, contact_id]
+        )
+        return jsonify({"success": True}), 201
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@routes.route('/fournisseur/<int:fournisseur_id>/contacts/<int:contact_id>', methods=['DELETE'])
+@require_auth('admin', 'gestionnaire')
+def remove_fournisseur_contact(fournisseur_id, contact_id):
+    try:
+        referentiel_service.db.execute(
+            "DELETE FROM fournisseur_contacts WHERE fournisseur_id=%s AND contact_id=%s",
+            [fournisseur_id, contact_id]
+        )
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 # ─────────────────────────────────────────────
 # CONTACTS
 # ─────────────────────────────────────────────

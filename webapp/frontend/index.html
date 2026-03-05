@@ -1367,6 +1367,19 @@
             <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Ville</label>
                 <input id="edit-fournisseur-ville" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
         </div>
+
+        <!-- Contacts liés -->
+        <div style="margin-top:14px;border-top:1px solid #e5e7eb;padding-top:12px;">
+            <div style="font-size:.85em;font-weight:600;color:#2563a8;margin-bottom:8px;">Contacts liés</div>
+            <div id="fournisseur-contacts-list" style="margin-bottom:10px;"></div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <select id="fournisseur-contact-select" style="flex:1;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;">
+                    <option value="">— Sélectionner un contact existant —</option>
+                </select>
+                <button class="btn btn-primary btn-sm" onclick="linkContactFournisseur()">Lier</button>
+            </div>
+        </div>
+
         <div class="modal-footer">
             <button class="btn btn-success" onclick="saveFournisseur()">Enregistrer</button>
             <button class="btn btn-danger" onclick="closeModal('modal-edit-fournisseur')">Annuler</button>
@@ -1458,6 +1471,6 @@
 
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
-<script src="app.js?v=5.74"></script>
+<script src="app.js?v=5.75"></script>
 </body>
 </html>

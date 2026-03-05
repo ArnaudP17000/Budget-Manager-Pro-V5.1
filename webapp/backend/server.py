@@ -137,6 +137,18 @@ def run_migrations():
         except Exception:
             pass
 
+    # ── Contacts liés aux fournisseurs ──────────────────────────
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS fournisseur_contacts (
+                fournisseur_id INTEGER NOT NULL,
+                contact_id     INTEGER NOT NULL,
+                PRIMARY KEY (fournisseur_id, contact_id)
+            )
+        """)
+    except Exception:
+        pass
+
     # ── Permissions budgets (accès explicite par utilisateur) ───
     try:
         db.execute("""
