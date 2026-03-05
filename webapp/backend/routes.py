@@ -218,8 +218,10 @@ def _user_budget_role(user_id, budget_id):
 @routes.route('/budget', methods=['GET'])
 @require_auth()
 def get_budget():
-    user_id = g.user.get('sub')
-    role    = g.user.get('role')
+    user_id  = g.user.get('sub')
+    role     = g.user.get('role')
+    exercice = request.args.get('exercice', type=int)
+
     if role == 'admin':
         budgets = budget_service.get_budget()
         for b in budgets:
@@ -234,6 +236,10 @@ def get_budget():
             [user_id]
         )
         budgets = [dict(b) for b in (rows or [])]
+
+    if exercice:
+        budgets = [b for b in budgets if b.get('exercice') == exercice]
+
     return jsonify({
         "total_vote":   sum(b.get('montant_vote', 0) or 0 for b in budgets),
         "total_engage": sum(b.get('montant_engage', 0) or 0 for b in budgets),
@@ -477,6 +483,68 @@ def delete_budget(budget_id):
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
+
+
+# ─── Duplication budget N → N+1 ───────────────────────────────────────────────
+
+@routes.route('/budget/dupliquer', methods=['POST'])
+@require_auth('admin')
+def dupliquer_budget():
+    data            = request.json
+    source_exercice = data.get('source_exercice')
+    target_exercice = data.get('target_exercice')
+    if not source_exercice or not target_exercice:
+        return jsonify({"error": "source_exercice et target_exercice requis"}), 400
+    try:
+        existing = budget_service.db.fetch_one(
+            "SELECT COUNT(*) as n FROM budgets_annuels WHERE exercice=%s", [target_exercice]
+        )
+        if existing and int(existing['n'] or 0) > 0:
+            return jsonify({"error": f"Des budgets {target_exercice} existent déjà ({existing['n']}). Supprimez-les avant de dupliquer."}), 400
+
+        source_budgets = budget_service.db.fetch_all(
+            "SELECT * FROM budgets_annuels WHERE exercice=%s ORDER BY id", [source_exercice]
+        ) or []
+        if not source_budgets:
+            return jsonify({"error": f"Aucun budget trouvé pour l'exercice {source_exercice}"}), 404
+
+        nb_budgets = 0
+        nb_lignes  = 0
+        for b in source_budgets:
+            engage = float(b.get('montant_engage') or 0)
+            vote   = float(b.get('montant_vote') or 0)
+            previsionnel = engage if engage > 0 else vote
+
+            new_budget_row = budget_service.db.execute_returning(
+                "INSERT INTO budgets_annuels (entite_id, exercice, nature, montant_previsionnel, statut) "
+                "VALUES (%s, %s, %s, %s, 'BROUILLON') RETURNING id",
+                [b['entite_id'], target_exercice, b['nature'], previsionnel]
+            )
+            new_budget_id = new_budget_row[0]
+            nb_budgets += 1
+
+            lignes = budget_service.db.fetch_all(
+                "SELECT * FROM lignes_budgetaires WHERE budget_id=%s AND statut != 'ANNULEE' ORDER BY id",
+                [b['id']]
+            ) or []
+            for l in lignes:
+                engage_l = float(l.get('montant_engage') or 0)
+                vote_l   = float(l.get('montant_vote') or 0)
+                prevu    = engage_l if engage_l > 0 else vote_l
+                budget_service.db.execute(
+                    "INSERT INTO lignes_budgetaires "
+                    "(budget_id, libelle, application_id, fournisseur_id, "
+                    "montant_prevu, montant_vote, montant_solde, nature, note, statut) "
+                    "VALUES (%s, %s, %s, %s, %s, 0, 0, %s, %s, 'ACTIF')",
+                    [new_budget_id, l['libelle'],
+                     l.get('application_id'), l.get('fournisseur_id'),
+                     prevu, l.get('nature') or 'FONCTIONNEMENT', l.get('note')]
+                )
+                nb_lignes += 1
+
+        return jsonify({"success": True, "budgets_crees": nb_budgets, "lignes_creees": nb_lignes})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 # ─── Gestion des permissions budget ───────────────────────────────────────────

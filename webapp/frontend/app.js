@@ -530,9 +530,14 @@ function _currentUserId() {
 
 async function loadBudget() {
     try {
-        const data = await apiFetch('/budget');
+        const exercice = document.getElementById('export-exercice')?.value || new Date().getFullYear();
+        const data = await apiFetch(`/budget?exercice=${exercice}`);
         _budgetsList = data.details || [];
         const userRole = _currentUserRole();
+
+        // Bouton "Faire budget N+1" visible pour admin seulement
+        const btnDup = document.getElementById('btn-dupliquer-budget');
+        if (btnDup) btnDup.style.display = userRole === 'admin' ? '' : 'none';
 
         // Afficher/masquer le formulaire "Nouveau budget"
         const newCard = document.getElementById('budget-new-card');
@@ -587,6 +592,25 @@ async function loadBudget() {
             </tr>`;
         }).join('');
     } catch (e) { showMsg('Erreur chargement budgets', false); }
+}
+
+async function dupliquerBudget() {
+    const exercice = parseInt(document.getElementById('export-exercice')?.value || new Date().getFullYear());
+    const target = exercice + 1;
+    if (!confirm(`Créer le budget ${target} en dupliquant la structure ${exercice} ?\n\nLes montants prévisionnels seront basés sur l'engagé réel ${exercice}.`)) return;
+    try {
+        const res = await apiFetch('/budget/dupliquer', {
+            method: 'POST',
+            body: JSON.stringify({ source_exercice: exercice, target_exercice: target })
+        });
+        if (res.success) {
+            showMsg(`Budget ${target} créé : ${res.budgets_crees} budget(s), ${res.lignes_creees} ligne(s)`);
+            document.getElementById('export-exercice').value = target;
+            loadBudget();
+        } else {
+            showMsg(res.error || 'Erreur', false);
+        }
+    } catch (e) { showMsg(e.message || 'Erreur', false); }
 }
 
 async function openBudgetPerms(budgetId, budgetLabel) {
