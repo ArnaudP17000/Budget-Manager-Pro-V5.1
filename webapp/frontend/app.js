@@ -2065,6 +2065,7 @@ async function loadFournisseurs() {
                 <td>${f.id}</td>
                 <td><strong>${f.nom || '-'}</strong></td>
                 <td>${f.contact_principal || '-'}</td>
+                <td style="font-size:.82em;color:#444;">${f.contacts_lies || '-'}</td>
                 <td>${f.email || '-'}</td>
                 <td>${f.telephone || '-'}</td>
                 <td>${f.ville || '-'}</td>
