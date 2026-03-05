@@ -493,6 +493,8 @@ def dupliquer_budget():
     data            = request.json
     source_exercice = data.get('source_exercice')
     target_exercice = data.get('target_exercice')
+    taux            = float(data.get('taux_revalorisation') or 0)
+    coeff           = 1 + taux / 100
     if not source_exercice or not target_exercice:
         return jsonify({"error": "source_exercice et target_exercice requis"}), 400
     try:
@@ -513,7 +515,8 @@ def dupliquer_budget():
         for b in source_budgets:
             engage = float(b.get('montant_engage') or 0)
             vote   = float(b.get('montant_vote') or 0)
-            previsionnel = engage if engage > 0 else vote
+            base   = engage if engage > 0 else vote
+            previsionnel = round(base * coeff, 2)
 
             new_budget_row = budget_service.db.execute_returning(
                 "INSERT INTO budgets_annuels (entite_id, exercice, nature, montant_previsionnel, statut) "
@@ -530,7 +533,8 @@ def dupliquer_budget():
             for l in lignes:
                 engage_l = float(l.get('montant_engage') or 0)
                 vote_l   = float(l.get('montant_vote') or 0)
-                prevu    = engage_l if engage_l > 0 else vote_l
+                base_l   = engage_l if engage_l > 0 else vote_l
+                prevu    = round(base_l * coeff, 2)
                 budget_service.db.execute(
                     "INSERT INTO lignes_budgetaires "
                     "(budget_id, libelle, application_id, fournisseur_id, "
