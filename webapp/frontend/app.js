@@ -307,6 +307,27 @@ async function loadDashboard() {
 
 let _lignesSelectId = null; // ligne sélectionnée dans la vue lignes
 
+function exportBudget() {
+    const exercice = document.getElementById('export-exercice')?.value || new Date().getFullYear();
+    const token = getToken();
+    fetch(`/api/export/budget?exercice=${exercice}`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+    })
+    .then(res => {
+        if (!res.ok) throw new Error('Erreur export');
+        return res.blob();
+    })
+    .then(blob => {
+        const url  = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href  = url;
+        link.download = `Budget_DSI_${exercice}_${new Date().toISOString().slice(0,10)}.xlsx`;
+        link.click();
+        URL.revokeObjectURL(url);
+    })
+    .catch(e => showMsg(e.message || 'Erreur export', false));
+}
+
 function switchBudgetSubTab(tab) {
     document.querySelectorAll('.budget-subtab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.budget-subview').forEach(v => v.classList.remove('active'));

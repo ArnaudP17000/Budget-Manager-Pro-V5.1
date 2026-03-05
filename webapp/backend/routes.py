@@ -1782,3 +1782,285 @@ def get_gantt():
             for r in taches
         ],
     })
+
+
+# ─────────────────────────────────────────────
+# EXPORT EXCEL
+# ─────────────────────────────────────────────
+
+@routes.route('/export/budget', methods=['GET'])
+@require_auth()
+def export_budget():
+    import io
+    from datetime import datetime
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    from flask import send_file
+
+    exercice  = request.args.get('exercice', datetime.now().year, type=int)
+    next_year = exercice + 1
+    db        = budget_service.db
+    BLUE      = "2563A8"
+
+    # ── helpers ────────────────────────────────────────────────
+    def hdr(ws, row_no):
+        for cell in ws[row_no]:
+            if cell.value is not None:
+                cell.font      = Font(bold=True, color="FFFFFF")
+                cell.fill      = PatternFill("solid", fgColor=BLUE)
+                cell.alignment = Alignment(horizontal="center", vertical="center",
+                                           wrap_text=True)
+
+    def auto_w(ws, mn=10, mx=50):
+        for col in ws.columns:
+            w = max(mn, min(mx, max((len(str(c.value or "")) for c in col), default=0) + 2))
+            ws.column_dimensions[get_column_letter(col[0].column)].width = w
+
+    def fdate(v):
+        return v.strftime("%Y-%m-%d") if v and hasattr(v, "strftime") else (str(v)[:10] if v else None)
+
+    def ff(v):
+        try:    return float(v or 0)
+        except: return 0.0
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    # ── Feuille 1 : Synthèse ────────────────────────────────────
+    ws1 = wb.create_sheet(f"Synthèse {exercice}")
+    ws1.append([f"SYNTHÈSE BUDGET DSI — Exercice {exercice}"])
+    ws1["A1"].font = Font(bold=True, size=14, color=BLUE)
+    ws1.merge_cells("A1:G1")
+    ws1.append([f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}"])
+    ws1.append([])
+    ws1.append(["Entité", "Nature", "Prévisionnel", "Voté", "Engagé", "Solde", "Statut"])
+    hdr(ws1, 4)
+
+    rows = db.fetch_all(
+        "SELECT e.nom as entite_nom, b.nature, "
+        "COALESCE(b.montant_prevu,0) as montant_prevu, "
+        "COALESCE(b.montant_vote,0) as montant_vote, "
+        "COALESCE(b.montant_engage,0) as montant_engage, "
+        "COALESCE(b.montant_solde,0) as montant_solde, b.statut "
+        "FROM budgets_annuels b "
+        "LEFT JOIN entites e ON e.id = b.entite_id "
+        "WHERE b.exercice = %s ORDER BY e.nom, b.nature",
+        [exercice]
+    ) or []
+    for r in rows:
+        ws1.append([r["entite_nom"], r["nature"],
+                    ff(r["montant_prevu"]), ff(r["montant_vote"]),
+                    ff(r["montant_engage"]), ff(r["montant_solde"]),
+                    r["statut"]])
+    for row in ws1.iter_rows(min_row=5, min_col=3, max_col=6):
+        for c in row:
+            c.number_format = "#,##0.00"
+    auto_w(ws1)
+
+    # ── Feuille 2 : Lignes ──────────────────────────────────────
+    ws2 = wb.create_sheet(f"Lignes {exercice}")
+    lignes = db.fetch_all(
+        "SELECT e.nom as entite_nom, b.nature, "
+        "l.libelle, l.nature as ligne_nature, "
+        "a.nom as application_nom, f.nom as fournisseur_nom, "
+        "l.note as ref_dsi, "
+        "COALESCE(l.montant_vote,0) as montant_vote, "
+        "COALESCE(l.montant_engage,0) as montant_engage, "
+        "COALESCE(l.montant_solde,0) as montant_solde, "
+        "CASE WHEN COALESCE(l.montant_vote,0)>0 "
+        "  THEN ROUND((COALESCE(l.montant_engage,0)/l.montant_vote::numeric)*100,1) "
+        "  ELSE 0 END as taux_pct, "
+        "CASE WHEN COALESCE(l.montant_vote,0)>0 "
+        "      AND COALESCE(l.montant_engage,0) > l.montant_vote "
+        "  THEN '⚠️ DÉPASSÉ' "
+        "  WHEN COALESCE(l.montant_vote,0)>0 "
+        "       AND COALESCE(l.montant_engage,0) >= l.montant_vote*0.9 "
+        "  THEN '⚠️ SEUIL' "
+        "  ELSE 'OK' END as alerte "
+        "FROM lignes_budgetaires l "
+        "JOIN budgets_annuels b ON b.id = l.budget_id "
+        "LEFT JOIN entites e ON e.id = b.entite_id "
+        "LEFT JOIN applications a ON a.id = l.application_id "
+        "LEFT JOIN fournisseurs f ON f.id = l.fournisseur_id "
+        "WHERE b.exercice = %s ORDER BY e.nom, b.nature, l.libelle",
+        [exercice]
+    ) or []
+
+    cur_grp = None
+    for l in lignes:
+        grp = f"{l['entite_nom'] or '—'}  —  {l['nature'] or '—'}  —  {exercice}"
+        if grp != cur_grp:
+            if cur_grp is not None:
+                ws2.append([])
+            ws2.append([grp])
+            ws2[f"A{ws2.max_row}"].font = Font(bold=True, size=11, color=BLUE)
+            ws2.append(["Libellé", "Nature", "Application", "Fournisseur",
+                        "Référence D.S.I", "Voté", "Engagé", "Solde", "Taux %", "Alerte"])
+            hdr(ws2, ws2.max_row)
+            cur_grp = grp
+        ws2.append([
+            l["libelle"], l["ligne_nature"] or l["nature"],
+            l["application_nom"], l["fournisseur_nom"],
+            l["ref_dsi"],
+            ff(l["montant_vote"]), ff(l["montant_engage"]),
+            ff(l["montant_solde"]), ff(l["taux_pct"]) / 100,
+            l["alerte"]
+        ])
+
+    for row in ws2.iter_rows(min_row=1):
+        for c in row:
+            if isinstance(c.value, float):
+                if c.column in (6, 7, 8):
+                    c.number_format = "#,##0.00"
+                elif c.column == 9:
+                    c.number_format = "0.0%"
+    auto_w(ws2)
+
+    # ── Feuille 3 : Contrats actifs ─────────────────────────────
+    ws3 = wb.create_sheet("Contrats actifs")
+    ws3.append(["Entité", "N° Contrat", "Type", "Objet", "Fournisseur",
+                "Application", "Date fin", "Jours", "Montant HT",
+                "Montant max", "Engagé", "Alerte"])
+    hdr(ws3, 1)
+
+    contrats = db.fetch_all(
+        "SELECT "
+        "(SELECT e.code FROM entites e "
+        " JOIN bons_commande bc2 ON bc2.entite_id = e.id "
+        " WHERE bc2.contrat_id = c.id LIMIT 1) as entite_code, "
+        "c.numero_contrat, c.type, c.objet, f.nom as fournisseur_nom, "
+        "(SELECT a.nom FROM applications a "
+        " JOIN lignes_budgetaires lb ON lb.application_id = a.id "
+        " JOIN bons_commande bc2 ON bc2.ligne_budgetaire_id = lb.id "
+        " WHERE bc2.contrat_id = c.id LIMIT 1) as application_nom, "
+        "c.date_fin, (c.date_fin::date - CURRENT_DATE) as jours, "
+        "COALESCE(c.montant_initial_ht,0) as montant_ht, "
+        "COALESCE(c.montant_total_ht,0) as montant_max, "
+        "(SELECT COALESCE(SUM(bc2.montant_ttc),0) FROM bons_commande bc2 "
+        " WHERE bc2.contrat_id = c.id) as montant_engage "
+        "FROM contrats c "
+        "LEFT JOIN fournisseurs f ON f.id = c.fournisseur_id "
+        "WHERE c.statut IN ('ACTIF','RECONDUIT') ORDER BY c.date_fin ASC"
+    ) or []
+
+    for c in contrats:
+        j = int(c["jours"]) if c["jours"] is not None else None
+        if j is None:               alerte = "OK"
+        elif j < 0:                 alerte = "EXPIRÉ"
+        elif j <= 30:               alerte = "CRITIQUE"
+        elif j <= 90:               alerte = "ATTENTION"
+        elif j <= 180:              alerte = "INFO"
+        else:                       alerte = "OK"
+        ws3.append([c["entite_code"], c["numero_contrat"], c["type"], c["objet"],
+                    c["fournisseur_nom"], c["application_nom"],
+                    fdate(c["date_fin"]), j,
+                    ff(c["montant_ht"]), ff(c["montant_max"]),
+                    ff(c["montant_engage"]), alerte])
+    for row in ws3.iter_rows(min_row=2, min_col=9, max_col=11):
+        for c in row:
+            c.number_format = "#,##0.00"
+    auto_w(ws3)
+
+    # ── Feuille 4 : BC ──────────────────────────────────────────
+    ws4 = wb.create_sheet(f"BC {exercice}")
+    ws4.append(["Entité", "N° BC", "Date", "Fournisseur", "Objet",
+                "Contrat", "Ligne budgétaire", "Application", "HT", "TTC", "Statut"])
+    hdr(ws4, 1)
+
+    bcs = db.fetch_all(
+        "SELECT e.code as entite_code, bc.numero_bc, bc.date_creation, "
+        "f.nom as fournisseur_nom, bc.objet, c.numero_contrat, "
+        "lb.libelle as ligne_libelle, a.nom as application_nom, "
+        "COALESCE(bc.montant_ht,0) as montant_ht, "
+        "COALESCE(bc.montant_ttc,0) as montant_ttc, bc.statut "
+        "FROM bons_commande bc "
+        "LEFT JOIN entites e ON e.id = bc.entite_id "
+        "LEFT JOIN fournisseurs f ON f.id = bc.fournisseur_id "
+        "LEFT JOIN contrats c ON c.id = bc.contrat_id "
+        "LEFT JOIN lignes_budgetaires lb ON lb.id = bc.ligne_budgetaire_id "
+        "LEFT JOIN applications a ON a.id = lb.application_id "
+        "WHERE EXTRACT(YEAR FROM bc.date_creation) = %s "
+        "ORDER BY bc.date_creation DESC",
+        [exercice]
+    ) or []
+    for bc in bcs:
+        ws4.append([bc["entite_code"], bc["numero_bc"], fdate(bc["date_creation"]),
+                    bc["fournisseur_nom"], bc["objet"], bc["numero_contrat"],
+                    bc["ligne_libelle"], bc["application_nom"],
+                    ff(bc["montant_ht"]), ff(bc["montant_ttc"]), bc["statut"]])
+    for row in ws4.iter_rows(min_row=2, min_col=9, max_col=10):
+        for c in row:
+            c.number_format = "#,##0.00"
+    auto_w(ws4)
+
+    # ── Feuille 5 : Prévisionnel N+1 ────────────────────────────
+    ws5 = wb.create_sheet(f"Prévisionnel {next_year}")
+    ws5.append([f"BUDGET PRÉVISIONNEL {next_year} — DSI"])
+    ws5["A1"].font = Font(bold=True, size=14, color=BLUE)
+    ws5.merge_cells("A1:H1")
+    ws5.append([f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  "
+                f"Source : Données réelles {next_year}"])
+    ws5.append([])
+
+    prev = db.fetch_all(
+        "SELECT e.nom as entite_nom, b.nature, l.libelle, "
+        "a.nom as application_nom, f.nom as fournisseur_nom, "
+        "COALESCE(l.montant_prevu,0) as montant_prevu, l.note as ref_dsi "
+        "FROM lignes_budgetaires l "
+        "JOIN budgets_annuels b ON b.id = l.budget_id "
+        "LEFT JOIN entites e ON e.id = b.entite_id "
+        "LEFT JOIN applications a ON a.id = l.application_id "
+        "LEFT JOIN fournisseurs f ON f.id = l.fournisseur_id "
+        "WHERE b.exercice = %s ORDER BY e.nom, b.nature, l.libelle",
+        [next_year]
+    ) or []
+
+    cur_grp = None
+    grp_total = {}
+    for l in prev:
+        grp = f"{l['entite_nom'] or '—'}  —  {l['nature'] or '—'}  —  {next_year}"
+        if grp != cur_grp:
+            if cur_grp is not None:
+                ws5.append([f"SOUS-TOTAL  {cur_grp}", None, None, None, None,
+                             grp_total.get(cur_grp, 0)])
+                ws5.cell(ws5.max_row, 1).font = Font(bold=True)
+                ws5.cell(ws5.max_row, 6).number_format = "#,##0.00"
+                ws5.append([])
+            ws5.append([grp])
+            ws5[f"A{ws5.max_row}"].font = Font(bold=True, size=11, color=BLUE)
+            ws5.append(["Entité", "Nature", "Libellé", "Application", "Fournisseur",
+                        f"Montant prévu N+1", "Référence D.S.I", "Note"])
+            hdr(ws5, ws5.max_row)
+            cur_grp = grp
+            grp_total[grp] = 0
+        montant = ff(l["montant_prevu"])
+        grp_total[grp] += montant
+        ws5.append([l["entite_nom"], l["nature"], l["libelle"],
+                    l["application_nom"], l["fournisseur_nom"],
+                    montant, l["ref_dsi"], None])
+        ws5.cell(ws5.max_row, 6).number_format = "#,##0.00"
+
+    if cur_grp:
+        ws5.append([f"SOUS-TOTAL  {cur_grp}", None, None, None, None,
+                     grp_total.get(cur_grp, 0)])
+        ws5.cell(ws5.max_row, 1).font = Font(bold=True)
+        ws5.cell(ws5.max_row, 6).number_format = "#,##0.00"
+        ws5.append([])
+        ws5.append([f"TOTAL GÉNÉRAL BUDGET PRÉVISIONNEL {next_year}",
+                    None, None, None, None, sum(grp_total.values())])
+        ws5.cell(ws5.max_row, 1).font = Font(bold=True, size=12)
+        ws5.cell(ws5.max_row, 6).number_format = "#,##0.00"
+    auto_w(ws5)
+
+    # ── Envoi ────────────────────────────────────────────────────
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    filename = f"Budget_DSI_{exercice}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename
+    )
