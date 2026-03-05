@@ -1251,7 +1251,9 @@ def get_fournisseurs_list():
             "SELECT f.*, "
             "(SELECT COUNT(*) FROM contrats c WHERE c.fournisseur_id=f.id) as nb_contrats, "
             "(SELECT COUNT(*) FROM bons_commande bc WHERE bc.fournisseur_id=f.id) as nb_bc, "
-            "(SELECT COALESCE(SUM(bc.montant_ttc),0) FROM bons_commande bc WHERE bc.fournisseur_id=f.id) as montant_total "
+            "(SELECT COALESCE(SUM(bc.montant_ttc),0) FROM bons_commande bc WHERE bc.fournisseur_id=f.id) as montant_total, "
+            "(SELECT STRING_AGG(TRIM(CONCAT(c.nom, ' ', COALESCE(c.prenom,''))), ', ' ORDER BY c.nom) "
+            " FROM contacts c JOIN fournisseur_contacts fc ON fc.contact_id=c.id WHERE fc.fournisseur_id=f.id) as contacts_lies "
             f"FROM fournisseurs f WHERE {w_clause} ORDER BY f.nom",
             w_params
         )
