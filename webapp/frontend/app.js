@@ -66,6 +66,21 @@ function doLogout() {
     showLoginOverlay();
 }
 
+// ─── Déconnexion automatique après 5 min d'inactivité ───
+let inactivityTimeout;
+
+function resetInactivityTimer() {
+    clearTimeout(inactivityTimeout);
+    inactivityTimeout = setTimeout(doLogout, 5 * 60 * 1000); // 5 minutes
+}
+
+['mousemove', 'keydown', 'mousedown', 'touchstart'].forEach(event => {
+    window.addEventListener(event, resetInactivityTimer);
+});
+
+resetInactivityTimer();
+}
+
 // ─── État global ───────────────────────────────────────────
 let _currentBudgetId  = null;   // pour modal voter
 let _currentBcId      = null;   // pour modal imputer / valider
