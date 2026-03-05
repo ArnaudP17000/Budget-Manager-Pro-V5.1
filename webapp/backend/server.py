@@ -122,6 +122,14 @@ def run_migrations():
     except Exception:
         pass
 
+    # ── Colonne societe dans contacts ───────────────────────────
+    try:
+        db.execute(
+            "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS societe VARCHAR(200)"
+        )
+    except Exception:
+        pass
+
     # ── Propriété des enregistrements (created_by_id) ───────────
     for tbl in ['bons_commande', 'contrats', 'projets', 'contacts', 'taches', 'fournisseurs']:
         try:

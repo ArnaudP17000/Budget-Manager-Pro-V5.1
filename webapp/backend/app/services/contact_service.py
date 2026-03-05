@@ -29,8 +29,8 @@ class ContactService:
                     params.append(filters['type'])
                 if filters.get('search'):
                     s = '%' + filters['search'] + '%'
-                    query += " AND (c.nom ILIKE %s OR c.prenom ILIKE %s OR c.email ILIKE %s OR c.organisation ILIKE %s)"
-                    params.extend([s, s, s, s])
+                    query += " AND (c.nom ILIKE %s OR c.prenom ILIKE %s OR c.email ILIKE %s OR c.organisation ILIKE %s OR c.societe ILIKE %s)"
+                    params.extend([s, s, s, s, s])
             query += " ORDER BY c.nom, c.prenom"
             rows = self.db.fetch_all(query, params)
             return [_d(r) for r in rows] if rows else []
@@ -40,21 +40,22 @@ class ContactService:
 
     def create(self, data):
         self.db.execute(
-            "INSERT INTO contacts (nom, prenom, fonction, type, telephone, email, service_id, organisation, created_by_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "INSERT INTO contacts (nom, prenom, fonction, type, telephone, email, service_id, organisation, societe, created_by_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             [data.get('nom'), data.get('prenom'), data.get('fonction'),
              data.get('type'), data.get('telephone'), data.get('email'),
              data.get('service_id') or None, data.get('organisation'),
-             data.get('created_by_id')]
+             data.get('societe'), data.get('created_by_id')]
         )
 
     def update(self, contact_id, data):
         self.db.execute(
             "UPDATE contacts SET nom=%s, prenom=%s, fonction=%s, type=%s, "
-            "telephone=%s, email=%s, service_id=%s, organisation=%s WHERE id=%s",
+            "telephone=%s, email=%s, service_id=%s, organisation=%s, societe=%s WHERE id=%s",
             [data.get('nom'), data.get('prenom'), data.get('fonction'),
              data.get('type'), data.get('telephone'), data.get('email'),
-             data.get('service_id') or None, data.get('organisation'), contact_id]
+             data.get('service_id') or None, data.get('organisation'),
+             data.get('societe'), contact_id]
         )
 
     def delete(self, contact_id):
