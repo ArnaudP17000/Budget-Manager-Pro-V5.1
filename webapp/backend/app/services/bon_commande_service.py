@@ -127,13 +127,6 @@ class BonCommandeService:
             raise ValueError("Ligne budgétaire introuvable")
         ligne = _d(ligne)
 
-        vote = float(ligne.get('montant_vote') or 0)
-        engage = float(ligne.get('montant_engage') or 0)
-        solde = vote - engage
-
-        if montant > solde:
-            raise ValueError(f"Solde insuffisant : disponible {solde:.2f}€, BC {montant:.2f}€")
-
         self.db.execute(
             "UPDATE lignes_budgetaires "
             "SET montant_engage = COALESCE(montant_engage,0) + %s, "
