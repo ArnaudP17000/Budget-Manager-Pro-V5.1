@@ -217,7 +217,18 @@ function showView(name) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
     const view = document.getElementById('view-' + name);
-    if (view) view.classList.add('active');
+    if (view) {
+        view.classList.add('active');
+        // Réinitialiser les filtres/recherches de la vue (toolbar uniquement, pas les formulaires)
+        view.querySelectorAll('.toolbar input, .toolbar select').forEach(el => {
+            if (el.tagName === 'SELECT') el.selectedIndex = 0;
+            else el.value = '';
+        });
+        // Masquer les bandeaux d'info temporaires
+        view.querySelectorAll('[id$="-pdf-info"], [id$="-info-msg"]').forEach(el => {
+            el.style.display = 'none';
+        });
+    }
     const navBtns = document.querySelectorAll('nav button');
     const idx = Object.keys(loaders).indexOf(name);
     if (idx >= 0 && navBtns[idx]) navBtns[idx].classList.add('active');
