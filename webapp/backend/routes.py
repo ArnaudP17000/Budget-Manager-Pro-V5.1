@@ -1792,10 +1792,14 @@ def get_gantt():
 @require_auth()
 def export_budget():
     import io
+    import traceback
     from datetime import datetime
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment
-    from openpyxl.utils import get_column_letter
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+    except ImportError as e:
+        return jsonify({"error": f"openpyxl non installé: {e}"}), 500
     from flask import send_file
 
     exercice  = request.args.get('exercice', datetime.now().year, type=int)
@@ -1839,7 +1843,7 @@ def export_budget():
 
     rows = db.fetch_all(
         "SELECT e.nom as entite_nom, b.nature, "
-        "COALESCE(b.montant_prevu,0) as montant_prevu, "
+        "COALESCE(b.montant_previsionnel,0) as montant_prevu, "
         "COALESCE(b.montant_vote,0) as montant_vote, "
         "COALESCE(b.montant_engage,0) as montant_engage, "
         "COALESCE(b.montant_solde,0) as montant_solde, b.statut "
