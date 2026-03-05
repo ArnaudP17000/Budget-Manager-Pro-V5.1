@@ -1,4 +1,6 @@
 import functools
+import time
+from collections import defaultdict
 from flask import Blueprint, jsonify, request, g
 
 from app.services.projet_service import ProjetService
@@ -45,6 +47,12 @@ def require_auth(*roles):
                 return jsonify({"error": "Token invalide ou expiré"}), 401
             if roles and payload.get('role') not in roles:
                 return jsonify({"error": "Accès interdit"}), 403
+            # Vérifier que le compte est toujours actif en base
+            user_row = auth_service.db.fetch_one(
+                "SELECT actif FROM utilisateurs WHERE id=%s", [payload.get('sub')]
+            )
+            if not user_row or not user_row.get('actif'):
+                return jsonify({"error": "Compte désactivé"}), 401
             g.user = payload
             return f(*args, **kwargs)
         return wrapper
@@ -55,8 +63,24 @@ def require_auth(*roles):
 # AUTH
 # ─────────────────────────────────────────────
 
+# Rate limiting — max 10 tentatives par fenêtre de 5 min par IP
+_login_attempts: dict = defaultdict(list)
+_LOGIN_WINDOW   = 300   # secondes
+_LOGIN_MAX      = 10    # tentatives max
+
+def _check_login_rate(ip: str) -> bool:
+    now = time.time()
+    _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < _LOGIN_WINDOW]
+    if len(_login_attempts[ip]) >= _LOGIN_MAX:
+        return False
+    _login_attempts[ip].append(now)
+    return True
+
 @routes.route('/auth/login', methods=['POST'])
 def login():
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
+    if not _check_login_rate(ip):
+        return jsonify({"error": "Trop de tentatives, réessayez dans quelques minutes"}), 429
     data = request.json or {}
     result = auth_service.login(data.get('login', ''), data.get('password', ''))
     if not result:
@@ -481,11 +505,17 @@ def add_budget_permission(budget_id):
     if role != 'admin' and _user_budget_role(user_id, budget_id) != 'gestionnaire':
         return jsonify({"error": "Accès interdit"}), 403
     data = request.json or {}
+    perm_role = data.get('role', 'lecteur')
+    if perm_role not in ('lecteur', 'gestionnaire'):
+        return jsonify({"error": "Rôle invalide — valeurs acceptées : lecteur, gestionnaire"}), 400
+    target_uid = data.get('user_id')
+    if not target_uid or not str(target_uid).isdigit():
+        return jsonify({"error": "user_id invalide"}), 400
     try:
         budget_service.db.execute(
             "INSERT INTO budget_permissions (budget_id, user_id, role) VALUES (%s, %s, %s) "
             "ON CONFLICT (budget_id, user_id) DO UPDATE SET role = EXCLUDED.role",
-            [budget_id, data.get('user_id'), data.get('role', 'lecteur')]
+            [budget_id, int(target_uid), perm_role]
         )
         return jsonify({"success": True}), 201
     except Exception as e:
@@ -1133,12 +1163,24 @@ def create_tache():
 @routes.route('/tache/<int:tache_id>', methods=['GET'])
 @require_auth()
 def get_tache_by_id(tache_id):
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
     try:
-        row = tache_service.db.fetch_one(
-            "SELECT t.*, p.nom as projet_nom FROM taches t "
-            "LEFT JOIN projets p ON p.id = t.projet_id WHERE t.id = %s",
-            [tache_id]
-        )
+        if role != 'admin':
+            vis_w, vis_p = _tache_visibility_where(user_id, role, service_id)
+            row = tache_service.db.fetch_one(
+                "SELECT t.*, p.nom as projet_nom FROM taches t "
+                "LEFT JOIN projets p ON p.id = t.projet_id "
+                f"WHERE t.id = %s AND ({vis_w})",
+                [tache_id] + vis_p
+            )
+        else:
+            row = tache_service.db.fetch_one(
+                "SELECT t.*, p.nom as projet_nom FROM taches t "
+                "LEFT JOIN projets p ON p.id = t.projet_id WHERE t.id = %s",
+                [tache_id]
+            )
         if row:
             return jsonify(dict(row))
         return jsonify({"error": "Tâche introuvable"}), 404
@@ -1148,7 +1190,19 @@ def get_tache_by_id(tache_id):
 @routes.route('/tache/<int:tache_id>', methods=['PUT'])
 @require_auth('admin', 'gestionnaire')
 def update_tache(tache_id):
-    data = request.json
+    data       = request.json
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    # Vérifier que la tâche est visible avant modification
+    if role != 'admin':
+        vis_w, vis_p = _tache_visibility_where(user_id, role, service_id)
+        check = tache_service.db.fetch_one(
+            f"SELECT id FROM taches t WHERE t.id=%s AND ({vis_w})",
+            [tache_id] + vis_p
+        )
+        if not check:
+            return jsonify({"error": "Tâche introuvable"}), 404
     try:
         tache_service.db.execute(
             "UPDATE taches SET projet_id=%s, titre=%s, statut=%s, priorite=%s, "
@@ -1223,7 +1277,18 @@ def create_fournisseur():
 @routes.route('/fournisseur/<int:fournisseur_id>', methods=['PUT'])
 @require_auth('admin', 'gestionnaire')
 def update_fournisseur(fournisseur_id):
-    data = request.json
+    data       = request.json
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    if role != 'admin':
+        own_w, own_p = _ownership_where(user_id, role, service_id, 'f')
+        check = referentiel_service.db.fetch_one(
+            f"SELECT id FROM fournisseurs f WHERE f.id=%s AND {own_w}",
+            [fournisseur_id] + own_p
+        )
+        if not check:
+            return jsonify({"error": "Fournisseur introuvable"}), 404
     try:
         referentiel_service.db.execute(
             "UPDATE fournisseurs SET nom=%s, contact_principal=%s, email=%s, "

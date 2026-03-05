@@ -1,11 +1,24 @@
 import os
+import hashlib
+import logging
 import jwt
 import bcrypt
 from datetime import datetime, timezone, timedelta
 from app.services.database_service import DatabaseService
 
-SECRET_KEY   = os.getenv('SECRET_KEY', 'dev-insecure-key-change-in-prod')
-EXPIRY_HOURS = int(os.getenv('JWT_EXPIRY_HOURS', '8'))
+logger = logging.getLogger(__name__)
+
+# Clé JWT — doit être définie via variable d'environnement SECRET_KEY
+_env_secret = os.getenv('SECRET_KEY')
+if _env_secret:
+    SECRET_KEY = _env_secret
+else:
+    # Dériver depuis les credentials de déploiement si SECRET_KEY non défini
+    _base = f"bmp-{os.getenv('DB_HOST','')}-{os.getenv('DB_NAME','')}-{os.getenv('DB_PASS','')}"
+    SECRET_KEY = hashlib.sha256(_base.encode()).hexdigest()
+    logger.warning("SECRET_KEY non défini — clé dérivée utilisée. Ajoutez SECRET_KEY dans .env.")
+
+EXPIRY_HOURS = int(os.getenv('JWT_EXPIRY_HOURS', '2'))
 
 
 class AuthService:
