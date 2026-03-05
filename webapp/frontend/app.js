@@ -535,9 +535,9 @@ async function loadBudget() {
         _budgetsList = data.details || [];
         const userRole = _currentUserRole();
 
-        // Bouton "Faire budget N+1" visible pour admin seulement
-        const btnDup = document.getElementById('btn-dupliquer-budget');
-        if (btnDup) btnDup.style.display = userRole === 'admin' ? '' : 'none';
+        // Zone "Faire budget N+1" visible pour admin seulement
+        const zoneDup = document.getElementById('zone-dupliquer-budget');
+        if (zoneDup) zoneDup.style.display = userRole === 'admin' ? 'flex' : 'none';
 
         // Afficher/masquer le formulaire "Nouveau budget"
         const newCard = document.getElementById('budget-new-card');
@@ -597,11 +597,12 @@ async function loadBudget() {
 async function dupliquerBudget() {
     const exercice = parseInt(document.getElementById('export-exercice')?.value || new Date().getFullYear());
     const target = exercice + 1;
-    if (!confirm(`Créer le budget ${target} en dupliquant la structure ${exercice} ?\n\nLes montants prévisionnels seront basés sur l'engagé réel ${exercice}.`)) return;
+    const taux = parseFloat(document.getElementById('syntec-taux')?.value ?? 3.5);
+    if (!confirm(`Créer le budget ${target} en dupliquant la structure ${exercice} ?\n\nIndice Syntec appliqué : +${taux}%\nMontants prévisionnels = engagé réel ${exercice} × (1 + ${taux}%)`)) return;
     try {
         const res = await apiFetch('/budget/dupliquer', {
             method: 'POST',
-            body: JSON.stringify({ source_exercice: exercice, target_exercice: target })
+            body: JSON.stringify({ source_exercice: exercice, target_exercice: target, taux_revalorisation: taux })
         });
         if (res.success) {
             showMsg(`Budget ${target} créé : ${res.budgets_crees} budget(s), ${res.lignes_creees} ligne(s)`);
