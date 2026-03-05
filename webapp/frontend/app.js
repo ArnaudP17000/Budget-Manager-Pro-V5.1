@@ -2159,6 +2159,7 @@ async function loadContacts() {
                 <td>${c.telephone || '-'}</td>
                 <td>${c.email || '-'}</td>
                 <td>${c.organisation || c.service_nom || '-'}</td>
+                <td>${c.societe || '-'}</td>
                 <td style="white-space:nowrap;">
                     <button class="btn btn-warning btn-sm" onclick="editContact(${c.id})">Éditer</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteContact(${c.id})">Suppr.</button>
@@ -2176,12 +2177,21 @@ async function addContact() {
         telephone:    document.getElementById('contact-telephone').value,
         email:        document.getElementById('contact-email').value,
         organisation: document.getElementById('contact-organisation').value,
+        societe:      document.getElementById('contact-societe').value,
     };
     if (!body.nom) { showMsg('Le nom est obligatoire', false); return; }
     try {
         const res = await apiFetch('/contact', { method: 'POST', body: JSON.stringify(body) });
-        if (res.success) { showMsg('Contact ajouté'); loadContacts(); }
-        else showMsg(res.error || 'Erreur', false);
+        if (res.success) {
+            showMsg('Contact ajouté');
+            ['contact-nom','contact-prenom','contact-fonction','contact-telephone',
+             'contact-email','contact-organisation','contact-societe'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            document.getElementById('contact-type').value = '';
+            loadContacts();
+        } else showMsg(res.error || 'Erreur', false);
     } catch (e) { showMsg(e.message, false); }
 }
 
@@ -2205,6 +2215,7 @@ function editContact(id) {
     document.getElementById('edit-contact-telephone').value    = data.telephone || '';
     document.getElementById('edit-contact-email').value        = data.email || '';
     document.getElementById('edit-contact-organisation').value = data.organisation || '';
+    document.getElementById('edit-contact-societe').value      = data.societe || '';
     openModal('modal-edit-contact');
 }
 
@@ -2218,6 +2229,7 @@ async function saveContact() {
         telephone:    document.getElementById('edit-contact-telephone').value,
         email:        document.getElementById('edit-contact-email').value,
         organisation: document.getElementById('edit-contact-organisation').value,
+        societe:      document.getElementById('edit-contact-societe').value,
     };
     if (!body.nom) { showMsg('Le nom est obligatoire', false); return; }
     try {

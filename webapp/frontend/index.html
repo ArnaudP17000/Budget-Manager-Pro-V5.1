@@ -666,6 +666,7 @@
             <input id="contact-telephone" placeholder="Téléphone">
             <input id="contact-email" placeholder="Email" type="email">
             <input id="contact-organisation" placeholder="Organisation">
+            <input id="contact-societe" placeholder="Société">
             <button class="btn btn-primary" onclick="addContact()">+ Ajouter</button>
         </div>
     </div>
@@ -684,7 +685,7 @@
     <table>
         <thead><tr>
             <th>ID</th><th>Nom</th><th>Prénom</th><th>Fonction</th>
-            <th>Type</th><th>Téléphone</th><th>Email</th><th>Organisation</th><th>Actions</th>
+            <th>Type</th><th>Téléphone</th><th>Email</th><th>Organisation</th><th>Société</th><th>Actions</th>
         </tr></thead>
         <tbody id="contacts-tbody"></tbody>
     </table>
@@ -1336,6 +1337,8 @@
                 <input id="edit-contact-email" type="email" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
             <div style="flex:2;min-width:200px;"><label style="font-size:.82em;color:#666;">Organisation</label>
                 <input id="edit-contact-organisation" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:2;min-width:200px;"><label style="font-size:.82em;color:#666;">Société</label>
+                <input id="edit-contact-societe" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-success" onclick="saveContact()">Enregistrer</button>
@@ -1455,6 +1458,6 @@
 
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
-<script src="app.js?v=5.73"></script>
+<script src="app.js?v=5.74"></script>
 </body>
 </html>
