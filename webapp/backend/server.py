@@ -1,5 +1,5 @@
 import bcrypt as _bcrypt
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, jsonify
 import os
 from routes import routes
 
