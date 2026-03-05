@@ -79,7 +79,6 @@ function resetInactivityTimer() {
 });
 
 resetInactivityTimer();
-}
 
 // ─── État global ───────────────────────────────────────────
 let _currentBudgetId  = null;   // pour modal voter
