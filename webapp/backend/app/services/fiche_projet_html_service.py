@@ -67,8 +67,10 @@ def _hdr(*cols):
     return f'<tr>{cells}</tr>\n'
 
 def _field(name, label, value, input_type='text', w_lbl='17%', colspan_val=1, opts=None):
-    """Cellule label + valeur (view + edit)."""
+    """Cellule label + valeur (view + edit).
+    Pour input_type='date', passer la valeur ISO (YYYY-MM-DD) — l'affichage DD/MM/YYYY est calculé automatiquement."""
     sel = ''
+    view_val = value or ''
     if opts:
         sel = f'<select class="ef" name="{_e(name)}">'
         for v, l in opts:
@@ -77,13 +79,15 @@ def _field(name, label, value, input_type='text', w_lbl='17%', colspan_val=1, op
         sel += '</select>'
         edit_html = sel
     elif input_type == 'date':
-        edit_html = f'<input class="ef" type="date" name="{_e(name)}" value="{_e(_iso_date(value))}">'
+        iso_val = _iso_date(value)   # YYYY-MM-DD pour l'input
+        view_val = _fmt_date(iso_val)  # DD/MM/YYYY pour l'affichage
+        edit_html = f'<input class="ef" type="date" name="{_e(name)}" value="{_e(iso_val)}">'
     else:
         edit_html = f'<input class="ef" type="{input_type}" name="{_e(name)}" value="{_e(value or "")}">'
     span = f' colspan="{colspan_val}"' if colspan_val > 1 else ''
     return (f'<td class="lbl" style="width:{w_lbl}">{_e(label)}</td>'
             f'<td class="val"{span}>'
-            f'<span class="vv">{_e(value or "")}</span>'
+            f'<span class="vv">{_e(view_val)}</span>'
             f'{edit_html}</td>\n')
 
 def _field2(n1, l1, v1, n2, l2, v2, t1='text', t2='text', opts1=None, opts2=None):
@@ -250,10 +254,10 @@ body.edit-mode .val-g input.ef{{background:#f5f5f5}}
                  opts1=PHASES, t2='number')
     pct = p.get('avancement') or 0
     h += f'<tr><td colspan="4" style="padding:5px 8px;background:#fafafa">{_progress_bar(pct)}</td></tr>\n'
-    h += _field2('date_debut','Date début',_fmt_date(p.get('date_debut')),
-                 'date_fin_prevue','Fin prévue',_fmt_date(p.get('date_fin')),
+    h += _field2('date_debut','Date début',p.get('date_debut',''),
+                 'date_fin_prevue','Fin prévue',p.get('date_fin',''),
                  t1='date', t2='date')
-    h += (f'<tr>{_field("date_fin_reelle","Fin réelle",_fmt_date(p.get("date_fin_reelle")),"date")}'
+    h += (f'<tr>{_field("date_fin_reelle","Fin réelle",p.get("date_fin_reelle",""),"date")}'
           f'<td class="lbl">Service</td><td class="val"><span class="vv">{_e(p.get("service",""))}</span>'
           f'<input class="ef" type="text" name="service_nom" value="{_e(p.get("service",""))}" disabled></td></tr>\n')
     h += _sub('Description détaillée du projet')
@@ -571,11 +575,11 @@ async function saveFiche() {{
     }});
     const data = await res.json();
     if (data.success) {{
-      status.textContent = '✓ Sauvegardé';
+      status.textContent = '✓ Sauvegardé — rechargement…';
       status.style.color = '#6c6';
       cancelEdit();
-      // Mettre à jour les valeurs affichées
-      updateViewValues(fd);
+      // Demander au parent de recharger la fiche depuis l'API
+      window.parent.postMessage({{type:'ficheReload', id:PROJET_ID}}, '*');
     }} else {{
       status.textContent = '✗ Erreur : ' + (data.error || 'inconnue');
       status.style.color = '#f66';
