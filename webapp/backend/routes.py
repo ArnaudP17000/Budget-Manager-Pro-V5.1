@@ -1,4 +1,5 @@
 import functools
+import json
 import time
 from collections import defaultdict
 from flask import Blueprint, jsonify, request, g
@@ -113,6 +114,7 @@ def create_user():
         if not data.get('login') or not data.get('mot_de_passe'):
             return jsonify({"error": "login et mot_de_passe requis"}), 400
         auth_service.create_user(data)
+        _audit('CREATE', 'utilisateurs', None, {'login': data.get('login'), 'role': data.get('role')})
         return jsonify({"success": True}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -131,6 +133,7 @@ def update_user(user_id):
     data = request.json or {}
     try:
         auth_service.update_user(user_id, data)
+        _audit('UPDATE', 'utilisateurs', user_id, {'role': data.get('role')})
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -142,6 +145,7 @@ def delete_user(user_id):
         if g.user.get('sub') == user_id:
             return jsonify({"error": "Impossible de supprimer son propre compte"}), 400
         auth_service.delete_user(user_id)
+        _audit('DELETE', 'utilisateurs', user_id)
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -155,6 +159,31 @@ def toggle_user(user_id):
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+
+# ─────────────────────────────────────────────
+# JOURNAL D'AUDIT
+# ─────────────────────────────────────────────
+
+@routes.route('/audit_log', methods=['GET'])
+@require_auth('admin')
+def get_audit_log():
+    table  = request.args.get('table', '')
+    action = request.args.get('action', '')
+    limit  = min(int(request.args.get('limit', 200)), 500)
+    query  = (
+        "SELECT al.id, al.user_id, al.user_login, al.action, al.table_name, "
+        "al.record_id, al.details, al.date_creation, "
+        "u.nom, u.prenom FROM audit_log al "
+        "LEFT JOIN utilisateurs u ON u.id = al.user_id WHERE 1=1"
+    )
+    params = []
+    if table:  query += " AND al.table_name = %s"; params.append(table)
+    if action: query += " AND al.action = %s";     params.append(action)
+    query += " ORDER BY al.date_creation DESC LIMIT %s"
+    params.append(limit)
+    rows = bc_service.db.fetch_all(query, params)
+    return jsonify({"list": [dict(r) for r in rows] if rows else []})
 
 
 # ─────────────────────────────────────────────
@@ -455,6 +484,7 @@ def voter_budget(budget_id):
     try:
         montant_vote = float(data.get('montant_vote') or 0)
         budget_service.voter_budget(budget_id, montant_vote)
+        _audit('VOTER', 'budgets_annuels', budget_id, {'montant_vote': montant_vote})
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -675,6 +705,20 @@ def _ownership_where(user_id, role, service_id, alias='bc'):
         return f"{p}created_by_id = %s", [user_id]
 
 
+def _audit(action, table_name, record_id=None, details=None):
+    """Enregistre une action dans le journal d'audit. N'interrompt jamais l'opération principale."""
+    try:
+        user = getattr(g, 'user', {}) or {}
+        det  = json.dumps(details, ensure_ascii=False) if details and not isinstance(details, str) else details
+        bc_service.db.execute(
+            "INSERT INTO audit_log (user_id, user_login, action, table_name, record_id, details) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            [user.get('sub'), user.get('login'), action, table_name, record_id, det]
+        )
+    except Exception:
+        pass
+
+
 @routes.route('/bon_commande', methods=['GET'])
 @require_auth()
 def get_bon_commande():
@@ -761,6 +805,7 @@ def get_bon_commande_by_id(bc_id):
 def valider_bc(bc_id):
     try:
         new_statut = bc_service.valider(bc_id)
+        _audit('VALIDER', 'bons_commande', bc_id, {'nouveau_statut': new_statut})
         return jsonify({"success": True, "statut": new_statut})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -775,6 +820,7 @@ def imputer_bc(bc_id):
         return jsonify({"success": False, "error": "ligne_id requis"}), 400
     try:
         bc_service.imputer(bc_id, ligne_id)
+        _audit('IMPUTER', 'bons_commande', bc_id, {'ligne_id': ligne_id})
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -794,6 +840,7 @@ def refuser_bon_commande(bc_id):
         "UPDATE bons_commande SET statut='REFUSE', motif_refus=%s, date_maj=NOW() WHERE id=%s",
         [motif, bc_id]
     )
+    _audit('REFUSER', 'bons_commande', bc_id, {'motif': motif} if motif else None)
     return jsonify({"success": True})
 
 
@@ -951,6 +998,7 @@ def create_bon_commande():
              data.get('ligne_budgetaire_id') or None, data.get('contrat_id') or None,
              montant_ht, montant_ttc, data.get('statut', 'BROUILLON'), user_id]
         )
+        _audit('CREATE', 'bons_commande', None, {'numero_bc': data.get('numero_bc'), 'objet': data.get('objet'), 'montant_ttc': montant_ttc})
         return jsonify({"success": True}), 201
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -1049,6 +1097,7 @@ def delete_bon_commande(bc_id):
             return jsonify({"error": "Accès interdit"}), 403
     try:
         bc_service.db.execute("DELETE FROM bons_commande WHERE id=%s", [bc_id])
+        _audit('DELETE', 'bons_commande', bc_id)
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -1138,6 +1187,7 @@ def reconduire_contrat(contrat_id):
         return jsonify({"success": False, "error": "nouvelle_date_fin requise"}), 400
     try:
         contrat_service.reconduire(contrat_id, nouvelle_date_fin)
+        _audit('RECONDUIRE', 'contrats', contrat_id, {'nouvelle_date_fin': nouvelle_date_fin})
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -1159,6 +1209,7 @@ def create_contrat():
              data.get('date_debut') or None, data.get('date_fin') or None,
              data.get('statut', 'ACTIF'), user_id]
         )
+        _audit('CREATE', 'contrats', None, {'numero': data.get('numero_contrat'), 'objet': data.get('objet')})
         return jsonify({"success": True}), 201
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
@@ -1209,6 +1260,7 @@ def delete_contrat(contrat_id):
             return jsonify({"error": "Accès interdit"}), 403
     try:
         contrat_service.db.execute("DELETE FROM contrats WHERE id=%s", [contrat_id])
+        _audit('DELETE', 'contrats', contrat_id)
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400

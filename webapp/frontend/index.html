@@ -124,6 +124,19 @@
         }
         .alert-banner.danger { background: #fde8e8; border-color: #e74c3c; color: #721c24; }
 
+        /* Pagination */
+        .pagination-bar {
+            display: flex; align-items: center; gap: 8px; padding: 8px 0;
+            font-size: .83em; color: #555;
+        }
+        .pagination-bar button {
+            padding: 3px 10px; border: 1px solid #ccc; border-radius: 4px;
+            background: #fff; cursor: pointer; font-size: .85em;
+        }
+        .pagination-bar button:hover:not(:disabled) { background: #e8f0fe; }
+        .pagination-bar button:disabled { opacity: .4; cursor: default; }
+        .pagination-bar .pg-info { padding: 0 6px; }
+
         /* Dashboard charts */
         #dashboard-charts {
             display: flex; gap: 16px; padding: 0 24px 16px; flex-wrap: wrap;
@@ -520,6 +533,7 @@
         <tbody id="bc-tbody"></tbody>
     </table>
     </div>
+    <div id="bc-pagination" class="pagination-bar"></div>
 </div>
 
 <!-- ══════════════════ CONTRATS ══════════════════ -->
@@ -581,6 +595,7 @@
         <tbody id="contrats-tbody"></tbody>
     </table>
     </div>
+    <div id="contrats-pagination" class="pagination-bar"></div>
 </div>
 
 <!-- ══════════════════ PROJETS ══════════════════ -->
@@ -956,22 +971,59 @@
     <div id="notif-list"></div>
 </div>
 
-<!-- ══════════════════ ADMIN UTILISATEURS ══════════════════ -->
+<!-- ══════════════════ ADMIN ══════════════════ -->
 <div id="view-admin" class="view">
-    <div style="padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
-        <h2>Gestion des utilisateurs</h2>
-        <button class="btn btn-primary" onclick="openModal('modal-add-user')">+ Nouvel utilisateur</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <h2 style="margin:0;">Administration</h2>
+        <button class="btn btn-primary" id="admin-add-user-btn" onclick="openModal('modal-add-user')">+ Nouvel utilisateur</button>
     </div>
-    <div style="padding:0 24px 24px;overflow-x:auto;">
-        <table class="table" style="width:100%;">
-            <thead>
-                <tr>
-                    <th>Nom</th><th>Prénom</th><th>Login</th><th>Email</th>
-                    <th>Rôle</th><th>Service</th><th>Actif</th><th>Actions</th>
-                </tr>
-            </thead>
+    <div class="budget-subtabs">
+        <div class="budget-subtab active" id="admin-tab-users" onclick="switchAdminTab('users')">Utilisateurs</div>
+        <div class="budget-subtab" id="admin-tab-audit" onclick="switchAdminTab('audit')">Journal d'audit</div>
+    </div>
+
+    <!-- Sous-onglet Utilisateurs -->
+    <div id="admin-sub-users" class="budget-subview active" style="overflow-x:auto;">
+        <table style="width:100%;">
+            <thead><tr>
+                <th>Nom</th><th>Prénom</th><th>Login</th><th>Email</th>
+                <th>Rôle</th><th>Service</th><th>Actif</th><th>Actions</th>
+            </tr></thead>
             <tbody id="admin-users-tbody"></tbody>
         </table>
+    </div>
+
+    <!-- Sous-onglet Journal d'audit -->
+    <div id="admin-sub-audit" class="budget-subview" style="display:none;">
+        <div class="toolbar" style="margin-bottom:10px;">
+            <select id="audit-filter-table" onchange="loadAuditLog()">
+                <option value="">Toutes les tables</option>
+                <option value="bons_commande">Bons de commande</option>
+                <option value="contrats">Contrats</option>
+                <option value="budgets_annuels">Budgets</option>
+                <option value="utilisateurs">Utilisateurs</option>
+            </select>
+            <select id="audit-filter-action" onchange="loadAuditLog()">
+                <option value="">Toutes les actions</option>
+                <option value="CREATE">Création</option>
+                <option value="UPDATE">Modification</option>
+                <option value="DELETE">Suppression</option>
+                <option value="VALIDER">Validation</option>
+                <option value="REFUSER">Refus</option>
+                <option value="IMPUTER">Imputation</option>
+                <option value="VOTER">Vote budget</option>
+                <option value="RECONDUIRE">Reconduction</option>
+            </select>
+            <button class="btn" onclick="loadAuditLog()" style="background:#2563a8;color:#fff;">Actualiser</button>
+        </div>
+        <div class="tbl-wrap" style="max-height:500px;overflow-y:auto;">
+        <table>
+            <thead><tr>
+                <th>Date</th><th>Utilisateur</th><th>Action</th><th>Table</th><th>ID</th><th>Détails</th>
+            </tr></thead>
+            <tbody id="audit-log-tbody"></tbody>
+        </table>
+        </div>
     </div>
 </div>
 
@@ -1589,6 +1641,6 @@
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="app.js?v=5.84"></script>
+<script src="app.js?v=5.85"></script>
 </body>
 </html>

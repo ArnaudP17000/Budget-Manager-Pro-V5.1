@@ -149,6 +149,23 @@ def run_migrations():
     except Exception:
         pass
 
+    # ── Journal d'audit ─────────────────────────────────────
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER,
+                user_login VARCHAR(100),
+                action VARCHAR(50),
+                table_name VARCHAR(50),
+                record_id INTEGER,
+                details TEXT,
+                date_creation TIMESTAMP DEFAULT NOW()
+            )
+        """)
+    except Exception:
+        pass
+
     # ── Colonne motif_refus sur bons_commande ───────────────
     try:
         db.execute(
