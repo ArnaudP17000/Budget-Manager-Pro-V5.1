@@ -1779,6 +1779,8 @@ async function openFicheHtml(projet_id, titre) {
         iframe.srcdoc = html;
         document.getElementById('fiche-html-viewer-title').textContent =
             titre ? `Fiche Projet — ${titre}` : 'Fiche Projet';
+        document.getElementById('fiche-html-viewer').dataset.projetId    = projet_id;
+        document.getElementById('fiche-html-viewer').dataset.projetTitre = titre || '';
         document.getElementById('fiche-html-word-btn').onclick =
             () => exportFicheWord(projet_id);
         const viewer = document.getElementById('fiche-html-viewer');
@@ -1802,9 +1804,15 @@ function printFicheHtml() {
     }
 }
 
-// Écouter le message "closeFicheViewer" depuis l'iframe (bouton Fermer interne)
+// Écouter les messages depuis l'iframe fiche projet
 window.addEventListener('message', function(e) {
-    if (e.data === 'closeFicheViewer') closeFicheViewer();
+    if (e.data === 'closeFicheViewer') { closeFicheViewer(); return; }
+    if (e.data && e.data.type === 'ficheReload') {
+        const viewer = document.getElementById('fiche-html-viewer');
+        const pid   = e.data.id || viewer.dataset.projetId;
+        const titre = viewer.dataset.projetTitre;
+        if (pid) openFicheHtml(pid, titre || '');
+    }
 });
 
 async function ficheProjet(id) {
