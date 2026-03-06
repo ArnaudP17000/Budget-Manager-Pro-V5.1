@@ -1055,18 +1055,36 @@ def update_bon_commande(bc_id):
         )
 
         # Gestion comptable de l'imputation sur la ligne budgétaire
-        if new_statut == 'IMPUTE' and new_ligne_id:
-            # Annuler l'ancienne imputation si elle existait sur une autre ligne
-            if old_statut == 'IMPUTE' and old_ligne_id and int(old_ligne_id) != int(new_ligne_id):
-                bc_service.db.execute(
-                    "UPDATE lignes_budgetaires "
-                    "SET montant_engage = GREATEST(0, COALESCE(montant_engage,0) - %s), "
-                    "montant_solde = COALESCE(montant_vote,0) - GREATEST(0, COALESCE(montant_engage,0) - %s), "
-                    "date_maj=NOW() WHERE id=%s",
-                    [old_montant, old_montant, old_ligne_id]
-                )
-            # Appliquer l'imputation sur la nouvelle ligne si pas déjà imputé sur cette même ligne
-            if old_statut != 'IMPUTE' or (old_ligne_id and int(old_ligne_id) != int(new_ligne_id)):
+        # Les statuts qui engagent le budget (ordre croissant : VALIDE → IMPUTE → SOLDE)
+        STATUTS_ENGAGES = {'VALIDE', 'IMPUTE', 'SOLDE'}
+        new_engage = new_statut in STATUTS_ENGAGES
+        old_engage = old_statut in STATUTS_ENGAGES
+
+        if new_engage and new_ligne_id:
+            same_ligne = old_ligne_id and int(old_ligne_id) == int(new_ligne_id)
+
+            if old_engage and same_ligne:
+                # Même ligne déjà engagée : ajuster si le montant a changé
+                if abs(montant_ttc - old_montant) > 0.001:
+                    delta = montant_ttc - old_montant
+                    bc_service.db.execute(
+                        "UPDATE lignes_budgetaires "
+                        "SET montant_engage = COALESCE(montant_engage,0) + %s, "
+                        "montant_solde = COALESCE(montant_vote,0) - (COALESCE(montant_engage,0) + %s), "
+                        "date_maj=NOW() WHERE id=%s",
+                        [delta, delta, new_ligne_id]
+                    )
+            else:
+                # Annuler l'ancienne imputation si elle existait sur une autre ligne
+                if old_engage and old_ligne_id and not same_ligne:
+                    bc_service.db.execute(
+                        "UPDATE lignes_budgetaires "
+                        "SET montant_engage = GREATEST(0, COALESCE(montant_engage,0) - %s), "
+                        "montant_solde = COALESCE(montant_vote,0) - GREATEST(0, COALESCE(montant_engage,0) - %s), "
+                        "date_maj=NOW() WHERE id=%s",
+                        [old_montant, old_montant, old_ligne_id]
+                    )
+                # Appliquer l'engagement sur la nouvelle ligne
                 bc_service.db.execute(
                     "UPDATE lignes_budgetaires "
                     "SET montant_engage = COALESCE(montant_engage,0) + %s, "
@@ -1074,13 +1092,13 @@ def update_bon_commande(bc_id):
                     "date_maj=NOW() WHERE id=%s",
                     [montant_ttc, montant_ttc, new_ligne_id]
                 )
-                bc_service.db.execute(
-                    "UPDATE bons_commande SET montant_engage=%s, date_imputation=NOW(), "
-                    "budget_impute=true, impute=true WHERE id=%s",
-                    [montant_ttc, bc_id]
-                )
-        elif old_statut == 'IMPUTE' and new_statut != 'IMPUTE' and old_ligne_id:
-            # Annuler l'imputation si on repasse en statut non-imputé
+            bc_service.db.execute(
+                "UPDATE bons_commande SET montant_engage=%s, date_imputation=COALESCE(date_imputation,NOW()), "
+                "budget_impute=true, impute=true WHERE id=%s",
+                [montant_ttc, bc_id]
+            )
+        elif old_engage and not new_engage and old_ligne_id:
+            # Annuler l'imputation si on repasse en statut non-engagé
             bc_service.db.execute(
                 "UPDATE lignes_budgetaires "
                 "SET montant_engage = GREATEST(0, COALESCE(montant_engage,0) - %s), "
