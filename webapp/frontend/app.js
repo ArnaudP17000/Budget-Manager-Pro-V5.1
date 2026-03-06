@@ -1767,7 +1767,10 @@ async function openFicheHtml(projet_id, titre) {
             return;
         }
         let html = await res.text();
-        // Injecter le projet_id dans le bouton Word de la toolbar interne
+        // Injecter le token JWT et le projet_id dans le HTML de la fiche
+        html = html.replace('__BMP_TOKEN__', token);
+        html = html.replace('__PROJET_ID__', projet_id);
+        // Bouton Word dans la toolbar de la fiche → déclenche téléchargement depuis le parent
         html = html.replace(
             'id="btn-word-dl"',
             `id="btn-word-dl" onclick="window.parent.exportFicheWord(${projet_id})"`

@@ -29,6 +29,7 @@ def run_migrations():
         ('arbitrage',             'TEXT'),
         ('chef_projet_contact_id','INTEGER'),
         ('responsable_contact_id','INTEGER'),
+        ('note',                  'TEXT'),
     ]
     for col, typ in new_cols:
         try:

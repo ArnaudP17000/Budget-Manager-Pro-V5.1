@@ -1373,12 +1373,19 @@ def create_projet():
 def update_projet(projet_id):
     data = request.json
     try:
+        import json as _json
+        def _jstr(v):
+            if v is None: return None
+            return v if isinstance(v, str) else _json.dumps(v, ensure_ascii=False)
         projet_service.db.execute(
             "UPDATE projets SET code=%s, nom=%s, description=%s, statut=%s, priorite=%s, "
             "type_projet=%s, phase=%s, service_id=%s, "
             "date_debut=%s, date_fin_prevue=%s, date_fin_reelle=%s, "
             "budget_initial=%s, budget_estime=%s, budget_actuel=%s, avancement=%s, "
             "objectifs=%s, enjeux=%s, gains=%s, risques=%s, contraintes=%s, solutions=%s, "
+            "financement=%s, registre_risques=%s, contraintes_6axes=%s, "
+            "triangle_tensions=%s, arbitrage=%s, "
+            "chef_projet_contact_id=%s, responsable_contact_id=%s, note=%s, "
             "updated_at=NOW() WHERE id=%s",
             [data.get('code'), data.get('nom'), data.get('description'), data.get('statut'),
              data.get('priorite'), data.get('type_projet') or None, data.get('phase') or None,
@@ -1390,6 +1397,14 @@ def update_projet(projet_id):
              data.get('objectifs') or None, data.get('enjeux') or None,
              data.get('gains') or None, data.get('risques') or None,
              data.get('contraintes') or None, data.get('solutions') or None,
+             data.get('financement') or None,
+             _jstr(data.get('registre_risques')) or None,
+             _jstr(data.get('contraintes_6axes')) or None,
+             _jstr(data.get('triangle_tensions')) or None,
+             data.get('arbitrage') or None,
+             data.get('chef_projet_contact_id') or None,
+             data.get('responsable_contact_id') or None,
+             data.get('note') or None,
              projet_id]
         )
         return jsonify({"success": True})
