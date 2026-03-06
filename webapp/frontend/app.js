@@ -1749,25 +1749,58 @@ async function ficheProjet(id) {
             .map(s => `<span style="background:${statColors[s]};color:#fff;border-radius:12px;padding:2px 10px;font-size:.75em;font-weight:bold;margin-right:4px;">${s} : ${stats[s]}</span>`)
             .join('') || '<span style="color:#aaa;font-size:.82em;">Aucune tâche</span>';
 
-        const tachesHtml = (p.taches || []).length === 0
-            ? '<p style="color:#888;font-style:italic;margin:8px 0;">Aucune tâche liée.</p>'
-            : `<table style="width:100%;border-collapse:collapse;font-size:.82em;margin-top:6px;">
-                <thead><tr style="background:#1a3c5e;color:#fff;">
-                    <th style="padding:6px;">Titre</th><th>Statut</th><th>Priorité</th><th>Échéance</th><th>H.est.</th><th>Av.</th><th></th>
-                </tr></thead><tbody>
-                ${(p.taches || []).map(t => `<tr style="border-bottom:1px solid #eee;">
-                    <td style="padding:5px;">${t.titre || '-'}</td>
-                    <td>${badge(t.statut)}</td><td>${badge(t.priorite)}</td>
-                    <td>${fmtDate(t.date_echeance)}</td>
-                    <td>${t.estimation_heures != null ? t.estimation_heures + ' h' : '-'}</td>
-                    <td>${t.avancement != null ? t.avancement + '%' : '-'}</td>
-                    <td><button class="btn btn-warning btn-sm" onclick="editTache(${t.id})">Éditer</button></td>
-                </tr>`).join('')}
-                </tbody></table>
-                <div style="font-size:.78em;color:#666;margin-top:6px;">
-                    Heures estimées : <strong>${p.heures_estimees || 0} h</strong> ·
-                    Heures réelles : <strong>${p.heures_reelles || 0} h</strong>
-                </div>`;
+        const tachesHtml = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-size:.72em;font-weight:bold;color:#1a3c5e;text-transform:uppercase;">Tâches (${(p.taches||[]).length})</span>
+                <button onclick="showAddTacheProjet(${p.id})" style="background:#27ae60;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:.78em;cursor:pointer;">+ Nouvelle tâche</button>
+            </div>
+            ${(p.taches || []).length === 0
+                ? '<p style="color:#888;font-style:italic;margin:8px 0;">Aucune tâche liée.</p>'
+                : `<table style="width:100%;border-collapse:collapse;font-size:.82em;">
+                    <thead><tr style="background:#1a3c5e;color:#fff;">
+                        <th style="padding:6px;">Titre</th><th>Statut</th><th>Priorité</th><th>Échéance</th><th>H.est.</th><th>Av.</th><th></th>
+                    </tr></thead><tbody>
+                    ${(p.taches || []).map(t => `<tr style="border-bottom:1px solid #eee;">
+                        <td style="padding:5px;">${t.titre || '-'}</td>
+                        <td>${badge(t.statut)}</td><td>${badge(t.priorite)}</td>
+                        <td>${fmtDate(t.date_echeance)}</td>
+                        <td>${t.estimation_heures != null ? t.estimation_heures + ' h' : '-'}</td>
+                        <td>${t.avancement != null ? t.avancement + '%' : '-'}</td>
+                        <td><button class="btn btn-warning btn-sm" onclick="editTache(${t.id})">Éditer</button></td>
+                    </tr>`).join('')}
+                    </tbody></table>
+                    <div style="font-size:.78em;color:#666;margin-top:6px;">
+                        Heures estimées : <strong>${p.heures_estimees || 0} h</strong> ·
+                        Heures réelles : <strong>${p.heures_reelles || 0} h</strong>
+                    </div>`}
+            <div id="add-tache-form-${p.id}" style="display:none;margin-top:10px;padding:10px;background:#f0f4ff;border-radius:6px;border:1px solid #c5d5f5;">
+                <div style="font-size:.78em;font-weight:bold;color:#2563a8;margin-bottom:8px;">Nouvelle tâche liée au projet</div>
+                <input id="ntf-titre-${p.id}" type="text" placeholder="Titre *" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:4px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px;">
+                    <select id="ntf-statut-${p.id}" style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;">
+                        <option value="A faire">À faire</option>
+                        <option value="En cours">En cours</option>
+                        <option value="Terminé">Terminé</option>
+                    </select>
+                    <select id="ntf-priorite-${p.id}" style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;">
+                        <option value="NORMALE">Normale</option>
+                        <option value="HAUTE">Haute</option>
+                        <option value="BASSE">Basse</option>
+                    </select>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+                    <div><label style="font-size:.75em;color:#666;">Échéance</label>
+                        <input id="ntf-echeance-${p.id}" type="date" style="width:100%;padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;">
+                    </div>
+                    <div><label style="font-size:.75em;color:#666;">Heures estimées</label>
+                        <input id="ntf-heures-${p.id}" type="number" min="0" step="0.5" placeholder="0" style="width:100%;padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;">
+                    </div>
+                </div>
+                <div style="display:flex;gap:6px;">
+                    <button onclick="saveNewTacheProjet(${p.id})" style="background:#27ae60;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Créer</button>
+                    <button onclick="document.getElementById('add-tache-form-${p.id}').style.display='none'" style="background:#95a5a6;color:#fff;border:none;border-radius:4px;padding:5px 14px;cursor:pointer;font-size:.82em;">Annuler</button>
+                </div>
+            </div>`;
 
         const bcsHtml = (p.bons_commande || []).length === 0
             ? '<p style="color:#888;font-style:italic;margin:8px 0;">Aucun BC lié.</p>'
@@ -2022,7 +2055,7 @@ async function ficheProjet(id) {
             : '<p style="color:#aaa;font-size:.85em;font-style:italic;margin:4px 0 8px;">Aucun contact externe lié.</p>'}
             <div id="add-contact-form-${id}" style="display:none;margin-top:10px;padding:10px;background:#f0f4ff;border-radius:6px;border:1px solid #c5d5f5;">
                 <div style="font-size:.78em;font-weight:bold;color:#2563a8;margin-bottom:6px;">Lier un contact</div>
-                <select onchange="loadContactsIdForSelect(document.getElementById('new-contact-id-${id}'),this.value)" style="width:100%;padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:.8em;box-sizing:border-box;margin-bottom:4px;">
+                <select onchange="loadContactsIdForSelect(document.getElementById('new-contact-id-${id}'),this.value,document.getElementById('new-contact-search-${id}'))" style="width:100%;padding:5px 8px;border:1px solid #ccc;border-radius:4px;font-size:.8em;box-sizing:border-box;margin-bottom:4px;">
                     <option value="">— Tous types de contact —</option>
                     <option value="Élu">Élu</option>
                     <option value="Direction">Direction</option>
@@ -2030,8 +2063,9 @@ async function ficheProjet(id) {
                     <option value="Prestataire">Prestataire</option>
                     <option value="AMO">AMO</option>
                 </select>
-                <select id="new-contact-id-${id}" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:4px;">
-                    <option value="">-- Sélectionner dans la liste --</option>
+                <input id="new-contact-search-${id}" type="text" placeholder="🔍 Rechercher par nom..." oninput="filterContactSelect(this,'new-contact-id-${id}')" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:4px;">
+                <select id="new-contact-id-${id}" size="5" style="width:100%;padding:4px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:4px;">
+                    <option value="">-- Sélectionner un contact --</option>
                 </select>
                 <input id="new-contact-libre-${id}" type="text" placeholder="Ou saisir un nom libre (si absent de la liste)" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
                 <input id="new-contact-role-${id}" type="text" placeholder="Rôle (ex: Chef de projet, Référent...)" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;box-sizing:border-box;margin-bottom:6px;">
@@ -3559,9 +3593,10 @@ async function loadContactsForSelect(sel, type = '') {
     } catch(e) {}
 }
 
-async function loadContactsIdForSelect(sel, type = '') {
+async function loadContactsIdForSelect(sel, type = '', searchInput = null) {
     if (!sel) return;
     sel.innerHTML = '<option value="">-- Sélectionner un contact --</option>';
+    if (searchInput) searchInput.value = '';
     const url = type ? `/contact?type=${encodeURIComponent(type)}` : '/contact?limit=500';
     try {
         const data = await apiFetch(url);
@@ -3572,6 +3607,45 @@ async function loadContactsIdForSelect(sel, type = '') {
             sel.appendChild(opt);
         });
     } catch(e) {}
+}
+
+function filterContactSelect(searchInput, selId) {
+    const q = searchInput.value.toLowerCase();
+    const sel = document.getElementById(selId);
+    if (!sel) return;
+    Array.from(sel.options).forEach(opt => {
+        if (!opt.value) return; // garder le placeholder
+        opt.style.display = opt.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+}
+
+function showAddTacheProjet(projetId) {
+    const form = document.getElementById(`add-tache-form-${projetId}`);
+    if (!form) return;
+    form.style.display = form.style.display === 'none' ? '' : 'none';
+    if (form.style.display !== 'none') {
+        const el = document.getElementById(`ntf-titre-${projetId}`);
+        if (el) el.focus();
+    }
+}
+
+async function saveNewTacheProjet(projetId) {
+    const titre = document.getElementById(`ntf-titre-${projetId}`)?.value?.trim();
+    if (!titre) { showMsg('Le titre est obligatoire', false); return; }
+    const body = {
+        titre,
+        projet_id:         projetId,
+        statut:            document.getElementById(`ntf-statut-${projetId}`)?.value || 'A faire',
+        priorite:          document.getElementById(`ntf-priorite-${projetId}`)?.value || 'NORMALE',
+        date_echeance:     document.getElementById(`ntf-echeance-${projetId}`)?.value || null,
+        estimation_heures: document.getElementById(`ntf-heures-${projetId}`)?.value || null,
+    };
+    try {
+        await apiFetch('/tache', { method: 'POST', body: JSON.stringify(body) });
+        showMsg('Tâche créée', true);
+        await ficheProjet(projetId);
+        switchProjTab('taches');
+    } catch(e) { showMsg(e.message, false); }
 }
 
 // ─── Équipe projet ───────────────────────────────────────────────────────────
@@ -3647,8 +3721,9 @@ async function showAddContactForm(projetId) {
     form.style.display = form.style.display === 'none' ? '' : 'none';
     if (form.style.display === 'none') return;
     const sel = document.getElementById(`new-contact-id-${projetId}`);
-    await loadContactsIdForSelect(sel, '');
-    sel?.focus();
+    const searchInput = document.getElementById(`new-contact-search-${projetId}`);
+    await loadContactsIdForSelect(sel, '', searchInput);
+    if (searchInput) searchInput.focus();
 }
 
 async function saveProjetContact(projetId) {
