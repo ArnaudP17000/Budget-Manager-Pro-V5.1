@@ -1616,7 +1616,7 @@ function _renderProjets(list) {
             <td>${fmtDate(p.date_debut)}</td>
             <td>${fmtDate(p.date_fin_prevue)}</td>
             <td style="white-space:nowrap;">
-                <button class="btn btn-info btn-sm" onclick="ficheProjet(${p.id})">Fiche</button>
+                <button class="btn btn-info btn-sm" onclick="openFicheHtml(${p.id},'${(p.code||'').replace(/'/g,"\\'")}')">Fiche</button>
                 <button class="btn btn-warning btn-sm" onclick="editProjet(${p.id})">Éditer</button>
                 <button class="btn btn-danger btn-sm" onclick="deleteProjet(${p.id})">Suppr.</button>
             </td>
