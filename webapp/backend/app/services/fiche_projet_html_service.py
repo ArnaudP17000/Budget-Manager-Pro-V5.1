@@ -262,7 +262,7 @@ body.edit-mode .val-g input.ef{{background:#f5f5f5}}
     h += _field_ta('note', p.get('note',''), min_h=50, rows=3)
     h += _sub('Acteurs du projet')
     h += _hdr('Rôle','Nom Prénom','Fonction / Service','Email / Tél')
-    # Contacts : chef et responsable éditables (via select chargé dynamiquement)
+    # Contacts : chef et responsable éditables avec recherche
     for row_id, role_lbl, contact_name, contact_id_field in [
         ('row-chef', 'Chef de projet DSI', p.get('chef_projet',''), 'chef_projet_contact_id'),
         ('row-resp', 'Responsable métier',  p.get('responsable',''), 'responsable_contact_id'),
@@ -270,9 +270,19 @@ body.edit-mode .val-g input.ef{{background:#f5f5f5}}
         cid = p.get(contact_id_field) or ''
         h += (f'<tr id="{row_id}">'
               f'<td class="lbl">{_e(role_lbl)}</td>'
-              f'<td class="val-w"><span class="vv">{_e(contact_name)}</span>'
-              f'<select class="ef" name="{_e(contact_id_field)}" data-current="{_e(cid)}"></select></td>'
-              f'<td class="val-w"></td><td class="val"></td></tr>\n')
+              f'<td class="val-w" colspan="3">'
+              f'<span class="vv">{_e(contact_name) or "<em style=\'color:#aaa\'>Non défini</em>"}</span>'
+              f'<div class="ef" style="display:flex;flex-direction:column;gap:3px">'
+              f'<input type="text" placeholder="Rechercher un contact…" '
+              f'oninput="filterContactSelect(this, \'sel-{contact_id_field}\')" '
+              f'style="border:1px solid #93c;border-radius:3px;padding:3px 6px;font-size:11px">'
+              f'<select id="sel-{contact_id_field}" name="{_e(contact_id_field)}" '
+              f'size="4" data-current="{_e(cid)}" '
+              f'style="border:1px solid #93c;border-radius:3px;font-size:11px;min-width:280px">'
+              f'<option value="">-- Aucun --</option>'
+              f'</select>'
+              f'</div>'
+              f'</td></tr>\n')
     for role, nom, fn, email in acteurs[2:]:
         h += (f'<tr><td class="lbl">{_e(role)}</td>'
               f'<td class="val-w">{_e(nom)}</td>'
@@ -671,28 +681,45 @@ function _esc(s) {{
 }}
 
 // Charger les contacts pour les selects chef/responsable
+let _allContacts = [];
 async function loadContactsForSelects() {{
   try {{
-    const res = await fetch('/api/contacts', {{
+    const res = await fetch('/api/contact', {{
       headers: {{ 'Authorization': 'Bearer ' + TOKEN }}
     }});
     const data = await res.json();
-    const contacts = data.list || [];
+    _allContacts = data.list || [];
     ['chef_projet_contact_id','responsable_contact_id'].forEach(field => {{
-      const sel = document.querySelector(`select[name="${{field}}"]`);
-      if (!sel) return;
-      const current = sel.dataset.current;
-      sel.innerHTML = '<option value="">-- Sélectionner --</option>';
-      contacts.forEach(c => {{
-        const nom = (c.prenom || '') + ' ' + (c.nom || '');
-        const opt = document.createElement('option');
-        opt.value = c.id;
-        opt.textContent = nom.trim() + (c.fonction ? ' (' + c.fonction + ')' : '');
-        if (String(c.id) === String(current)) opt.selected = true;
-        sel.appendChild(opt);
-      }});
+      _populateContactSelect('sel-' + field, field);
     }});
   }} catch(e) {{ console.warn('Contacts load:', e); }}
+}}
+
+function _populateContactSelect(selId, field, filterText) {{
+  const sel = document.getElementById(selId);
+  if (!sel) return;
+  const current = sel.dataset.current;
+  const q = (filterText || '').toLowerCase().trim();
+  const filtered = q
+    ? _allContacts.filter(c => {{
+        const txt = ((c.prenom||'') + ' ' + (c.nom||'') + ' ' + (c.fonction||'') + ' ' + (c.email||'')).toLowerCase();
+        return txt.includes(q);
+      }})
+    : _allContacts;
+  sel.innerHTML = '<option value="">-- Aucun --</option>';
+  filtered.forEach(c => {{
+    const nom = ((c.prenom||'') + ' ' + (c.nom||'')).trim();
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = nom + (c.fonction ? ' — ' + c.fonction : '');
+    if (String(c.id) === String(current)) opt.selected = true;
+    sel.appendChild(opt);
+  }});
+}}
+
+function filterContactSelect(input, selId) {{
+  const field = selId.replace('sel-', '');
+  _populateContactSelect(selId, field, input.value);
 }}
 
 // Réception token Word depuis parent
