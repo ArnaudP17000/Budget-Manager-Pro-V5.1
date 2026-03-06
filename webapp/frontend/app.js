@@ -253,6 +253,40 @@ function resetLignesFilters() {
     loadAllLignes();
 }
 
+// ─── Pagination ────────────────────────────────────────────
+const _pagination = {}; // { tableId: { page, perPage } }
+const _PER_PAGE   = 25;
+
+function _paginate(arr, tableId) {
+    const p = _pagination[tableId] || (_pagination[tableId] = { page: 1, perPage: _PER_PAGE });
+    const start = (p.page - 1) * p.perPage;
+    return arr.slice(start, start + p.perPage);
+}
+
+function _renderPagination(tableId, totalCount) {
+    const containerId = tableId + '-pagination';
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const p = _pagination[tableId] || { page: 1, perPage: _PER_PAGE };
+    const totalPages = Math.ceil(totalCount / p.perPage);
+    if (totalPages <= 1) { el.innerHTML = ''; return; }
+    el.innerHTML =
+        `<button onclick="_goPage('${tableId}',${p.page - 1})" ${p.page <= 1 ? 'disabled' : ''}>&#9664; Préc.</button>` +
+        `<span class="pg-info">Page <strong>${p.page}</strong> / ${totalPages} &nbsp;(${totalCount} résultats)</span>` +
+        `<button onclick="_goPage('${tableId}',${p.page + 1})" ${p.page >= totalPages ? 'disabled' : ''}>Suiv. &#9654;</button>`;
+}
+
+function _goPage(tableId, page) {
+    if (!_pagination[tableId]) _pagination[tableId] = { page: 1, perPage: _PER_PAGE };
+    _pagination[tableId].page = page;
+    const renders = { bc: _renderBcRows, contrats: _renderContratsRows };
+    if (renders[tableId]) renders[tableId]();
+}
+
+function _resetPage(tableId) {
+    if (_pagination[tableId]) _pagination[tableId].page = 1;
+}
+
 function fillSelect(selId, items, valKey, labelFn) {
     const sel = document.getElementById(selId);
     if (!sel) return;
@@ -905,7 +939,9 @@ function _renderBcRows() {
     const userRole = _currentUserRole();
     const tbody = document.getElementById('bc-tbody');
     if (!tbody) return;
-    tbody.innerHTML = _sortedData(_bcCache, 'bc').map(b => `
+    const sorted = _sortedData(_bcCache, 'bc');
+    const page   = _paginate(sorted, 'bc');
+    tbody.innerHTML = page.map(b => `
         <tr>
             <td>${b.id}</td>
             <td><strong>${b.numero_bc || '-'}</strong></td>
@@ -930,6 +966,7 @@ function _renderBcRows() {
             </td>
         </tr>`).join('');
     _updateSortHeaders('bc');
+    _renderPagination('bc', sorted.length);
 }
 
 async function loadBC() {
@@ -962,6 +999,7 @@ async function loadBC() {
             `<span>Montant total: <strong class="kpi-num">${fmt(t.total || 0)} €</strong></span>`;
 
         _bcCache = data.list || [];
+        _resetPage('bc');
         _renderBcRows();
     } catch (e) { showMsg('Erreur chargement BC', false); }
 }
@@ -1227,9 +1265,10 @@ function _renderContratsRows() {
         (c.fournisseur_nom || '').toLowerCase().includes(search)
     );
     const sorted = _sortedData(list, 'contrats');
+    const page   = _paginate(sorted, 'contrats');
     const tbody = document.getElementById('contrats-tbody');
     if (!tbody) return;
-    tbody.innerHTML = sorted.map(c => {
+    tbody.innerHTML = page.map(c => {
         const niveau = c.niveau_alerte || 'OK';
         const rowCls = niveau === 'EXPIRE' ? 'alerte-expire'
             : niveau === 'CRITIQUE' ? 'alerte-critique'
@@ -1261,6 +1300,7 @@ function _renderContratsRows() {
         </tr>`;
     }).join('');
     _updateSortHeaders('contrats');
+    _renderPagination('contrats', sorted.length);
 }
 
 async function loadContrats() {
@@ -1268,6 +1308,7 @@ async function loadContrats() {
         _saveFilter('contrat-filter-statut'); _saveFilter('contrat-search');
         const data = await apiFetch('/contrat');
         _cache.contrats = data.list || [];
+        _resetPage('contrats');
         _renderContratsRows();
     } catch (e) { showMsg('Erreur chargement contrats', false); }
 }
@@ -3203,6 +3244,55 @@ async function loadAdminUsers() {
                 </td>
             </tr>`).join('');
     } catch (e) { showMsg('Erreur chargement utilisateurs: ' + e.message, false); }
+}
+
+function switchAdminTab(tab) {
+    ['users', 'audit'].forEach(t => {
+        const sub = document.getElementById('admin-sub-' + t);
+        const btn = document.getElementById('admin-tab-' + t);
+        if (sub) sub.style.display = t === tab ? '' : 'none';
+        if (btn) btn.classList.toggle('active', t === tab);
+    });
+    const addBtn = document.getElementById('admin-add-user-btn');
+    if (addBtn) addBtn.style.display = tab === 'users' ? '' : 'none';
+    if (tab === 'audit') loadAuditLog();
+}
+
+async function loadAuditLog() {
+    const table  = document.getElementById('audit-filter-table')?.value  || '';
+    const action = document.getElementById('audit-filter-action')?.value || '';
+    const params = new URLSearchParams();
+    if (table)  params.set('table', table);
+    if (action) params.set('action', action);
+    params.set('limit', '200');
+    try {
+        const data = await apiFetch('/audit_log?' + params);
+        const tbody = document.getElementById('audit-log-tbody');
+        if (!tbody) return;
+        if (!(data.list || []).length) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;font-style:italic;">Aucune entrée dans le journal.</td></tr>';
+            return;
+        }
+        const actionColors = {
+            'CREATE':   '#d4edda', 'UPDATE': '#fff3cd', 'DELETE': '#f8d7da',
+            'VALIDER':  '#cce5ff', 'REFUSER': '#f8d7da', 'IMPUTER': '#d1ecf1',
+            'VOTER':    '#e2d9f3', 'RECONDUIRE': '#d1ecf1',
+        };
+        tbody.innerHTML = data.list.map(e => {
+            const color = actionColors[e.action] || '#f0f0f0';
+            const details = e.details ? JSON.parse(e.details) : null;
+            const detailStr = details ? Object.entries(details).map(([k,v]) => `${k}: ${v}`).join(', ') : '-';
+            const nom = [e.prenom, e.nom].filter(Boolean).join(' ') || e.user_login || `#${e.user_id}`;
+            return `<tr>
+                <td style="font-size:.78em;white-space:nowrap;">${(e.date_creation||'').substring(0,19).replace('T',' ')}</td>
+                <td style="font-size:.82em;">${nom}</td>
+                <td><span class="badge" style="background:${color};color:#333;font-size:.75em;">${e.action}</span></td>
+                <td style="font-size:.78em;color:#555;">${e.table_name || '-'}</td>
+                <td style="text-align:center;font-size:.78em;">${e.record_id || '-'}</td>
+                <td style="font-size:.78em;color:#555;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${detailStr}">${detailStr}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) { showMsg('Erreur journal audit: ' + e.message, false); }
 }
 
 async function saveNewUser() {
