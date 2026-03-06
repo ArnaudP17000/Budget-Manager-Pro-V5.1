@@ -104,7 +104,22 @@ function fmt(n) {
 
 function fmtDate(d) {
     if (!d) return '-';
-    return String(d).substring(0, 10);
+    const s = String(d);
+    // ISO YYYY-MM-DD (ou YYYY-MM-DDTHH:MM:SS)
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+    // RFC 1123 "Tue, 03 Mar 2026 00:00:00 GMT" → parser via Date
+    const dt = new Date(s);
+    if (!isNaN(dt.getTime())) return dt.toISOString().substring(0, 10);
+    return s.substring(0, 10);
+}
+
+function _toISODate(v) {
+    if (!v) return '';
+    const s = String(v);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+    const dt = new Date(s);
+    if (!isNaN(dt.getTime())) return dt.toISOString().substring(0, 10);
+    return '';
 }
 
 function badge(statut) {
@@ -1530,8 +1545,8 @@ function editContrat(id) {
     document.getElementById('edit-contrat-objet').value    = data.objet || '';
     document.getElementById('edit-contrat-fournisseur').value = data.fournisseur_id || '';
     document.getElementById('edit-contrat-montant').value  = data.montant_total_ht || '';
-    document.getElementById('edit-contrat-debut').value    = fmtDate(data.date_debut) === '-' ? '' : fmtDate(data.date_debut);
-    document.getElementById('edit-contrat-fin').value      = fmtDate(data.date_fin) === '-' ? '' : fmtDate(data.date_fin);
+    document.getElementById('edit-contrat-debut').value    = _toISODate(data.date_debut);
+    document.getElementById('edit-contrat-fin').value      = _toISODate(data.date_fin);
     document.getElementById('edit-contrat-statut').value   = data.statut || 'ACTIF';
     openModal('modal-edit-contrat');
 }
@@ -2205,7 +2220,7 @@ async function addProjet() {
 function editProjet(id) {
     const data = _cache.projets?.find(p => p.id === id);
     if (!data) { showMsg('Données projet non chargées, rechargez', false); return; }
-    const d2 = v => (fmtDate(v) === '-' ? '' : fmtDate(v));
+    const d2 = _toISODate;
     document.getElementById('edit-projet-id').value                = data.id;
     document.getElementById('edit-projet-code').value             = data.code || '';
     document.getElementById('edit-projet-nom').value              = data.nom || '';
@@ -2354,8 +2369,8 @@ async function editTache(id) {
     document.getElementById('edit-tache-projet').value     = data.projet_id || '';
     document.getElementById('edit-tache-statut').value     = data.statut || 'A faire';
     document.getElementById('edit-tache-priorite').value   = data.priorite || '';
-    const deb = data.date_debut    ? data.date_debut.split('T')[0]    : '';
-    const ech = data.date_echeance ? data.date_echeance.split('T')[0] : '';
+    const deb = _toISODate(data.date_debut);
+    const ech = _toISODate(data.date_echeance);
     const debutEl = document.getElementById('edit-tache-debut');
     if (debutEl) debutEl.value = deb;
     document.getElementById('edit-tache-echeance').value   = ech;
