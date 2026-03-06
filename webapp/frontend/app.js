@@ -1128,6 +1128,26 @@ function openImputer(bcId) {
     openModal('modal-imputer-bc');
 }
 
+function _fillLignesSelectByEntite(selectId, entiteId, currentLigneId) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    const filtered = entiteId
+        ? _refs.lignes.filter(l => String(l.entite_id) === String(entiteId))
+        : _refs.lignes;
+    const lLabel = l => {
+        const solde = fmt(l.montant_solde || 0);
+        return `${l.libelle || 'Ligne #' + l.id} — Solde: ${solde} €`;
+    };
+    sel.innerHTML = '<option value="">-- Ligne budgétaire --</option>';
+    filtered.forEach(l => {
+        const opt = document.createElement('option');
+        opt.value = l.id;
+        opt.textContent = lLabel(l);
+        if (currentLigneId && String(l.id) === String(currentLigneId)) opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
+
 document.addEventListener('change', e => {
     if (e.target.id === 'imputer-ligne') {
         const ligneId = e.target.value;
@@ -1138,6 +1158,14 @@ document.addEventListener('change', e => {
                 Engagé: <strong>${fmt(ligne.montant_engage)} €</strong> —
                 Solde: <strong>${fmt(ligne.montant_solde)} €</strong>`;
         } else { info.textContent = ''; }
+    }
+    if (e.target.id === 'edit-bc-entite') {
+        _fillLignesSelectByEntite('edit-bc-ligne', e.target.value, null);
+        const info = document.getElementById('edit-bc-ligne-info');
+        if (info) info.textContent = '';
+    }
+    if (e.target.id === 'bc-entite') {
+        _fillLignesSelectByEntite('bc-ligne', e.target.value, null);
     }
     if (e.target.id === 'edit-bc-ligne') {
         const ligneId = e.target.value;
@@ -1221,7 +1249,8 @@ async function editBC(id) {
         const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
         setVal('edit-bc-fournisseur', bc.fournisseur_id);
         setVal('edit-bc-entite',      bc.entite_id);
-        setVal('edit-bc-ligne',       bc.ligne_budgetaire_id);
+        // Filtrer les lignes selon l'entité sélectionnée
+        _fillLignesSelectByEntite('edit-bc-ligne', bc.entite_id, bc.ligne_budgetaire_id);
         setVal('edit-bc-projet',      bc.projet_id);
         setVal('edit-bc-contrat',     bc.contrat_id);
         // Info ligne

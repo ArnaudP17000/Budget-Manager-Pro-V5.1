@@ -61,7 +61,7 @@ class BudgetV5Service:
         try:
             query = (
                 "SELECT l.*, a.nom as application_nom, p.nom as projet_nom, "
-                "f.nom as fournisseur_nom, "
+                "f.nom as fournisseur_nom, b.entite_id as entite_id, "
                 "COALESCE(e.code, e.nom) || ' — ' || b.nature || ' ' || b.exercice::text as budget_label "
                 "FROM lignes_budgetaires l "
                 "LEFT JOIN applications a ON a.id = l.application_id "
