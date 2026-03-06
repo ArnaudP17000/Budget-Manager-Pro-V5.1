@@ -116,6 +116,7 @@ function badge(statut) {
         'IMPUTE':     'bg-impute',
         'SOLDE':      'bg-solde',
         'ANNULE':     'bg-annule',
+        'REFUSE':     'bg-refuse',
         'ACTIF':      'bg-actif',
         'RECONDUIT':  'bg-valide',
         'EXPIRE':     'bg-expire',
@@ -180,6 +181,78 @@ async function apiFetch(path, opts = {}) {
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
+// ─── Échap ferme les modals ────────────────────────────────
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const open = document.querySelector('.modal-overlay.open');
+    if (open) open.classList.remove('open');
+});
+
+// ─── Tri des colonnes ──────────────────────────────────────
+const _sort = {};
+
+function _sortedData(arr, tableId) {
+    const s = _sort[tableId];
+    if (!s || !s.field) return arr;
+    return [...arr].sort((a, b) => {
+        let va = a[s.field] ?? '';
+        let vb = b[s.field] ?? '';
+        const fa = parseFloat(va), fb = parseFloat(vb);
+        if (!isNaN(fa) && !isNaN(fb)) return s.asc ? fa - fb : fb - fa;
+        return s.asc
+            ? String(va).localeCompare(String(vb), 'fr', { sensitivity: 'base' })
+            : String(vb).localeCompare(String(va), 'fr', { sensitivity: 'base' });
+    });
+}
+
+function _updateSortHeaders(tableId) {
+    const s = _sort[tableId];
+    document.querySelectorAll(`[data-table="${tableId}"] th[data-sort]`).forEach(th => {
+        th.classList.remove('th-asc', 'th-desc');
+        if (s && th.dataset.sort === s.field)
+            th.classList.add(s.asc ? 'th-asc' : 'th-desc');
+    });
+}
+
+function sortTable(tableId, field) {
+    const cur = _sort[tableId] || {};
+    _sort[tableId] = { field, asc: cur.field === field ? !cur.asc : true };
+    const renders = { bc: _renderBcRows, contrats: _renderContratsRows, lignes: _renderLignesRows };
+    if (renders[tableId]) renders[tableId]();
+}
+
+// ─── Filtres persistants ───────────────────────────────────
+const _FP = 'bmp_flt_';
+function _saveFilter(id) {
+    const el = document.getElementById(id);
+    if (el) localStorage.setItem(_FP + id, el.value);
+}
+function _restoreFilter(id) {
+    const el = document.getElementById(id);
+    if (el) { const v = localStorage.getItem(_FP + id); if (v !== null) el.value = v; }
+}
+function _restoreFilters(...ids) { ids.forEach(_restoreFilter); }
+function _clearFilters(...ids) {
+    ids.forEach(id => {
+        localStorage.removeItem(_FP + id);
+        const el = document.getElementById(id);
+        if (el) { if (el.tagName === 'SELECT') el.selectedIndex = 0; else el.value = ''; }
+    });
+}
+
+function resetBcFilters() {
+    _clearFilters('bc-filter-statut', 'bc-filter-entite', 'bc-search');
+    loadBC();
+}
+function resetContratsFilters() {
+    _clearFilters('contrat-filter-statut', 'contrat-search');
+    loadContrats();
+}
+function resetLignesFilters() {
+    _clearFilters('lignes-filter-budget', 'lignes-search');
+    loadAllLignes();
+}
+
 function fillSelect(selId, items, valKey, labelFn) {
     const sel = document.getElementById(selId);
     if (!sel) return;
@@ -219,11 +292,8 @@ function showView(name) {
     const view = document.getElementById('view-' + name);
     if (view) {
         view.classList.add('active');
-        // Réinitialiser les filtres/recherches de la vue (toolbar uniquement, pas les formulaires)
-        view.querySelectorAll('.toolbar input, .toolbar select').forEach(el => {
-            if (el.tagName === 'SELECT') el.selectedIndex = 0;
-            else el.value = '';
-        });
+        // Restaurer les filtres depuis localStorage
+        view.querySelectorAll('.toolbar input[id], .toolbar select[id]').forEach(el => _restoreFilter(el.id));
         // Masquer les bandeaux d'info temporaires
         view.querySelectorAll('[id$="-pdf-info"], [id$="-info-msg"]').forEach(el => {
             el.style.display = 'none';
@@ -303,6 +373,11 @@ async function loadDashboard() {
         document.getElementById('kpi-contrats').textContent   = d.kpi_contrats ?? '-';
         document.getElementById('kpi-alertes').textContent    = d.kpi_alertes_contrats ?? '-';
         document.getElementById('kpi-bc-attente').textContent = d.kpi_bc_attente ?? '-';
+        const kpiLignesEl = document.getElementById('kpi-alertes-lignes');
+        if (kpiLignesEl) {
+            kpiLignesEl.textContent = d.kpi_alertes_lignes ?? '-';
+            kpiLignesEl.closest('.kpi-card')?.classList.toggle('alert', (d.kpi_alertes_lignes || 0) > 0);
+        }
 
         const tbody = document.getElementById('dashboard-alertes-tbody');
         tbody.innerHTML = (d.alertes_contrats || []).map(c => `
@@ -407,54 +482,81 @@ function switchBudgetSubTab(tab) {
     if (tab === 'lignes') loadAllLignes();
 }
 
+function _renderLignesRows() {
+    const search = (document.getElementById('lignes-search')?.value || '').toLowerCase();
+    let lignes = _lignesCache;
+    if (search) {
+        lignes = lignes.filter(l =>
+            (l.libelle || '').toLowerCase().includes(search) ||
+            (l.application_nom || '').toLowerCase().includes(search) ||
+            (l.fournisseur_nom || '').toLowerCase().includes(search)
+        );
+    }
+    lignes = _sortedData(lignes, 'lignes');
+
+    // Bandeau alerte
+    const banner = document.getElementById('lignes-alerte-banner');
+    if (banner) {
+        const nb100 = _lignesCache.filter(l => (l.taux_engagement || 0) > 100).length;
+        const nb90  = _lignesCache.filter(l => (l.taux_engagement || 0) >= 90 && (l.taux_engagement || 0) <= 100).length;
+        if (nb100 > 0) {
+            banner.className = 'alert-banner danger';
+            banner.textContent = `${nb100} ligne(s) en DÉPASSEMENT budgétaire (>100%)${nb90 > 0 ? ` — ${nb90} ligne(s) proche(s) du seuil (≥90%)` : ''}`;
+            banner.style.display = '';
+        } else if (nb90 > 0) {
+            banner.className = 'alert-banner';
+            banner.textContent = `${nb90} ligne(s) proche(s) du seuil (≥90% engagé)`;
+            banner.style.display = '';
+        } else {
+            banner.style.display = 'none';
+        }
+    }
+
+    const tbody = document.getElementById('lignes-tbody');
+    if (!tbody) return;
+    if (!lignes.length) {
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#999;font-style:italic;padding:18px;">Aucune ligne trouvée.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = lignes.map((l, i) => {
+        const taux = l.taux_engagement || 0;
+        const alerte = l.alerte
+            ? '<span style="color:#e74c3c;font-weight:bold;">⚠ SEUIL</span>'
+            : '<span style="color:#27ae60;font-weight:bold;">✓ OK</span>';
+        const solde = parseFloat(l.montant_solde || 0);
+        const soldeColor = solde < 0 ? 'color:#e74c3c;font-weight:bold;' : 'color:#27ae60;';
+        const engageCls = taux > 100 ? 'row-depasse' : taux >= 90 ? 'row-alerte' : taux > 0 ? 'row-ok' : '';
+        const selCls = _lignesSelectId === l.id ? ' selected' : '';
+        return `<tr class="ligne-row${selCls} ${engageCls}" data-id="${l.id}" onclick="selectLigne(${l.id}, '${(l.libelle||'Ligne #'+l.id).replace(/['\u2018\u2019]/g,"&#39;")}')">
+            <td>${i+1}</td>
+            <td>${l.libelle || '-'}</td>
+            <td>${l.application_nom || '-'}</td>
+            <td>${l.fournisseur_nom || '-'}</td>
+            <td style="text-align:right;">${fmt(l.montant_vote)}</td>
+            <td style="text-align:right;">${fmt(l.montant_engage)}</td>
+            <td style="text-align:right;${soldeColor}">${fmt(solde)}</td>
+            <td style="text-align:center;">${taux} %</td>
+            <td style="text-align:center;">${alerte}</td>
+            <td style="font-size:.82em;color:#2563a8;font-weight:600;">${l.note || ''}</td>
+            <td style="font-size:.78em;color:#666;">${l.budget_label || '-'}</td>
+            <td style="text-align:center;" onclick="event.stopPropagation()">
+                <button class="btn btn-warning btn-sm" onclick="editLigne(${l.id})">&#9998; Modifier</button>
+            </td>
+        </tr>`;
+    }).join('');
+    _updateSortHeaders('lignes');
+    // Remettre la sélection si toujours présente
+    if (_lignesSelectId) selectLigne(_lignesSelectId, null, true);
+}
+
 async function loadAllLignes() {
     try {
-        const budgetId = document.getElementById('lignes-filter-budget').value || '';
-        const search   = (document.getElementById('lignes-search').value || '').toLowerCase();
+        _saveFilter('lignes-filter-budget'); _saveFilter('lignes-search');
+        const budgetId = document.getElementById('lignes-filter-budget')?.value || '';
         const url = budgetId ? `/lignes?budget_id=${budgetId}` : '/lignes';
         const data = await apiFetch(url);
         _lignesCache = data.list || [];
-        let lignes = _lignesCache;
-        if (search) {
-            lignes = lignes.filter(l =>
-                (l.libelle || '').toLowerCase().includes(search) ||
-                (l.application_nom || '').toLowerCase().includes(search) ||
-                (l.fournisseur_nom || '').toLowerCase().includes(search)
-            );
-        }
-        const tbody = document.getElementById('lignes-tbody');
-        if (!lignes.length) {
-            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#999;font-style:italic;padding:18px;">Aucune ligne trouvée.</td></tr>';
-            return;
-        }
-        tbody.innerHTML = lignes.map((l, i) => {
-            const taux = l.taux_engagement || 0;
-            const alerte = l.alerte
-                ? '<span style="color:#e74c3c;font-weight:bold;">⚠ SEUIL</span>'
-                : '<span style="color:#27ae60;font-weight:bold;">✓ OK</span>';
-            const solde = parseFloat(l.montant_solde || 0);
-            const soldeColor = solde < 0 ? 'color:#e74c3c;font-weight:bold;' : 'color:#27ae60;';
-            const engageCls = taux > 100 ? 'row-depasse' : taux >= 90 ? 'row-alerte' : taux > 0 ? 'row-ok' : '';
-            const selCls = _lignesSelectId === l.id ? ' selected' : '';
-            return `<tr class="ligne-row${selCls} ${engageCls}" data-id="${l.id}" onclick="selectLigne(${l.id}, '${(l.libelle||'Ligne #'+l.id).replace(/['\u2018\u2019]/g,"&#39;")}')">
-                <td>${i+1}</td>
-                <td>${l.libelle || '-'}</td>
-                <td>${l.application_nom || '-'}</td>
-                <td>${l.fournisseur_nom || '-'}</td>
-                <td style="text-align:right;">${fmt(l.montant_vote)}</td>
-                <td style="text-align:right;">${fmt(l.montant_engage)}</td>
-                <td style="text-align:right;${soldeColor}">${fmt(solde)}</td>
-                <td style="text-align:center;">${taux} %</td>
-                <td style="text-align:center;">${alerte}</td>
-                <td style="font-size:.82em;color:#2563a8;font-weight:600;">${l.note || ''}</td>
-                <td style="font-size:.78em;color:#666;">${l.budget_label || '-'}</td>
-                <td style="text-align:center;" onclick="event.stopPropagation()">
-                    <button class="btn btn-warning btn-sm" onclick="editLigne(${l.id})">&#9998; Modifier</button>
-                </td>
-            </tr>`;
-        }).join('');
-        // Remettre la sélection si toujours présente
-        if (_lignesSelectId) selectLigne(_lignesSelectId, null, true);
+        _renderLignesRows();
     } catch (e) { showMsg('Erreur chargement lignes', false); }
 }
 
@@ -797,11 +899,46 @@ async function deleteBudget(id) {
 
 // ─── BONS DE COMMANDE ──────────────────────────────────────
 
+let _bcCache = [];
+
+function _renderBcRows() {
+    const userRole = _currentUserRole();
+    const tbody = document.getElementById('bc-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = _sortedData(_bcCache, 'bc').map(b => `
+        <tr>
+            <td>${b.id}</td>
+            <td><strong>${b.numero_bc || '-'}</strong></td>
+            <td>${b.objet || '-'}</td>
+            <td>${b.fournisseur_nom || '-'}</td>
+            <td>${b.entite_code || '-'}</td>
+            <td>${fmt(b.montant_ht)}</td>
+            <td>${fmt(b.montant_ttc)}</td>
+            <td>${badge(b.statut)}</td>
+            <td style="font-size:.78em;color:#555;">${b.createur_nom ? b.createur_nom.trim() : '<span style="color:#bbb">—</span>'}</td>
+            <td style="white-space:nowrap;">
+                <button class="btn btn-info btn-sm" onclick="ficheBc(${b.id})">Fiche</button>
+                <button class="btn btn-sm" style="background:#6c757d;color:#fff;" onclick="editBC(${b.id})">Modifier</button>
+                ${['BROUILLON','EN_ATTENTE'].includes(b.statut)
+                    ? `<button class="btn btn-warning btn-sm" onclick="validerBc(${b.id})">Valider</button>` : ''}
+                ${b.statut === 'EN_ATTENTE' && ['admin','gestionnaire'].includes(userRole)
+                    ? `<button class="btn btn-danger btn-sm" onclick="openRefuserBc(${b.id})">Refuser</button>` : ''}
+                ${b.statut === 'VALIDE'
+                    ? `<button class="btn btn-success btn-sm" onclick="openImputer(${b.id})">Imputer</button>` : ''}
+                ${!['IMPUTE','SOLDE'].includes(b.statut)
+                    ? `<button class="btn btn-danger btn-sm" onclick="deleteBC(${b.id})">Suppr.</button>` : ''}
+            </td>
+        </tr>`).join('');
+    _updateSortHeaders('bc');
+}
+
 async function loadBC() {
     const params = new URLSearchParams();
     const statut  = document.getElementById('bc-filter-statut')?.value;
     const entite  = document.getElementById('bc-filter-entite')?.value;
     const search  = document.getElementById('bc-search')?.value;
+    // Sauvegarder les filtres
+    _saveFilter('bc-filter-statut'); _saveFilter('bc-filter-entite'); _saveFilter('bc-search');
     if (statut) params.set('statut', statut);
     if (entite) params.set('entite_id', entite);
     if (search) params.set('search', search);
@@ -824,29 +961,8 @@ async function loadBC() {
             }).join('') +
             `<span>Montant total: <strong class="kpi-num">${fmt(t.total || 0)} €</strong></span>`;
 
-        const tbody = document.getElementById('bc-tbody');
-        tbody.innerHTML = (data.list || []).map(b => `
-            <tr>
-                <td>${b.id}</td>
-                <td><strong>${b.numero_bc || '-'}</strong></td>
-                <td>${b.objet || '-'}</td>
-                <td>${b.fournisseur_nom || '-'}</td>
-                <td>${b.entite_code || '-'}</td>
-                <td>${fmt(b.montant_ht)}</td>
-                <td>${fmt(b.montant_ttc)}</td>
-                <td>${badge(b.statut)}</td>
-                <td style="font-size:.78em;color:#555;">${b.createur_nom ? b.createur_nom.trim() : '<span style="color:#bbb">—</span>'}</td>
-                <td style="white-space:nowrap;">
-                    <button class="btn btn-info btn-sm" onclick="ficheBc(${b.id})">Fiche</button>
-                    <button class="btn btn-sm" style="background:#6c757d;color:#fff;" onclick="editBC(${b.id})">Modifier</button>
-                    ${['BROUILLON','EN_ATTENTE'].includes(b.statut)
-                        ? `<button class="btn btn-warning btn-sm" onclick="validerBc(${b.id})">Valider</button>` : ''}
-                    ${b.statut === 'VALIDE'
-                        ? `<button class="btn btn-success btn-sm" onclick="openImputer(${b.id})">Imputer</button>` : ''}
-                    ${!['IMPUTE','SOLDE'].includes(b.statut)
-                        ? `<button class="btn btn-danger btn-sm" onclick="deleteBC(${b.id})">Suppr.</button>` : ''}
-                </td>
-            </tr>`).join('');
+        _bcCache = data.list || [];
+        _renderBcRows();
     } catch (e) { showMsg('Erreur chargement BC', false); }
 }
 
@@ -997,6 +1113,27 @@ async function confirmImputer() {
     } catch (e) { showMsg(e.message, false); }
 }
 
+function openRefuserBc(id) {
+    document.getElementById('refus-bc-id').value = id;
+    document.getElementById('refus-bc-motif').value = '';
+    openModal('modal-refus-bc');
+}
+
+async function confirmRefuserBc() {
+    const id    = parseInt(document.getElementById('refus-bc-id').value);
+    const motif = document.getElementById('refus-bc-motif').value.trim();
+    try {
+        const res = await apiFetch(`/bon_commande/${id}/refuser`, {
+            method: 'POST', body: JSON.stringify({ motif })
+        });
+        if (res.success) {
+            showMsg('BC refusé');
+            closeModal('modal-refus-bc');
+            loadBC();
+        } else showMsg(res.error || 'Erreur', false);
+    } catch (e) { showMsg(e.message, false); }
+}
+
 async function deleteBC(id) {
     if (!confirm('Supprimer ce bon de commande ?')) return;
     try {
@@ -1079,42 +1216,59 @@ async function saveBC() {
 
 // ─── CONTRATS ──────────────────────────────────────────────
 
+function _renderContratsRows() {
+    const filterStatut = document.getElementById('contrat-filter-statut')?.value || '';
+    const search = (document.getElementById('contrat-search')?.value || '').toLowerCase();
+    let list = _cache.contrats || [];
+    if (filterStatut) list = list.filter(c => c.statut === filterStatut);
+    if (search) list = list.filter(c =>
+        (c.numero_contrat || '').toLowerCase().includes(search) ||
+        (c.objet || '').toLowerCase().includes(search) ||
+        (c.fournisseur_nom || '').toLowerCase().includes(search)
+    );
+    const sorted = _sortedData(list, 'contrats');
+    const tbody = document.getElementById('contrats-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = sorted.map(c => {
+        const niveau = c.niveau_alerte || 'OK';
+        const rowCls = niveau === 'EXPIRE' ? 'alerte-expire'
+            : niveau === 'CRITIQUE' ? 'alerte-critique'
+            : niveau === 'ATTENTION' ? 'alerte-attention'
+            : niveau === 'INFO' ? 'alerte-info' : '';
+        const jours = c.jours_restants != null
+            ? (c.jours_restants < 0 ? `<span style="color:#c0392b">${c.jours_restants} j.</span>` : `${c.jours_restants} j.`)
+            : '-';
+        return `<tr class="${rowCls}">
+            <td>${c.id}</td>
+            <td><strong>${c.numero_contrat || '-'}</strong></td>
+            <td>${c.objet || '-'}</td>
+            <td>${c.fournisseur_nom || '-'}</td>
+            <td>${fmt(c.montant_total_ht)}</td>
+            <td>${fmtDate(c.date_debut)}</td>
+            <td>${fmtDate(c.date_fin)}</td>
+            <td>${jours}</td>
+            <td>${badge(c.statut)}</td>
+            <td style="font-size:.78em;">${c.type_contrat || '-'}</td>
+            <td>${alerteBadge(niveau)}</td>
+            <td style="font-size:.78em;color:#555;">${c.createur_nom ? c.createur_nom.trim() : '<span style="color:#bbb">—</span>'}</td>
+            <td style="white-space:nowrap;">
+                <button class="btn btn-info btn-sm" onclick="ficheContrat(${c.id})">Fiche</button>
+                <button class="btn btn-warning btn-sm" onclick="editContrat(${c.id})">Éditer</button>
+                ${['ACTIF','RECONDUIT'].includes(c.statut)
+                    ? `<button class="btn btn-sm" style="background:#6c757d;color:#fff;" onclick="openReconduire(${c.id})">Reconduire</button>` : ''}
+                <button class="btn btn-danger btn-sm" onclick="deleteContrat(${c.id})">Suppr.</button>
+            </td>
+        </tr>`;
+    }).join('');
+    _updateSortHeaders('contrats');
+}
+
 async function loadContrats() {
     try {
+        _saveFilter('contrat-filter-statut'); _saveFilter('contrat-search');
         const data = await apiFetch('/contrat');
         _cache.contrats = data.list || [];
-        const tbody = document.getElementById('contrats-tbody');
-        tbody.innerHTML = _cache.contrats.map(c => {
-            const niveau = c.niveau_alerte || 'OK';
-            const rowCls = niveau === 'EXPIRE' ? 'alerte-expire'
-                : niveau === 'CRITIQUE' ? 'alerte-critique'
-                : niveau === 'ATTENTION' ? 'alerte-attention'
-                : niveau === 'INFO' ? 'alerte-info' : '';
-            const jours = c.jours_restants != null
-                ? (c.jours_restants < 0 ? `<span style="color:#c0392b">${c.jours_restants} j.</span>` : `${c.jours_restants} j.`)
-                : '-';
-            return `<tr class="${rowCls}">
-                <td>${c.id}</td>
-                <td><strong>${c.numero_contrat || '-'}</strong></td>
-                <td>${c.objet || '-'}</td>
-                <td>${c.fournisseur_nom || '-'}</td>
-                <td>${fmt(c.montant_total_ht)}</td>
-                <td>${fmtDate(c.date_debut)}</td>
-                <td>${fmtDate(c.date_fin)}</td>
-                <td>${jours}</td>
-                <td>${badge(c.statut)}</td>
-                <td style="font-size:.78em;">${c.type_contrat || '-'}</td>
-                <td>${alerteBadge(niveau)}</td>
-                <td style="font-size:.78em;color:#555;">${c.createur_nom ? c.createur_nom.trim() : '<span style="color:#bbb">—</span>'}</td>
-                <td style="white-space:nowrap;">
-                    <button class="btn btn-info btn-sm" onclick="ficheContrat(${c.id})">Fiche</button>
-                    <button class="btn btn-warning btn-sm" onclick="editContrat(${c.id})">Éditer</button>
-                    ${['ACTIF','RECONDUIT'].includes(c.statut)
-                        ? `<button class="btn btn-sm" style="background:#6c757d;color:#fff;" onclick="openReconduire(${c.id})">Reconduire</button>` : ''}
-                    <button class="btn btn-danger btn-sm" onclick="deleteContrat(${c.id})">Suppr.</button>
-                </td>
-            </tr>`;
-        }).join('');
+        _renderContratsRows();
     } catch (e) { showMsg('Erreur chargement contrats', false); }
 }
 

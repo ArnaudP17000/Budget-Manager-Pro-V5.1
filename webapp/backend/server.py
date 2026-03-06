@@ -149,6 +149,14 @@ def run_migrations():
     except Exception:
         pass
 
+    # ── Colonne motif_refus sur bons_commande ───────────────
+    try:
+        db.execute(
+            "ALTER TABLE bons_commande ADD COLUMN IF NOT EXISTS motif_refus TEXT"
+        )
+    except Exception:
+        pass
+
     # ── Permissions budgets (accès explicite par utilisateur) ───
     try:
         db.execute("""

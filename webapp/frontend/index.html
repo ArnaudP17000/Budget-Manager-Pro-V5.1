@@ -111,6 +111,19 @@
         tr.row-alerte td   { background: #fef3cd !important; }
         tr.row-ok td       { background: #f0fdf4 !important; }
 
+        /* Sortable column headers */
+        th.th-sort { cursor: pointer; user-select: none; }
+        th.th-sort:hover { background: #243f6c; }
+        th.th-asc::after  { content: ' \25B2'; font-size: .65em; opacity: .8; }
+        th.th-desc::after { content: ' \25BC'; font-size: .65em; opacity: .8; }
+
+        /* Alert banner */
+        .alert-banner {
+            background: #fef3cd; border-left: 4px solid #f39c12; border-radius: 4px;
+            padding: 8px 14px; margin-bottom: 10px; font-size: .85em; color: #856404;
+        }
+        .alert-banner.danger { background: #fde8e8; border-color: #e74c3c; color: #721c24; }
+
         /* Dashboard charts */
         #dashboard-charts {
             display: flex; gap: 16px; padding: 0 24px 16px; flex-wrap: wrap;
@@ -133,6 +146,7 @@
         .bg-impute    { background: #cce5ff; color: #004085; }
         .bg-solde     { background: #d1ecf1; color: #0c5460; }
         .bg-annule    { background: #f8d7da; color: #721c24; }
+        .bg-refuse    { background: #f8d7da; color: #721c24; }
         .bg-actif     { background: #d4edda; color: #155724; }
         .bg-expire    { background: #f8d7da; color: #721c24; }
         .bg-critique  { background: #fde8e8; color: #c0392b; }
@@ -305,6 +319,7 @@
         <div class="kpi-card"><div class="kpi-value" id="kpi-contrats">-</div><div class="kpi-label">Contrats actifs</div></div>
         <div class="kpi-card alert"><div class="kpi-value" id="kpi-alertes">-</div><div class="kpi-label">Alertes contrats</div></div>
         <div class="kpi-card warning"><div class="kpi-value" id="kpi-bc-attente">-</div><div class="kpi-label">BC en attente</div></div>
+        <div class="kpi-card"><div class="kpi-value" id="kpi-alertes-lignes">-</div><div class="kpi-label">Lignes en alerte</div></div>
     </div>
     <div id="dashboard-charts">
         <div class="chart-card" style="max-width:360px;">
@@ -399,18 +414,20 @@
             </select>
             <input id="lignes-search" placeholder="Rechercher libellé, app, fournisseur..." oninput="loadAllLignes()" style="min-width:260px;">
             <button class="btn btn-primary" onclick="openAddLigne()" style="margin-left:auto;">+ Nouvelle ligne</button>
+            <button class="btn" onclick="resetLignesFilters()" style="background:#e9ecef;border:1px solid #ccc;">✕ Reset</button>
         </div>
+        <div id="lignes-alerte-banner" style="display:none;"></div>
         <div class="tbl-wrap" style="max-height:420px;overflow-y:auto;">
-        <table id="lignes-table">
+        <table id="lignes-table" data-table="lignes">
             <thead><tr>
                 <th>#</th>
-                <th>Libellé</th>
-                <th>Application</th>
-                <th>Fournisseur</th>
-                <th style="text-align:right;">Voté (€)</th>
-                <th style="text-align:right;">Engagé (€)</th>
-                <th style="text-align:right;">Solde (€)</th>
-                <th style="text-align:center;">Taux %</th>
+                <th class="th-sort" data-sort="libelle" onclick="sortTable('lignes','libelle')">Libellé</th>
+                <th class="th-sort" data-sort="application_nom" onclick="sortTable('lignes','application_nom')">Application</th>
+                <th class="th-sort" data-sort="fournisseur_nom" onclick="sortTable('lignes','fournisseur_nom')">Fournisseur</th>
+                <th class="th-sort" data-sort="montant_vote" onclick="sortTable('lignes','montant_vote')" style="text-align:right;">Voté (€)</th>
+                <th class="th-sort" data-sort="montant_engage" onclick="sortTable('lignes','montant_engage')" style="text-align:right;">Engagé (€)</th>
+                <th class="th-sort" data-sort="montant_solde" onclick="sortTable('lignes','montant_solde')" style="text-align:right;">Solde (€)</th>
+                <th class="th-sort" data-sort="taux_engagement" onclick="sortTable('lignes','taux_engagement')" style="text-align:center;">Taux %</th>
                 <th style="text-align:center;">Alerte</th>
                 <th>Réf. D.S.I</th>
                 <th>Budget imputé</th>
@@ -478,18 +495,27 @@
             <option value="IMPUTE">Imputé</option>
             <option value="SOLDE">Soldé</option>
             <option value="ANNULE">Annulé</option>
+            <option value="REFUSE">Refusé</option>
         </select>
         <select id="bc-filter-entite" onchange="loadBC()">
             <option value="">Toutes entités</option>
         </select>
         <input id="bc-search" placeholder="Rechercher..." oninput="loadBC()">
+        <button class="btn" onclick="resetBcFilters()" style="background:#e9ecef;border:1px solid #ccc;">✕ Reset</button>
     </div>
     <div id="bc-kpi-bar" class="kpi-bar"></div>
     <div class="tbl-wrap">
-    <table>
+    <table data-table="bc">
         <thead><tr>
-            <th>ID</th><th>N° BC</th><th>Objet</th><th>Fournisseur</th><th>Entité</th>
-            <th>HT (€)</th><th>TTC (€)</th><th>Statut</th><th>Créé par</th><th>Actions</th>
+            <th>ID</th>
+            <th class="th-sort" data-sort="numero_bc" onclick="sortTable('bc','numero_bc')">N° BC</th>
+            <th class="th-sort" data-sort="objet" onclick="sortTable('bc','objet')">Objet</th>
+            <th class="th-sort" data-sort="fournisseur_nom" onclick="sortTable('bc','fournisseur_nom')">Fournisseur</th>
+            <th class="th-sort" data-sort="entite_code" onclick="sortTable('bc','entite_code')">Entité</th>
+            <th class="th-sort" data-sort="montant_ht" onclick="sortTable('bc','montant_ht')">HT (€)</th>
+            <th class="th-sort" data-sort="montant_ttc" onclick="sortTable('bc','montant_ttc')">TTC (€)</th>
+            <th class="th-sort" data-sort="statut" onclick="sortTable('bc','statut')">Statut</th>
+            <th>Créé par</th><th>Actions</th>
         </tr></thead>
         <tbody id="bc-tbody"></tbody>
     </table>
@@ -525,12 +551,32 @@
             <button class="btn btn-primary" onclick="addContrat()">+ Ajouter</button>
         </div>
     </div>
+    <div class="toolbar">
+        <select id="contrat-filter-statut" onchange="_saveFilter('contrat-filter-statut');_renderContratsRows()">
+            <option value="">Tous statuts</option>
+            <option value="ACTIF">Actif</option>
+            <option value="RECONDUIT">Reconduit</option>
+            <option value="EXPIRE">Expiré</option>
+            <option value="RESILIE">Résilié</option>
+        </select>
+        <input id="contrat-search" placeholder="Rechercher N°, objet, fournisseur..." oninput="_saveFilter('contrat-search');_renderContratsRows()" style="min-width:240px;">
+        <button class="btn" onclick="resetContratsFilters()" style="background:#e9ecef;border:1px solid #ccc;">✕ Reset</button>
+    </div>
     <div class="tbl-wrap">
-    <table>
+    <table data-table="contrats">
         <thead><tr>
-            <th>ID</th><th>N° Contrat</th><th>Objet</th><th>Fournisseur</th>
-            <th>Montant HT (€)</th><th>Début</th><th>Fin</th><th>J. restants</th>
-            <th>Statut</th><th>Type</th><th>Alerte</th><th>Créé par</th><th>Actions</th>
+            <th>ID</th>
+            <th class="th-sort" data-sort="numero_contrat" onclick="sortTable('contrats','numero_contrat')">N° Contrat</th>
+            <th class="th-sort" data-sort="objet" onclick="sortTable('contrats','objet')">Objet</th>
+            <th class="th-sort" data-sort="fournisseur_nom" onclick="sortTable('contrats','fournisseur_nom')">Fournisseur</th>
+            <th class="th-sort" data-sort="montant_ht" onclick="sortTable('contrats','montant_ht')">Montant HT (€)</th>
+            <th>Début</th>
+            <th class="th-sort" data-sort="date_fin" onclick="sortTable('contrats','date_fin')">Fin</th>
+            <th class="th-sort" data-sort="jours_restants" onclick="sortTable('contrats','jours_restants')">J. restants</th>
+            <th class="th-sort" data-sort="statut" onclick="sortTable('contrats','statut')">Statut</th>
+            <th>Type</th>
+            <th class="th-sort" data-sort="niveau_alerte" onclick="sortTable('contrats','niveau_alerte')">Alerte</th>
+            <th>Créé par</th><th>Actions</th>
         </tr></thead>
         <tbody id="contrats-tbody"></tbody>
     </table>
@@ -1153,6 +1199,23 @@
     </div>
 </div>
 
+<!-- ══════════════════ MODAL REFUS BC ══════════════════ -->
+<div class="modal-overlay" id="modal-refus-bc">
+    <div class="modal" style="max-width:440px;">
+        <button class="modal-close" onclick="closeModal('modal-refus-bc')">&#x2715;</button>
+        <h3>Refuser le bon de commande</h3>
+        <input type="hidden" id="refus-bc-id">
+        <div class="modal-section">
+            <label>Motif du refus (optionnel)</label>
+            <textarea id="refus-bc-motif" style="width:100%;min-height:80px;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;margin-top:4px;" placeholder="Indiquez le motif..."></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('modal-refus-bc')" style="background:#e9ecef;">Annuler</button>
+            <button class="btn btn-danger" onclick="confirmRefuserBc()">Refuser le BC</button>
+        </div>
+    </div>
+</div>
+
 <!-- ══════════════════ MODAL RECONDUIRE CONTRAT ══════════════════ -->
 <div class="modal-overlay" id="modal-reconduire">
     <div class="modal">
@@ -1526,6 +1589,6 @@
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="app.js?v=5.83"></script>
+<script src="app.js?v=5.84"></script>
 </body>
 </html>
