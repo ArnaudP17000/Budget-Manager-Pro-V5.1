@@ -171,6 +171,12 @@ def dashboard():
     alertes       = contrat_service.get_alertes()
     bc_attente    = [b for b in bons_commande if b.get('statut') in ('BROUILLON', 'EN_ATTENTE')]
 
+    # Lignes budgétaires en dépassement
+    row_alerte = bc_service.db.fetch_one(
+        "SELECT COUNT(*) as cnt FROM lignes_budgetaires WHERE alerte = true"
+    )
+    kpi_alertes_lignes = int(row_alerte['cnt']) if row_alerte else 0
+
     # Répartition par nature (pour doughnut chart)
     nature_map = {}
     for b in budget:
@@ -198,6 +204,7 @@ def dashboard():
         "kpi_alertes_contrats": len(alertes),
         "kpi_bc_attente":    len(bc_attente),
         "alertes_contrats":  alertes[:5],
+        "kpi_alertes_lignes":  kpi_alertes_lignes,
         "repartition_nature": [{"nature": k, "vote": v['vote'], "engage": v['engage']} for k, v in nature_map.items()],
         "engagement_entite":  sorted(
             [{"entite": k, "vote": v['vote'], "engage": v['engage']} for k, v in entite_map.items()],
@@ -771,6 +778,23 @@ def imputer_bc(bc_id):
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
+
+
+@routes.route('/bon_commande/<int:bc_id>/refuser', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
+def refuser_bon_commande(bc_id):
+    data   = request.json or {}
+    motif  = (data.get('motif') or '').strip()
+    bc     = bc_service.get_by_id(bc_id)
+    if not bc:
+        return jsonify({"error": "BC introuvable"}), 404
+    if bc.get('statut') not in ('EN_ATTENTE', 'VALIDE'):
+        return jsonify({"error": f"Impossible de refuser un BC en statut '{bc.get('statut')}'"}), 400
+    bc_service.db.execute(
+        "UPDATE bons_commande SET statut='REFUSE', motif_refus=%s, date_maj=NOW() WHERE id=%s",
+        [motif, bc_id]
+    )
+    return jsonify({"success": True})
 
 
 @routes.route('/bon_commande/parse_pdf', methods=['POST'])
