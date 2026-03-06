@@ -170,6 +170,25 @@ def dashboard():
     contrats      = contrat_service.get_all()
     alertes       = contrat_service.get_alertes()
     bc_attente    = [b for b in bons_commande if b.get('statut') in ('BROUILLON', 'EN_ATTENTE')]
+
+    # Répartition par nature (pour doughnut chart)
+    nature_map = {}
+    for b in budget:
+        n = b.get('nature') or 'AUTRE'
+        if n not in nature_map:
+            nature_map[n] = {'vote': 0, 'engage': 0}
+        nature_map[n]['vote']   += float(b.get('montant_vote', 0) or 0)
+        nature_map[n]['engage'] += float(b.get('montant_engage', 0) or 0)
+
+    # Engagement par entité (pour bar chart)
+    entite_map = {}
+    for b in budget:
+        e = b.get('entite_nom') or b.get('entite_code') or 'Inconnu'
+        if e not in entite_map:
+            entite_map[e] = {'vote': 0, 'engage': 0}
+        entite_map[e]['vote']   += float(b.get('montant_vote', 0) or 0)
+        entite_map[e]['engage'] += float(b.get('montant_engage', 0) or 0)
+
     return jsonify({
         "kpi_projets":       len(projets),
         "kpi_budget":        sum(b.get('montant_vote', 0) or 0 for b in budget),
@@ -179,6 +198,11 @@ def dashboard():
         "kpi_alertes_contrats": len(alertes),
         "kpi_bc_attente":    len(bc_attente),
         "alertes_contrats":  alertes[:5],
+        "repartition_nature": [{"nature": k, "vote": v['vote'], "engage": v['engage']} for k, v in nature_map.items()],
+        "engagement_entite":  sorted(
+            [{"entite": k, "vote": v['vote'], "engage": v['engage']} for k, v in entite_map.items()],
+            key=lambda x: x['engage'], reverse=True
+        )[:10],
     })
 
 
