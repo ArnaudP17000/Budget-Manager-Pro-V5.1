@@ -290,6 +290,9 @@ async function initRefs() {
 
 // ─── DASHBOARD ─────────────────────────────────────────────
 
+let _chartNature = null;
+let _chartEntite = null;
+
 async function loadDashboard() {
     try {
         const d = await apiFetch('/dashboard');
@@ -311,6 +314,62 @@ async function loadDashboard() {
                 <td>${c.jours_restants != null ? c.jours_restants + ' j.' : '-'}</td>
                 <td>${alerteBadge(c.niveau_alerte)}</td>
             </tr>`).join('');
+
+        // ── Charts ──────────────────────────────────────────
+        if (typeof Chart === 'undefined') return;
+
+        // Doughnut: répartition par nature
+        const natData = d.repartition_nature || [];
+        if (_chartNature) _chartNature.destroy();
+        const ctxN = document.getElementById('chart-nature');
+        if (ctxN && natData.length) {
+            const colors = ['#2563a8', '#27ae60', '#f39c12', '#8e44ad', '#e74c3c'];
+            _chartNature = new Chart(ctxN, {
+                type: 'doughnut',
+                data: {
+                    labels: natData.map(n => n.nature),
+                    datasets: [{
+                        data: natData.map(n => n.vote),
+                        backgroundColor: natData.map((_, i) => colors[i % colors.length]),
+                    }]
+                },
+                options: {
+                    plugins: {
+                        legend: { position: 'bottom', labels: { font: { size: 11 } } },
+                        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.raw)} €` } }
+                    },
+                    cutout: '60%',
+                }
+            });
+        }
+
+        // Bar: engagement par entité
+        const entData = d.engagement_entite || [];
+        if (_chartEntite) _chartEntite.destroy();
+        const ctxE = document.getElementById('chart-entite');
+        if (ctxE && entData.length) {
+            _chartEntite = new Chart(ctxE, {
+                type: 'bar',
+                data: {
+                    labels: entData.map(e => e.entite),
+                    datasets: [
+                        { label: 'Voté', data: entData.map(e => e.vote),   backgroundColor: '#bfdbfe' },
+                        { label: 'Engagé', data: entData.map(e => e.engage), backgroundColor: '#2563a8' },
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { font: { size: 11 } } },
+                        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt(ctx.raw)} €` } }
+                    },
+                    scales: {
+                        x: { ticks: { callback: v => fmt(v) + ' €', font: { size: 10 } } },
+                        y: { ticks: { font: { size: 11 } } }
+                    },
+                }
+            });
+        }
     } catch (e) { console.error('Dashboard:', e); }
 }
 
@@ -375,7 +434,9 @@ async function loadAllLignes() {
                 : '<span style="color:#27ae60;font-weight:bold;">✓ OK</span>';
             const solde = parseFloat(l.montant_solde || 0);
             const soldeColor = solde < 0 ? 'color:#e74c3c;font-weight:bold;' : 'color:#27ae60;';
-            return `<tr class="ligne-row${_lignesSelectId===l.id?' selected':''}" data-id="${l.id}" onclick="selectLigne(${l.id}, '${(l.libelle||'Ligne #'+l.id).replace(/['\u2018\u2019]/g,"&#39;")}')">
+            const engageCls = taux > 100 ? 'row-depasse' : taux >= 90 ? 'row-alerte' : taux > 0 ? 'row-ok' : '';
+            const selCls = _lignesSelectId === l.id ? ' selected' : '';
+            return `<tr class="ligne-row${selCls} ${engageCls}" data-id="${l.id}" onclick="selectLigne(${l.id}, '${(l.libelle||'Ligne #'+l.id).replace(/['\u2018\u2019]/g,"&#39;")}')">
                 <td>${i+1}</td>
                 <td>${l.libelle || '-'}</td>
                 <td>${l.application_nom || '-'}</td>
@@ -581,7 +642,9 @@ async function loadBudget() {
             const labelEsc = label.replace(/['\u2018\u2019]/g, "\\'");
             const canWrite = userRole === 'admin' || b.user_perm === 'gestionnaire';
             const canPerms = userRole === 'admin' || b.user_perm === 'gestionnaire';
-            return `<tr>
+            const taux = vote > 0 ? engage / vote * 100 : 0;
+            const rowCls = taux > 100 ? 'row-depasse' : taux >= 90 ? 'row-alerte' : vote > 0 ? 'row-ok' : '';
+            return `<tr class="${rowCls}">
                 <td>${b.id}</td>
                 <td>${b.entite_code || b.entite_nom || '-'}</td>
                 <td>${b.exercice || '-'}</td>
