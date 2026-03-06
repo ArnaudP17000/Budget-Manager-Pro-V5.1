@@ -29,7 +29,9 @@ class DatabaseService:
         try:
             self._connection = psycopg2.connect(
                 host=DB_HOST, port=int(DB_PORT),
-                dbname=DB_NAME, user=DB_USER, password=DB_PASS
+                dbname=DB_NAME, user=DB_USER, password=DB_PASS,
+                connect_timeout=10,
+                options='-c statement_timeout=20000'  # 20s max par requête
             )
             logger.info("Connexion PostgreSQL établie")
         except Exception as e:

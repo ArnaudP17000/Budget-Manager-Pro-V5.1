@@ -12,4 +12,4 @@ COPY frontend/ /frontend
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:5000", "--timeout", "120", "server:app"]
+CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:5000", "--timeout", "120", "--keep-alive", "5", "--graceful-timeout", "30", "server:app"]
