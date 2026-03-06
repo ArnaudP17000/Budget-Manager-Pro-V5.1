@@ -1724,6 +1724,57 @@ async function exportFicheWord(projet_id) {
     }
 }
 
+// ── Viewer fiche projet HTML ─────────────────────────────────────────────────
+async function openFicheHtml(projet_id, titre) {
+    try {
+        const token = getToken();
+        showMsg('Chargement de la fiche…', true);
+        const res = await fetch(`/api/projet/${projet_id}/fiche_html`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showMsg(err.error || 'Erreur chargement fiche HTML', false);
+            return;
+        }
+        let html = await res.text();
+        // Injecter le projet_id dans le bouton Word de la toolbar interne
+        html = html.replace(
+            'id="btn-word-dl"',
+            `id="btn-word-dl" onclick="window.parent.exportFicheWord(${projet_id})"`
+        );
+        const iframe = document.getElementById('fiche-html-iframe');
+        iframe.srcdoc = html;
+        document.getElementById('fiche-html-viewer-title').textContent =
+            titre ? `Fiche Projet — ${titre}` : 'Fiche Projet';
+        document.getElementById('fiche-html-word-btn').onclick =
+            () => exportFicheWord(projet_id);
+        const viewer = document.getElementById('fiche-html-viewer');
+        viewer.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        showMsg('', true);
+    } catch (e) {
+        showMsg('Erreur : ' + e.message, false);
+    }
+}
+
+function closeFicheViewer() {
+    document.getElementById('fiche-html-viewer').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+function printFicheHtml() {
+    const iframe = document.getElementById('fiche-html-iframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.print();
+    }
+}
+
+// Écouter le message "closeFicheViewer" depuis l'iframe (bouton Fermer interne)
+window.addEventListener('message', function(e) {
+    if (e.data === 'closeFicheViewer') closeFicheViewer();
+});
+
 async function ficheProjet(id) {
     try {
         const p = await apiFetch(`/projet/${id}`);
@@ -2217,8 +2268,8 @@ async function ficheProjet(id) {
             </div>
 
             <div class="modal-footer" style="margin-top:14px;">
-                <button class="btn" style="background:#6c757d;color:#fff;" onclick="printFicheProjet()">&#128424; Imprimer</button>
-                <button class="btn" style="background:#1a6b3c;color:#fff;" onclick="exportFicheWord(${p.id})">&#128196; Exporter Word</button>
+                <button class="btn" style="background:#0d6efd;color:#fff;" onclick="closeModal('modal-fiche-projet');openFicheHtml(${p.id},'${(p.code||'').replace(/'/g,"\\'")}')">&#128196; Voir la fiche</button>
+                <button class="btn" style="background:#198754;color:#fff;" onclick="exportFicheWord(${p.id})">&#11015; Télécharger Word</button>
                 <button class="btn btn-warning" onclick="closeModal('modal-fiche-projet');editProjet(${p.id})">&#9998; Éditer le projet</button>
                 <button class="btn btn-danger" onclick="closeModal('modal-fiche-projet')">Fermer</button>
             </div>`;
