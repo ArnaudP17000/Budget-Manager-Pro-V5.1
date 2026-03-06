@@ -9,8 +9,8 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-RED   = '#C00000'
-PINK  = '#F2DDDC'
+RED   = '#1565C0'
+PINK  = '#D6EAF8'
 GRAY1 = '#D8D8D8'
 GRAY2 = '#BFBFBF'
 GRAY4 = '#F2F2F2'
@@ -177,7 +177,7 @@ body{{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;backgroun
   box-shadow:0 2px 12px rgba(0,0,0,.18);border-radius:4px}}
 h1.titre{{background:{RED};color:#fff;text-align:center;padding:13px;font-size:17px;
   letter-spacing:.5px;border-radius:3px 3px 0 0}}
-p.soustitre{{background:#9b0000;color:{PINK};text-align:center;padding:7px;
+p.soustitre{{background:#0d47a1;color:{PINK};text-align:center;padding:7px;
   font-size:11px;margin-bottom:20px}}
 table.fiche{{width:100%;border-collapse:collapse;margin-bottom:18px;border:1px solid #bbb}}
 table.fiche td,table.fiche th{{border:1px solid #bbb;padding:5px 8px;font-size:11px;vertical-align:middle}}
