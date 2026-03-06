@@ -2130,7 +2130,7 @@ def export_budget():
             "COALESCE(l.montant_engage,0) as montant_engage, "
             "COALESCE(l.montant_solde,0) as montant_solde, "
             "CASE WHEN COALESCE(l.montant_vote,0)>0 "
-            "  THEN ROUND((COALESCE(l.montant_engage,0)/l.montant_vote::numeric)*100,1) "
+            "  THEN ROUND((COALESCE(l.montant_engage,0)/l.montant_vote*100)::numeric,1) "
             "  ELSE 0 END as taux_pct, "
             "CASE WHEN COALESCE(l.montant_vote,0)>0 "
             "      AND COALESCE(l.montant_engage,0) > l.montant_vote "
