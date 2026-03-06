@@ -1616,7 +1616,7 @@ function _renderProjets(list) {
             <td>${fmtDate(p.date_debut)}</td>
             <td>${fmtDate(p.date_fin_prevue)}</td>
             <td style="white-space:nowrap;">
-                <button class="btn btn-info btn-sm" onclick="openFicheHtml(${p.id},'${(p.code||'').replace(/'/g,"\\'")}')">Fiche</button>
+                <button class="btn btn-info btn-sm" onclick="ficheProjet(${p.id})">Fiche</button>
                 <button class="btn btn-warning btn-sm" onclick="editProjet(${p.id})">Éditer</button>
                 <button class="btn btn-danger btn-sm" onclick="deleteProjet(${p.id})">Suppr.</button>
             </td>
@@ -1816,6 +1816,12 @@ window.addEventListener('message', function(e) {
 });
 
 async function ficheProjet(id) {
+    // Ouverture directe de la fiche HTML plein écran
+    const cached = (_cache.projets || []).find(p => p.id === id);
+    openFicheHtml(id, cached ? (cached.code || '') : '');
+}
+
+async function _ficheProjetModal(id) {
     try {
         const p = await apiFetch(`/projet/${id}`);
         document.getElementById('fiche-projet-titre').textContent =
