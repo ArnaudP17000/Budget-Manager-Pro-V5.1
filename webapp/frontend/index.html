@@ -778,6 +778,10 @@
                 <option value="PRESTATAIRE">Prestataire</option>
                 <option value="AMO">AMO</option>
             </select>
+            <select id="contact-service">
+                <option value="">— Service —</option>
+                <option value="INTERNE">Interne</option>
+            </select>
             <input id="contact-telephone" placeholder="Téléphone">
             <input id="contact-email" placeholder="Email" type="email">
             <input id="contact-organisation" placeholder="Organisation">
@@ -800,7 +804,7 @@
     <table>
         <thead><tr>
             <th>ID</th><th>Nom</th><th>Prénom</th><th>Fonction</th>
-            <th>Type</th><th>Téléphone</th><th>Email</th><th>Organisation</th><th>Société</th><th>Actions</th>
+            <th>Type</th><th>Service</th><th>Téléphone</th><th>Email</th><th>Organisation</th><th>Société</th><th>Actions</th>
         </tr></thead>
         <tbody id="contacts-tbody"></tbody>
     </table>
@@ -1511,6 +1515,11 @@
                     <option value="PRESTATAIRE">Prestataire</option>
                     <option value="AMO">AMO</option>
                 </select></div>
+            <div style="flex:1;min-width:150px;"><label style="font-size:.82em;color:#666;">Service</label>
+                <select id="edit-contact-service" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">— Aucun —</option>
+                    <option value="INTERNE">Interne</option>
+                </select></div>
             <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Téléphone</label>
                 <input id="edit-contact-telephone" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
             <div style="flex:1;min-width:180px;"><label style="font-size:.82em;color:#666;">Email</label>
@@ -1652,6 +1661,6 @@
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="app.js?v=5.94"></script>
+<script src="app.js?v=5.95"></script>
 </body>
 </html>

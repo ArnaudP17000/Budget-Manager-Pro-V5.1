@@ -2729,6 +2729,28 @@ async function saveFournisseur() {
 
 // ─── CONTACTS ──────────────────────────────────────────────
 
+async function _fillContactServiceSelects() {
+    try {
+        const data = await apiFetch('/service_org');
+        const services = data.list || [];
+        ['contact-service', 'edit-contact-service'].forEach(selId => {
+            const sel = document.getElementById(selId);
+            if (!sel) return;
+            // Garder la valeur courante
+            const cur = sel.value;
+            // Réinitialiser avec les options fixes
+            sel.innerHTML = '<option value="">— Aucun —</option><option value="INTERNE">Interne</option>';
+            services.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.nom + (s.code ? ` (${s.code})` : '');
+                sel.appendChild(opt);
+            });
+            sel.value = cur;
+        });
+    } catch (e) { /* silencieux */ }
+}
+
 async function loadContacts() {
     const params = new URLSearchParams();
     const type   = document.getElementById('contact-filter-type')?.value;
@@ -2736,7 +2758,10 @@ async function loadContacts() {
     if (type)   params.set('type', type);
     if (search) params.set('search', search);
     try {
-        const data = await apiFetch('/contact?' + params);
+        const [data] = await Promise.all([
+            apiFetch('/contact?' + params),
+            _fillContactServiceSelects()
+        ]);
         _cache.contacts = data.list || [];
         const tbody = document.getElementById('contacts-tbody');
         tbody.innerHTML = _cache.contacts.map(c => `
@@ -2746,9 +2771,10 @@ async function loadContacts() {
                 <td>${c.prenom || '-'}</td>
                 <td>${c.fonction || '-'}</td>
                 <td>${badge(c.type)}</td>
+                <td>${c.service_nom || '-'}</td>
                 <td>${c.telephone || '-'}</td>
                 <td>${c.email || '-'}</td>
-                <td>${c.organisation || c.service_nom || '-'}</td>
+                <td>${c.organisation || '-'}</td>
                 <td>${c.societe || '-'}</td>
                 <td style="white-space:nowrap;">
                     <button class="btn btn-warning btn-sm" onclick="editContact(${c.id})">Éditer</button>
@@ -2759,14 +2785,16 @@ async function loadContacts() {
 }
 
 async function addContact() {
+    const svcRaw = document.getElementById('contact-service')?.value || '';
     const body = {
         nom:          document.getElementById('contact-nom').value,
         prenom:       document.getElementById('contact-prenom').value,
         fonction:     document.getElementById('contact-fonction').value,
         type:         document.getElementById('contact-type').value,
+        service_id:   (svcRaw && svcRaw !== 'INTERNE') ? parseInt(svcRaw) : null,
+        organisation: svcRaw === 'INTERNE' ? 'Interne' : document.getElementById('contact-organisation').value,
         telephone:    document.getElementById('contact-telephone').value,
         email:        document.getElementById('contact-email').value,
-        organisation: document.getElementById('contact-organisation').value,
         societe:      document.getElementById('contact-societe').value,
     };
     if (!body.nom) { showMsg('Le nom est obligatoire', false); return; }
@@ -2780,6 +2808,8 @@ async function addContact() {
                 if (el) el.value = '';
             });
             document.getElementById('contact-type').value = '';
+            const svcSel = document.getElementById('contact-service');
+            if (svcSel) svcSel.value = '';
             loadContacts();
         } else showMsg(res.error || 'Erreur', false);
     } catch (e) { showMsg(e.message, false); }
@@ -2806,19 +2836,28 @@ function editContact(id) {
     document.getElementById('edit-contact-email').value        = data.email || '';
     document.getElementById('edit-contact-organisation').value = data.organisation || '';
     document.getElementById('edit-contact-societe').value      = data.societe || '';
+    // Service : service_id numérique ou 'INTERNE' si organisation = 'Interne' sans service_id
+    const svcSel = document.getElementById('edit-contact-service');
+    if (svcSel) {
+        if (data.service_id) svcSel.value = String(data.service_id);
+        else if ((data.organisation || '').toLowerCase() === 'interne') svcSel.value = 'INTERNE';
+        else svcSel.value = '';
+    }
     openModal('modal-edit-contact');
 }
 
 async function saveContact() {
     const id = document.getElementById('edit-contact-id').value;
+    const svcRaw = document.getElementById('edit-contact-service')?.value || '';
     const body = {
         nom:          document.getElementById('edit-contact-nom').value,
         prenom:       document.getElementById('edit-contact-prenom').value,
         fonction:     document.getElementById('edit-contact-fonction').value,
         type:         document.getElementById('edit-contact-type').value || null,
+        service_id:   (svcRaw && svcRaw !== 'INTERNE') ? parseInt(svcRaw) : null,
+        organisation: svcRaw === 'INTERNE' ? 'Interne' : document.getElementById('edit-contact-organisation').value,
         telephone:    document.getElementById('edit-contact-telephone').value,
         email:        document.getElementById('edit-contact-email').value,
-        organisation: document.getElementById('edit-contact-organisation').value,
         societe:      document.getElementById('edit-contact-societe').value,
     };
     if (!body.nom) { showMsg('Le nom est obligatoire', false); return; }
