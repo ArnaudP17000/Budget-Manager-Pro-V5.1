@@ -1683,6 +1683,35 @@ function printFicheProjet() {
     w.addEventListener('load', () => { w.print(); URL.revokeObjectURL(url); });
 }
 
+async function exportFicheWord(projet_id) {
+    try {
+        const token = localStorage.getItem('bmp_token');
+        showMsg('Génération de la fiche Word en cours…', true);
+        const res = await fetch(`/api/projet/${projet_id}/fiche_word`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showMsg(err.error || 'Erreur génération fiche Word', false);
+            return;
+        }
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        const cd   = res.headers.get('Content-Disposition') || '';
+        const match = cd.match(/filename="?([^"]+)"?/);
+        a.download = match ? match[1] : `fiche_projet_${projet_id}.docx`;
+        a.href = url;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showMsg('Fiche Word téléchargée', true);
+    } catch (e) {
+        showMsg('Erreur export Word : ' + e.message, false);
+    }
+}
+
 async function ficheProjet(id) {
     try {
         const p = await apiFetch(`/projet/${id}`);
@@ -2143,6 +2172,7 @@ async function ficheProjet(id) {
 
             <div class="modal-footer" style="margin-top:14px;">
                 <button class="btn" style="background:#6c757d;color:#fff;" onclick="printFicheProjet()">&#128424; Imprimer</button>
+                <button class="btn" style="background:#1a6b3c;color:#fff;" onclick="exportFicheWord(${p.id})">&#128196; Exporter Word</button>
                 <button class="btn btn-warning" onclick="closeModal('modal-fiche-projet');editProjet(${p.id})">&#9998; Éditer le projet</button>
                 <button class="btn btn-danger" onclick="closeModal('modal-fiche-projet')">Fermer</button>
             </div>`;

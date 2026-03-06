@@ -1381,6 +1381,43 @@ def delete_projet(projet_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@routes.route('/projet/<int:projet_id>/fiche_word', methods=['GET'])
+@require_auth()
+def export_fiche_projet_word(projet_id):
+    """Génère et télécharge la fiche projet en .docx"""
+    import tempfile
+    from flask import send_file
+    from app.services.fiche_projet_web_service import generer_fiche_depuis_id_pg
+
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+
+    p = projet_service.get_by_id(projet_id)
+    if not p:
+        return jsonify({"error": "Projet introuvable"}), 404
+    if role != 'admin' and p.get('created_by_id') is not None:
+        where, params = _ownership_where(user_id, role, service_id, 'p')
+        row = projet_service.db.fetch_one(
+            f"SELECT id FROM projets p WHERE p.id=%s AND {where}", [projet_id] + params
+        )
+        if not row:
+            return jsonify({"error": "Accès interdit"}), 403
+
+    try:
+        tmpdir = tempfile.mkdtemp()
+        out_path = generer_fiche_depuis_id_pg(projet_id, tmpdir, projet_service.db)
+        code = p.get('code', f'PRJ{projet_id}')
+        return send_file(
+            out_path,
+            as_attachment=True,
+            download_name=f"fiche_projet_{code}.docx",
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @routes.route('/projet/<int:projet_id>/equipe', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def add_projet_equipe(projet_id):
