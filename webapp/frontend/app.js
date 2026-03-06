@@ -104,13 +104,10 @@ function fmt(n) {
 
 function fmtDate(d) {
     if (!d) return '-';
-    const s = String(d);
-    // ISO YYYY-MM-DD (ou YYYY-MM-DDTHH:MM:SS)
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
-    // RFC 1123 "Tue, 03 Mar 2026 00:00:00 GMT" → parser via Date
-    const dt = new Date(s);
-    if (!isNaN(dt.getTime())) return dt.toISOString().substring(0, 10);
-    return s.substring(0, 10);
+    const iso = _toISODate(d);
+    if (!iso) return '-';
+    const [y, m, j] = iso.split('-');
+    return `${j}/${m}/${y}`;
 }
 
 function _toISODate(v) {
