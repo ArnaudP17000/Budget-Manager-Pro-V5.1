@@ -190,8 +190,9 @@ table.fiche td,table.fiche th{{border:1px solid #bbb;padding:5px 8px;font-size:1
   padding-top:8px;border-top:1px solid #ddd}}
 
 /* View / Edit mode */
-.ef{{display:none}} .vv{{display:block}}
-body.edit-mode .ef{{display:block}} body.edit-mode .vv{{display:none}}
+.ef{{display:none!important}} .vv{{display:block}}
+body.edit-mode .ef{{display:block!important}} body.edit-mode .vv{{display:none}}
+body.edit-mode .ef-flex{{display:flex!important;flex-direction:column;gap:3px}}
 input.ef,select.ef{{width:100%;border:1px solid #93c;border-radius:3px;padding:3px 5px;
   font-size:11px;background:#fdf4ff;font-family:inherit}}
 textarea.ef{{width:100%;border:1px solid #93c;border-radius:3px;padding:4px 6px;
@@ -276,13 +277,13 @@ body.edit-mode .val-g input.ef{{background:#f5f5f5}}
               f'<td class="lbl">{_e(role_lbl)}</td>'
               f'<td class="val-w" colspan="3">'
               f'<span class="vv">{_e(contact_name) or "<em style=\'color:#aaa\'>Non défini</em>"}</span>'
-              f'<div class="ef" style="display:flex;flex-direction:column;gap:3px">'
-              f'<input type="text" placeholder="Rechercher un contact…" '
+              f'<div class="ef ef-flex">'
+              f'<input class="ef" type="text" placeholder="Rechercher un contact…" '
               f'oninput="filterContactSelect(this, \'sel-{contact_id_field}\')" '
               f'style="border:1px solid #93c;border-radius:3px;padding:3px 6px;font-size:11px">'
               f'<select id="sel-{contact_id_field}" name="{_e(contact_id_field)}" class="ef" '
               f'size="4" data-current="{_e(cid)}" '
-              f'style="border:1px solid #93c;border-radius:3px;font-size:11px;min-width:280px;display:block">'
+              f'style="border:1px solid #93c;border-radius:3px;font-size:11px;min-width:280px">'
               f'<option value="">-- Aucun --</option>'
               f'</select>'
               f'</div>'
