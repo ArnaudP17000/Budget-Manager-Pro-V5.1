@@ -1685,7 +1685,7 @@ function printFicheProjet() {
 
 async function exportFicheWord(projet_id) {
     try {
-        const token = localStorage.getItem('bmp_token');
+        const token = getToken();
         showMsg('Génération de la fiche Word en cours…', true);
         const res = await fetch(`/api/projet/${projet_id}/fiche_word`, {
             headers: { 'Authorization': `Bearer ${token}` }
