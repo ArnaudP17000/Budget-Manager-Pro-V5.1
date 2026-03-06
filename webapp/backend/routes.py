@@ -200,9 +200,9 @@ def dashboard():
     alertes       = contrat_service.get_alertes()
     bc_attente    = [b for b in bons_commande if b.get('statut') in ('BROUILLON', 'EN_ATTENTE')]
 
-    # Lignes budgétaires en dépassement
+    # Lignes budgétaires en alerte (taux_engagement >= 80%)
     row_alerte = bc_service.db.fetch_one(
-        "SELECT COUNT(*) as cnt FROM lignes_budgetaires WHERE alerte = true"
+        "SELECT COUNT(*) as cnt FROM lignes_budgetaires WHERE montant_vote > 0 AND montant_engage * 100.0 / montant_vote >= 80"
     )
     kpi_alertes_lignes = int(row_alerte['cnt']) if row_alerte else 0
 
