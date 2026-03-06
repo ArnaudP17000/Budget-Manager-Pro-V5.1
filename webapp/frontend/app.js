@@ -1763,7 +1763,10 @@ async function openFicheHtml(projet_id, titre) {
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            showMsg(err.error || 'Erreur chargement fiche HTML', false);
+            const msg = err.error || `HTTP ${res.status} — Erreur chargement fiche`;
+            console.error('[openFicheHtml] Erreur API:', res.status, err);
+            showMsg(msg, false);
+            alert('Erreur fiche HTML : ' + msg);
             return;
         }
         let html = await res.text();
@@ -1788,7 +1791,9 @@ async function openFicheHtml(projet_id, titre) {
         document.body.style.overflow = 'hidden';
         showMsg('', true);
     } catch (e) {
+        console.error('[openFicheHtml] Exception:', e);
         showMsg('Erreur : ' + e.message, false);
+        alert('Exception fiche HTML : ' + e.message);
     }
 }
 
