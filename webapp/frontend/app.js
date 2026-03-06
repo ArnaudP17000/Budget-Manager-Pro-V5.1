@@ -1770,24 +1770,28 @@ async function openFicheHtml(projet_id, titre) {
             return;
         }
         let html = await res.text();
-        // Injecter le token JWT et le projet_id dans le HTML de la fiche
+        console.log('[fiche] HTML reçu longueur=', html.length);
         html = html.replace('__BMP_TOKEN__', token);
         html = html.replace('__PROJET_ID__', projet_id);
-        // Bouton Word dans la toolbar de la fiche → déclenche téléchargement depuis le parent
         html = html.replace(
             'id="btn-word-dl"',
             `id="btn-word-dl" onclick="window.parent.exportFicheWord(${projet_id})"`
         );
         const iframe = document.getElementById('fiche-html-iframe');
+        console.log('[fiche] iframe=', !!iframe);
+        if (!iframe) { alert('DOM: fiche-html-iframe manquant'); return; }
         iframe.srcdoc = html;
-        document.getElementById('fiche-html-viewer-title').textContent =
-            titre ? `Fiche Projet — ${titre}` : 'Fiche Projet';
-        document.getElementById('fiche-html-viewer').dataset.projetId    = projet_id;
-        document.getElementById('fiche-html-viewer').dataset.projetTitre = titre || '';
-        document.getElementById('fiche-html-word-btn').onclick =
-            () => exportFicheWord(projet_id);
         const viewer = document.getElementById('fiche-html-viewer');
-        viewer.style.display = 'flex';
+        console.log('[fiche] viewer=', !!viewer, 'display=', viewer?.style.display);
+        if (!viewer) { alert('DOM: fiche-html-viewer manquant'); return; }
+        const vTitle = document.getElementById('fiche-html-viewer-title');
+        if (vTitle) vTitle.textContent = titre ? `Fiche Projet — ${titre}` : 'Fiche Projet';
+        viewer.dataset.projetId    = projet_id;
+        viewer.dataset.projetTitre = titre || '';
+        const wordBtn = document.getElementById('fiche-html-word-btn');
+        if (wordBtn) wordBtn.onclick = () => exportFicheWord(projet_id);
+        viewer.style.setProperty('display', 'flex', 'important');
+        console.log('[fiche] viewer.display après=', viewer.style.display, getComputedStyle(viewer).display);
         document.body.style.overflow = 'hidden';
         showMsg('', true);
     } catch (e) {
