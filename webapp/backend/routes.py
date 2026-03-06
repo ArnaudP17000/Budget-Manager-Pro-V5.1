@@ -1054,57 +1054,52 @@ def update_bon_commande(bc_id):
              montant_ht, montant_ttc, new_statut, bc_id]
         )
 
-        # Gestion comptable de l'imputation sur la ligne budgétaire
-        # Les statuts qui engagent le budget (ordre croissant : VALIDE → IMPUTE → SOLDE)
-        STATUTS_ENGAGES = {'VALIDE', 'IMPUTE', 'SOLDE'}
+        # Gestion comptable — recalcul depuis zéro après mise à jour du BC
+        # (évite toute dérive liée aux deltas successifs)
+        STATUTS_ENGAGES = ('VALIDE', 'IMPUTE', 'SOLDE')
         new_engage = new_statut in STATUTS_ENGAGES
-        old_engage = old_statut in STATUTS_ENGAGES
 
+        # Mettre à jour les flags d'imputation sur le BC lui-même
         if new_engage and new_ligne_id:
-            same_ligne = old_ligne_id and int(old_ligne_id) == int(new_ligne_id)
-
-            if old_engage and same_ligne:
-                # Même ligne déjà engagée : ajuster si le montant a changé
-                if abs(montant_ttc - old_montant) > 0.001:
-                    delta = montant_ttc - old_montant
-                    bc_service.db.execute(
-                        "UPDATE lignes_budgetaires "
-                        "SET montant_engage = COALESCE(montant_engage,0) + %s, "
-                        "montant_solde = COALESCE(montant_vote,0) - (COALESCE(montant_engage,0) + %s), "
-                        "date_maj=NOW() WHERE id=%s",
-                        [delta, delta, new_ligne_id]
-                    )
-            else:
-                # Annuler l'ancienne imputation si elle existait sur une autre ligne
-                if old_engage and old_ligne_id and not same_ligne:
-                    bc_service.db.execute(
-                        "UPDATE lignes_budgetaires "
-                        "SET montant_engage = GREATEST(0, COALESCE(montant_engage,0) - %s), "
-                        "montant_solde = COALESCE(montant_vote,0) - GREATEST(0, COALESCE(montant_engage,0) - %s), "
-                        "date_maj=NOW() WHERE id=%s",
-                        [old_montant, old_montant, old_ligne_id]
-                    )
-                # Appliquer l'engagement sur la nouvelle ligne
-                bc_service.db.execute(
-                    "UPDATE lignes_budgetaires "
-                    "SET montant_engage = COALESCE(montant_engage,0) + %s, "
-                    "montant_solde = COALESCE(montant_vote,0) - (COALESCE(montant_engage,0) + %s), "
-                    "date_maj=NOW() WHERE id=%s",
-                    [montant_ttc, montant_ttc, new_ligne_id]
-                )
             bc_service.db.execute(
-                "UPDATE bons_commande SET montant_engage=%s, date_imputation=COALESCE(date_imputation,NOW()), "
+                "UPDATE bons_commande SET montant_engage=%s, "
+                "date_imputation=COALESCE(date_imputation,NOW()), "
                 "budget_impute=true, impute=true WHERE id=%s",
                 [montant_ttc, bc_id]
             )
-        elif old_engage and not new_engage and old_ligne_id:
-            # Annuler l'imputation si on repasse en statut non-engagé
+        elif not new_engage:
             bc_service.db.execute(
-                "UPDATE lignes_budgetaires "
-                "SET montant_engage = GREATEST(0, COALESCE(montant_engage,0) - %s), "
-                "montant_solde = COALESCE(montant_vote,0) - GREATEST(0, COALESCE(montant_engage,0) - %s), "
-                "date_maj=NOW() WHERE id=%s",
-                [old_montant, old_montant, old_ligne_id]
+                "UPDATE bons_commande SET montant_engage=0, "
+                "budget_impute=false, impute=false WHERE id=%s",
+                [bc_id]
+            )
+
+        # Recalculer montant_engage de toutes les lignes affectées
+        # (somme de tous les BCs engagés sur chaque ligne concernée)
+        lignes_a_recalculer = set()
+        if new_ligne_id:
+            lignes_a_recalculer.add(int(new_ligne_id))
+        if old_ligne_id:
+            lignes_a_recalculer.add(int(old_ligne_id))
+
+        for lid in lignes_a_recalculer:
+            bc_service.db.execute(
+                "UPDATE lignes_budgetaires l "
+                "SET montant_engage = ("
+                "  SELECT COALESCE(SUM(bc.montant_ttc), 0) "
+                "  FROM bons_commande bc "
+                "  WHERE bc.ligne_budgetaire_id = l.id "
+                "  AND bc.statut IN ('VALIDE', 'IMPUTE', 'SOLDE')"
+                "), "
+                "montant_solde = montant_vote - ("
+                "  SELECT COALESCE(SUM(bc.montant_ttc), 0) "
+                "  FROM bons_commande bc "
+                "  WHERE bc.ligne_budgetaire_id = l.id "
+                "  AND bc.statut IN ('VALIDE', 'IMPUTE', 'SOLDE')"
+                "), "
+                "date_maj=NOW() "
+                "WHERE l.id = %s",
+                [lid]
             )
 
         return jsonify({"success": True})
