@@ -2180,7 +2180,7 @@ def export_budget():
 
         # ── Feuille 3 : Contrats actifs ─────────────────────────────
         ws3 = wb.create_sheet("Contrats actifs")
-        ws3.append(["Entite", "N Contrat", "Type", "Objet", "Fournisseur",
+        ws3.append(["Entite", "N Contrat", "Objet", "Fournisseur",
                     "Application", "Date fin", "Jours", "Montant HT",
                     "Montant max", "Engage", "Alerte"])
         hdr(ws3, 1)
@@ -2190,7 +2190,7 @@ def export_budget():
             "(SELECT e.code FROM entites e "
             " JOIN bons_commande bc2 ON bc2.entite_id = e.id "
             " WHERE bc2.contrat_id = c.id LIMIT 1) as entite_code, "
-            "c.numero_contrat, c.type, c.objet, f.nom as fournisseur_nom, "
+            "c.numero_contrat, c.objet, f.nom as fournisseur_nom, "
             "(SELECT a.nom FROM applications a "
             " JOIN lignes_budgetaires lb ON lb.application_id = a.id "
             " JOIN bons_commande bc2 ON bc2.ligne_budgetaire_id = lb.id "
@@ -2213,7 +2213,7 @@ def export_budget():
             elif j <= 90:               alerte = "ATTENTION"
             elif j <= 180:              alerte = "INFO"
             else:                       alerte = "OK"
-            ws3.append([c["entite_code"], c["numero_contrat"], c["type"], c["objet"],
+            ws3.append([c["entite_code"], c["numero_contrat"], c["objet"],
                         c["fournisseur_nom"], c["application_nom"],
                         fdate(c["date_fin"]), j,
                         ff(c["montant_ht"]), ff(c["montant_max"]),
