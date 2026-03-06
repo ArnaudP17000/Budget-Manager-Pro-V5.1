@@ -16,12 +16,19 @@ def run_migrations():
 
     # ── Colonnes projets ────────────────────────────────────
     new_cols = [
-        ('objectifs',    'TEXT'),
-        ('enjeux',       'TEXT'),
-        ('gains',        'TEXT'),
-        ('risques',      'TEXT'),
-        ('contraintes',  'TEXT'),
-        ('solutions',    'TEXT'),
+        ('objectifs',             'TEXT'),
+        ('enjeux',                'TEXT'),
+        ('gains',                 'TEXT'),
+        ('risques',               'TEXT'),
+        ('contraintes',           'TEXT'),
+        ('solutions',             'TEXT'),
+        ('financement',           'TEXT'),
+        ('registre_risques',      'TEXT'),
+        ('contraintes_6axes',     'TEXT'),
+        ('triangle_tensions',     'TEXT'),
+        ('arbitrage',             'TEXT'),
+        ('chef_projet_contact_id','INTEGER'),
+        ('responsable_contact_id','INTEGER'),
     ]
     for col, typ in new_cols:
         try:
