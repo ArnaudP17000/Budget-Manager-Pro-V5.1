@@ -2900,3 +2900,114 @@ def test_smtp():
         return _err(f"Timeout — {host}:{port} ne répond pas (vérifiez le port et le pare-feu)")
     except Exception as e:
         return _err(f"Erreur SMTP : {e}")
+
+
+# ─────────────────────────────────────────────
+# NOTES
+# ─────────────────────────────────────────────
+
+_db_notes = None
+def _notes_db():
+    global _db_notes
+    if _db_notes is None:
+        from app.services.database_service import DatabaseService
+        _db_notes = DatabaseService()
+    return _db_notes
+
+def _notes_ownership(user_id, role, service_id):
+    if role == 'admin':
+        return "1=1", []
+    elif role == 'gestionnaire' and service_id:
+        return ("(n.created_by_id = %s OR n.created_by_id IN "
+                "(SELECT id FROM utilisateurs WHERE service_id = %s AND actif = true))",
+                [user_id, service_id])
+    return "n.created_by_id = %s", [user_id]
+
+@routes.route('/note', methods=['GET'])
+@require_auth()
+def get_notes():
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    db = _notes_db()
+    where, params = _notes_ownership(user_id, role, service_id)
+    note_type = request.args.get('type')
+    projet_id = request.args.get('projet_id')
+    if note_type:
+        where += " AND n.type = %s"; params.append(note_type)
+    if projet_id:
+        where += " AND n.projet_id = %s"; params.append(int(projet_id))
+    rows = db.fetch_all(
+        "SELECT n.*, p.nom as projet_nom, p.code as projet_code, "
+        "u.nom || ' ' || u.prenom as auteur_nom "
+        "FROM notes n "
+        "LEFT JOIN projets p ON p.id = n.projet_id "
+        "LEFT JOIN utilisateurs u ON u.id = n.created_by_id "
+        f"WHERE {where} ORDER BY n.updated_at DESC",
+        params
+    )
+    return jsonify({"count": len(rows or []), "list": [dict(r) for r in (rows or [])]})
+
+@routes.route('/note', methods=['POST'])
+@require_auth()
+def create_note():
+    data    = request.json or {}
+    user_id = g.user.get('sub')
+    db = _notes_db()
+    try:
+        row = db.execute_returning(
+            "INSERT INTO notes (titre, contenu, type, projet_id, couleur, created_by_id, updated_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, NOW()) RETURNING id",
+            [data.get('titre') or 'Sans titre',
+             data.get('contenu') or '',
+             data.get('type', 'postit'),
+             data.get('projet_id') or None,
+             data.get('couleur') or '#fff9c4',
+             user_id]
+        )
+        return jsonify({"success": True, "id": row[0]}), 201
+    except Exception as e:
+        return _err(str(e))
+
+@routes.route('/note/<int:note_id>', methods=['PUT'])
+@require_auth()
+def update_note(note_id):
+    data    = request.json or {}
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    db = _notes_db()
+    existing = db.fetch_one("SELECT created_by_id FROM notes WHERE id = %s", [note_id])
+    if not existing:
+        return _err("Note introuvable", 404)
+    if role != 'admin' and existing['created_by_id'] != user_id:
+        return _err("Accès refusé", 403)
+    try:
+        db.execute(
+            "UPDATE notes SET titre=%s, contenu=%s, type=%s, projet_id=%s, couleur=%s, updated_at=NOW() WHERE id=%s",
+            [data.get('titre') or 'Sans titre',
+             data.get('contenu') or '',
+             data.get('type', 'postit'),
+             data.get('projet_id') or None,
+             data.get('couleur') or '#fff9c4',
+             note_id]
+        )
+        return _ok()
+    except Exception as e:
+        return _err(str(e))
+
+@routes.route('/note/<int:note_id>', methods=['DELETE'])
+@require_auth()
+def delete_note(note_id):
+    user_id = g.user.get('sub')
+    role    = g.user.get('role')
+    db = _notes_db()
+    existing = db.fetch_one("SELECT created_by_id FROM notes WHERE id = %s", [note_id])
+    if not existing:
+        return _err("Note introuvable", 404)
+    if role != 'admin' and existing['created_by_id'] != user_id:
+        return _err("Accès refusé", 403)
+    try:
+        db.execute("DELETE FROM notes WHERE id = %s", [note_id])
+        return _ok()
+    except Exception as e:
+        return _err(str(e))

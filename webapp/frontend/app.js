@@ -183,6 +183,9 @@ function progressBar(val, max) {
 
 let _sessionExpired = false; // évite les déconnexions multiples simultanées
 let _quillRapport = null;   // instance Quill pour rapport de réunion
+let _quillNote    = null;   // instance Quill pour les notes
+let _notesTab     = 'postit'; // onglet actif notes
+let _noteColor    = '#fff9c4'; // couleur sélectionnée pour post-it
 
 async function apiFetch(path, opts = {}) {
     const token = getToken();
@@ -347,6 +350,7 @@ const loaders = {
     gantt:         loadGantt,
     notifications: loadNotifications,
     tpe:           loadTpe,
+    notes:         loadNotes,
     admin:         loadAdminUsers,
 };
 
@@ -4848,4 +4852,221 @@ async function deleteTpe(id, label) {
     } catch (e) {
         showMsg('Erreur : ' + e.message, false);
     }
+}
+
+// ─── NOTES ─────────────────────────────────────────────────
+
+function switchNotesTab(tab) {
+    _notesTab = tab;
+    document.getElementById('notes-tab-postit').style.cssText =
+        tab === 'postit'
+        ? 'padding:7px 20px;border:none;background:none;font-size:.9em;font-weight:600;color:#2563a8;border-bottom:2px solid #2563a8;cursor:pointer;'
+        : 'padding:7px 20px;border:none;background:none;font-size:.9em;font-weight:600;color:#888;border-bottom:2px solid transparent;cursor:pointer;';
+    document.getElementById('notes-tab-projet').style.cssText =
+        tab === 'projet'
+        ? 'padding:7px 20px;border:none;background:none;font-size:.9em;font-weight:600;color:#2563a8;border-bottom:2px solid #2563a8;cursor:pointer;'
+        : 'padding:7px 20px;border:none;background:none;font-size:.9em;font-weight:600;color:#888;border-bottom:2px solid transparent;cursor:pointer;';
+    document.getElementById('notes-projet-filter').style.display = tab === 'projet' ? 'block' : 'none';
+    document.getElementById('notes-postit-grid').style.display   = tab === 'postit' ? 'flex' : 'none';
+    document.getElementById('notes-projet-list').style.display   = tab === 'projet' ? 'block' : 'none';
+    loadNotes();
+}
+
+async function loadNotes() {
+    const tab       = _notesTab;
+    const projetId  = document.getElementById('notes-filter-projet')?.value || '';
+    let url = `/note?type=${tab}`;
+    if (tab === 'projet' && projetId) url += `&projet_id=${projetId}`;
+    try {
+        const data = await apiFetch(url);
+        const list = data.list || [];
+        if (tab === 'postit') _renderPostits(list);
+        else _renderNotesProjet(list);
+    } catch(e) { showMsg(e.message, false); }
+
+    // Peupler filtre projet si vide
+    const sel = document.getElementById('notes-filter-projet');
+    if (sel && sel.options.length <= 1) {
+        try {
+            const pd = await apiFetch('/projet');
+            (pd.list || []).forEach(p => {
+                sel.innerHTML += `<option value="${p.id}">${p.code ? p.code + ' – ' : ''}${_h(p.nom)}</option>`;
+            });
+        } catch(e) {}
+    }
+}
+
+function _renderPostits(list) {
+    const grid = document.getElementById('notes-postit-grid');
+    if (!list.length) {
+        grid.innerHTML = '<p style="color:#aaa;font-style:italic;">Aucun post-it. Cliquez sur "+ Nouvelle note" pour commencer.</p>';
+        return;
+    }
+    grid.innerHTML = list.map(n => {
+        const bg = n.couleur || '#fff9c4';
+        const preview = n.contenu ? n.contenu.replace(/<[^>]+>/g, '').substring(0, 120) : '';
+        const date = n.updated_at ? new Date(n.updated_at).toLocaleDateString('fr-FR') : '';
+        return `<div style="background:${bg};border-radius:8px;padding:14px 14px 10px;min-width:180px;max-width:240px;
+                    flex:0 0 auto;box-shadow:2px 3px 8px rgba(0,0,0,.12);position:relative;cursor:pointer;"
+                    onclick="editNote(${n.id})">
+            <div style="font-weight:600;font-size:.9em;margin-bottom:6px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_h(n.titre || 'Sans titre')}</div>
+            <div style="font-size:.8em;color:#555;line-height:1.4;min-height:40px;">${_h(preview)}${preview.length >= 120 ? '…' : ''}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+                <span style="font-size:.72em;color:#888;">${date}</span>
+                <button class="btn btn-danger btn-sm" style="padding:2px 7px;font-size:.75em;" onclick="event.stopPropagation();deleteNote(${n.id})">✕</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function _renderNotesProjet(list) {
+    const container = document.getElementById('notes-projet-list');
+    if (!list.length) {
+        container.innerHTML = '<p style="color:#aaa;font-style:italic;">Aucune note de projet.</p>';
+        return;
+    }
+    // Grouper par projet
+    const grouped = {};
+    list.forEach(n => {
+        const key = n.projet_id || 0;
+        const label = n.projet_code ? `${n.projet_code} – ${n.projet_nom}` : (n.projet_nom || 'Sans projet');
+        if (!grouped[key]) grouped[key] = { label, notes: [] };
+        grouped[key].notes.push(n);
+    });
+    container.innerHTML = Object.values(grouped).map(g => `
+        <div style="margin-bottom:18px;">
+            <div style="font-weight:700;font-size:.9em;color:#2563a8;border-bottom:1px solid #dbeafe;padding-bottom:4px;margin-bottom:8px;">📁 ${_h(g.label)}</div>
+            ${g.notes.map(n => {
+                const date = n.updated_at ? new Date(n.updated_at).toLocaleDateString('fr-FR') : '';
+                const preview = n.contenu ? n.contenu.replace(/<[^>]+>/g, '').substring(0, 100) : '';
+                return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;background:#f9fafb;margin-bottom:5px;cursor:pointer;"
+                             onclick="editNote(${n.id})">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;font-size:.87em;">${_h(n.titre || 'Sans titre')}</div>
+                        <div style="font-size:.78em;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_h(preview)}${preview.length >= 100 ? '…' : ''}</div>
+                    </div>
+                    <span style="font-size:.75em;color:#aaa;white-space:nowrap;">${date}</span>
+                    <button class="btn btn-danger btn-sm" style="padding:2px 7px;font-size:.75em;" onclick="event.stopPropagation();deleteNote(${n.id})">✕</button>
+                </div>`;
+            }).join('')}
+        </div>`).join('');
+}
+
+function toggleNoteType() {
+    const type = document.getElementById('edit-note-type')?.value;
+    document.getElementById('note-color-section').style.display  = type === 'postit' ? 'block' : 'none';
+    document.getElementById('note-projet-section').style.display = type === 'projet' ? 'block' : 'none';
+}
+
+function selectNoteColor(color) {
+    _noteColor = color;
+    document.getElementById('edit-note-couleur').value = color;
+    document.querySelectorAll('.note-color-btn').forEach(btn => {
+        btn.style.borderColor = btn.dataset.color === color ? '#2563a8' : '#ccc';
+        btn.style.borderWidth = btn.dataset.color === color ? '3px' : '2px';
+    });
+}
+
+function _initQuillNote() {
+    if (_quillNote) return;
+    _quillNote = new Quill('#quill-note', {
+        theme: 'snow',
+        placeholder: 'Contenu de la note...',
+        modules: {
+            toolbar: [
+                [{ header: [1, 2, 3, false] }],
+                ['bold', 'italic', 'underline', 'strike'],
+                [{ color: [] }, { background: [] }],
+                [{ list: 'ordered' }, { list: 'bullet' }],
+                ['link'],
+                ['clean']
+            ]
+        }
+    });
+}
+
+function newNote() {
+    document.getElementById('edit-note-id').value    = '';
+    document.getElementById('edit-note-titre').value = '';
+    document.getElementById('edit-note-type').value  = _notesTab === 'projet' ? 'projet' : 'postit';
+    selectNoteColor('#fff9c4');
+    toggleNoteType();
+    document.getElementById('modal-note-title').textContent = 'Nouvelle note';
+    openModal('modal-edit-note');
+    requestAnimationFrame(() => {
+        _initQuillNote();
+        _quillNote.clipboard.dangerouslyPasteHTML(0, '');
+        _populateNoteProjetSelect(null);
+    });
+}
+
+async function editNote(id) {
+    let note;
+    try { note = await apiFetch(`/note?type=postit`); } catch(e) {}
+    // Récupérer depuis les deux listes (postit + projet)
+    let all = [];
+    try { const d = await apiFetch('/note'); all = d.list || []; } catch(e) {}
+    note = all.find(n => n.id === id);
+    if (!note) { showMsg('Note introuvable', false); return; }
+    document.getElementById('edit-note-id').value    = note.id;
+    document.getElementById('edit-note-titre').value = note.titre || '';
+    document.getElementById('edit-note-type').value  = note.type || 'postit';
+    selectNoteColor(note.couleur || '#fff9c4');
+    toggleNoteType();
+    document.getElementById('modal-note-title').textContent = 'Modifier la note';
+    openModal('modal-edit-note');
+    requestAnimationFrame(() => {
+        _initQuillNote();
+        _quillNote.clipboard.dangerouslyPasteHTML(0, note.contenu || '');
+        _populateNoteProjetSelect(note.projet_id || null);
+    });
+}
+
+async function _populateNoteProjetSelect(selectedId) {
+    const sel = document.getElementById('edit-note-projet');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">-- Aucun --</option>';
+    try {
+        const pd = await apiFetch('/projet');
+        (pd.list || []).forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = (p.code ? p.code + ' – ' : '') + p.nom;
+            if (selectedId && p.id === selectedId) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    } catch(e) {}
+}
+
+async function saveNote() {
+    const id       = document.getElementById('edit-note-id').value;
+    const type     = document.getElementById('edit-note-type').value;
+    const rawHtml  = _quillNote ? _quillNote.root.innerHTML : '';
+    const contenu  = (rawHtml && rawHtml !== '<p><br></p>') ? rawHtml : '';
+    const body = {
+        titre:     document.getElementById('edit-note-titre').value || 'Sans titre',
+        contenu,
+        type,
+        couleur:   document.getElementById('edit-note-couleur').value || '#fff9c4',
+        projet_id: document.getElementById('edit-note-projet')?.value || null,
+    };
+    try {
+        const res = id
+            ? await apiFetch(`/note/${id}`, { method: 'PUT',  body: JSON.stringify(body) })
+            : await apiFetch('/note',        { method: 'POST', body: JSON.stringify(body) });
+        if (res.success || res.id) {
+            showMsg('Note enregistrée');
+            closeModal('modal-edit-note');
+            loadNotes();
+        } else showMsg(res.error || 'Erreur', false);
+    } catch(e) { showMsg(e.message, false); }
+}
+
+async function deleteNote(id) {
+    if (!confirm('Supprimer cette note ?')) return;
+    try {
+        const res = await apiFetch(`/note/${id}`, { method: 'DELETE' });
+        if (res.success) { showMsg('Note supprimée'); loadNotes(); }
+        else showMsg(res.error || 'Erreur', false);
+    } catch(e) { showMsg(e.message, false); }
 }
