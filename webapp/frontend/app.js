@@ -25,6 +25,7 @@ function applyRoleUI(user) {
     document.getElementById('user-info').style.display = 'flex';
     const adminNav = document.getElementById('nav-admin');
     if (adminNav) adminNav.style.display = user.role === 'admin' ? '' : 'none';
+    loadModules();
 }
 
 async function doLogin() {
@@ -338,6 +339,7 @@ const loaders = {
     etp:           loadETP,
     gantt:         loadGantt,
     notifications: loadNotifications,
+    tpe:           loadTpe,
     admin:         loadAdminUsers,
 };
 
@@ -3758,7 +3760,7 @@ async function loadAdminUsers() {
 }
 
 function switchAdminTab(tab) {
-    ['users', 'audit'].forEach(t => {
+    ['users', 'audit', 'modules'].forEach(t => {
         const sub = document.getElementById('admin-sub-' + t);
         const btn = document.getElementById('admin-tab-' + t);
         if (sub) sub.style.display = t === tab ? '' : 'none';
@@ -3767,6 +3769,7 @@ function switchAdminTab(tab) {
     const addBtn = document.getElementById('admin-add-user-btn');
     if (addBtn) addBtn.style.display = tab === 'users' ? '' : 'none';
     if (tab === 'audit') loadAuditLog();
+    if (tab === 'modules') loadAdminModules();
 }
 
 async function loadAuditLog() {
@@ -4228,4 +4231,316 @@ if (_existingToken) {
     }
 } else {
     showLoginOverlay();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODULE TPE — Terminaux de Paiement Électronique
+// ═══════════════════════════════════════════════════════════════
+
+// ─── Modules : activation / nav tabs ────────────────────────
+async function loadModules() {
+    try {
+        const data = await apiFetch('/modules');
+        const modules = data.list || [];
+        const tpeMod = modules.find(m => m.module_name === 'tpe');
+        const tpeEnabled = tpeMod && tpeMod.enabled;
+        const navTpe = document.getElementById('nav-tpe');
+        if (navTpe) navTpe.style.display = tpeEnabled ? '' : 'none';
+        // Exposer pour réutilisation (ex: bouton add dans la vue)
+        window._tpeModuleEnabled = tpeEnabled;
+    } catch {
+        // silencieux si non connecté
+    }
+}
+
+async function loadAdminModules() {
+    const el = document.getElementById('admin-modules-list');
+    if (!el) return;
+    try {
+        const data = await apiFetch('/admin/modules');
+        const modules = data.list || [];
+        if (!modules.length) {
+            el.innerHTML = '<p style="color:#999;font-style:italic;">Aucun module disponible.</p>';
+            return;
+        }
+        el.innerHTML = modules.map(m => {
+            const label = { tpe: 'Terminaux de Paiement (TPE)' }[m.module_name] || m.module_name;
+            const desc  = { tpe: 'Gestion des terminaux de paiement électronique, cartes commerçant et régisseurs.' }[m.module_name] || '';
+            return `<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0;border-bottom:1px solid #eee;">
+                <label class="switch" style="margin-top:2px;cursor:pointer;">
+                    <input type="checkbox" ${m.enabled ? 'checked' : ''}
+                           onchange="toggleModule('${_h(m.module_name)}', this.checked)"
+                           style="width:36px;height:20px;cursor:pointer;">
+                </label>
+                <div>
+                    <strong>${_h(label)}</strong>
+                    <div style="font-size:.85em;color:#666;margin-top:2px;">${_h(desc)}</div>
+                    ${m.date_activation ? `<div style="font-size:.78em;color:#aaa;margin-top:2px;">Dernière modification : ${m.date_activation.substring(0,19).replace('T',' ')}</div>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        el.innerHTML = `<p style="color:#c00;">Erreur : ${_h(e.message)}</p>`;
+    }
+}
+
+async function toggleModule(moduleName, enabled) {
+    try {
+        await apiFetch(`/admin/modules/${moduleName}`, {
+            method: 'PUT',
+            body: JSON.stringify({ enabled })
+        });
+        showMsg(enabled ? `Module "${moduleName}" activé` : `Module "${moduleName}" désactivé`);
+        loadModules(); // rafraîchir nav tabs
+    } catch (e) {
+        showMsg('Erreur : ' + e.message, false);
+        loadAdminModules(); // remettre l'état UI à jour
+    }
+}
+
+// ─── TPE : liste ────────────────────────────────────────────
+async function loadTpe() {
+    const q = document.getElementById('tpe-search')?.value.trim() || '';
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    try {
+        const data = await apiFetch('/tpe?' + params);
+        _renderTpeRows(data.list || []);
+        // Stats
+        const st = data.stats || {};
+        const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v ?? '-'; };
+        set('tpe-stat-fiches',    st.total_fiches    ?? '-');
+        set('tpe-stat-appareils', st.total_appareils ?? '-');
+        set('tpe-stat-ethernet',  st.nb_ethernet     ?? '-');
+        set('tpe-stat-4g',        st.nb_4_5g         ?? '-');
+        set('tpe-stat-bo',        st.nb_backoffice   ?? '-');
+        // Bouton ajout selon rôle
+        const addBtn = document.getElementById('tpe-add-btn');
+        if (addBtn) {
+            const p = decodeToken(getToken());
+            addBtn.style.display = (p && (p.role === 'admin' || p.role === 'gestionnaire')) ? '' : 'none';
+        }
+    } catch (e) {
+        showMsg('Erreur chargement TPE : ' + e.message, false);
+    }
+}
+
+function _renderTpeRows(list) {
+    const tbody = document.getElementById('tpe-tbody');
+    if (!tbody) return;
+    if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:16px;font-style:italic;">Aucun TPE enregistré.</td></tr>';
+        return;
+    }
+    const p = decodeToken(getToken());
+    const canEdit = p && (p.role === 'admin' || p.role === 'gestionnaire');
+    tbody.innerHTML = list.map(t => {
+        const regisseur = [t.regisseur_prenom, t.regisseur_nom].filter(Boolean).join(' ') || '-';
+        const types = [];
+        if (t.type_ethernet) types.push('Ethernet');
+        if (t.type_4_5g)     types.push('4/5G');
+        const typeBadge = types.map(ty => `<span style="background:#dbeafe;color:#1d4ed8;border-radius:3px;padding:1px 5px;font-size:.78em;margin-right:3px;">${ty}</span>`).join('');
+        const cartes = t.cartes || [];
+        const cartesStr = cartes.length
+            ? cartes.map(c => _h(c.numero)).join(', ')
+            : '<span style="color:#ccc;">—</span>';
+        const bo = t.backoffice_actif
+            ? `<span style="color:#27ae60;">Oui${t.backoffice_email ? ' (' + _h(t.backoffice_email) + ')' : ''}</span>`
+            : '<span style="color:#ccc;">Non</span>';
+        const actions = canEdit
+            ? `<button class="btn btn-sm" onclick="editTpe(${t.id})" style="margin-right:4px;">Modifier</button>
+               <button class="btn btn-danger btn-sm" onclick="deleteTpe(${t.id}, '${_h(t.service).replace(/'/g,'&#39;')}')">Suppr.</button>`
+            : '';
+        return `<tr>
+            <td>${_h(t.service)}</td>
+            <td>${_h(regisseur)}</td>
+            <td>${_h(t.regisseur_telephone) || '-'}</td>
+            <td>${t.shop_id || '-'}</td>
+            <td>${_h(t.modele_tpe) || '-'}</td>
+            <td>${typeBadge || '<span style="color:#ccc;">—</span>'}</td>
+            <td style="font-size:.82em;">${cartesStr}</td>
+            <td>${bo}</td>
+            <td style="text-align:center;">${t.nombre_tpe ?? 1}</td>
+            <td>${actions}</td>
+        </tr>`;
+    }).join('');
+}
+
+// ─── TPE : export Excel ──────────────────────────────────────
+async function exportTpe() {
+    const token = getToken();
+    const a = document.createElement('a');
+    a.href = `${API}/tpe/export`;
+    a.setAttribute('download', 'export_tpe.xlsx');
+    // fetch avec auth header pour forcer le téléchargement
+    try {
+        const res = await fetch(`${API}/tpe/export`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) throw new Error('Export échoué');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'export_tpe.xlsx';
+        link.click();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        showMsg('Erreur export : ' + e.message, false);
+    }
+}
+
+// ─── TPE : modal helpers ─────────────────────────────────────
+function toggleTpeBackoffice() {
+    const checked = document.getElementById('tpe-backoffice-actif')?.checked;
+    const row = document.getElementById('tpe-backoffice-email-row');
+    if (row) row.style.display = checked ? '' : 'none';
+}
+
+function toggleTpeEthernet() {
+    const checked = document.getElementById('tpe-type-ethernet')?.checked;
+    const row = document.getElementById('tpe-reseau-row');
+    if (row) row.style.display = checked ? '' : 'none';
+}
+
+function addTpeCarte(carte = {}) {
+    const container = document.getElementById('tpe-cartes-container');
+    if (!container) return;
+    const div = document.createElement('div');
+    div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;margin-bottom:6px;align-items:end;';
+    div.innerHTML = `
+        <div><label style="font-size:.8em;color:#666;">N° carte</label>
+             <input class="form-control carte-numero" value="${_h(carte.numero || '')}"></div>
+        <div><label style="font-size:.8em;color:#666;">N° série TPE</label>
+             <input class="form-control carte-serie" value="${_h(carte.numero_serie_tpe || '')}"></div>
+        <div><label style="font-size:.8em;color:#666;">Modèle</label>
+             <input class="form-control carte-modele" value="${_h(carte.modele_tpe || '')}"></div>
+        <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()"
+                style="margin-bottom:0;padding:6px 10px;">✕</button>
+    `;
+    container.appendChild(div);
+}
+
+function _getTpeCartes() {
+    const rows = document.querySelectorAll('#tpe-cartes-container > div');
+    const cartes = [];
+    rows.forEach(row => {
+        const numero = row.querySelector('.carte-numero')?.value.trim();
+        if (numero) {
+            cartes.push({
+                numero,
+                numero_serie_tpe: row.querySelector('.carte-serie')?.value.trim() || null,
+                modele_tpe:       row.querySelector('.carte-modele')?.value.trim() || null,
+            });
+        }
+    });
+    return cartes;
+}
+
+function _resetTpeModal() {
+    ['tpe-id','tpe-service','tpe-reg-prenom','tpe-reg-nom','tpe-reg-tel',
+     'tpe-suppleants','tpe-shop-id','tpe-nombre','tpe-modele',
+     'tpe-backoffice-email','tpe-reseau-ip','tpe-reseau-masque','tpe-reseau-passerelle'
+    ].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    ['tpe-backoffice-actif','tpe-type-ethernet','tpe-type-4g'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.checked = false;
+    });
+    document.getElementById('tpe-nombre').value = '1';
+    document.getElementById('tpe-backoffice-email-row').style.display = 'none';
+    document.getElementById('tpe-reseau-row').style.display = 'none';
+    document.getElementById('tpe-cartes-container').innerHTML = '';
+}
+
+// ─── TPE : créer ─────────────────────────────────────────────
+function openAddTpe() {
+    _resetTpeModal();
+    document.getElementById('modal-tpe-titre').textContent = 'Nouveau TPE';
+    openModal('modal-tpe');
+}
+
+// ─── TPE : éditer ────────────────────────────────────────────
+async function editTpe(id) {
+    _resetTpeModal();
+    document.getElementById('modal-tpe-titre').textContent = 'Modifier le TPE';
+    try {
+        const data = await apiFetch(`/tpe/${id}`);
+        const t = data.tpe;
+        document.getElementById('tpe-id').value = t.id;
+        document.getElementById('tpe-service').value        = t.service || '';
+        document.getElementById('tpe-reg-prenom').value     = t.regisseur_prenom || '';
+        document.getElementById('tpe-reg-nom').value        = t.regisseur_nom || '';
+        document.getElementById('tpe-reg-tel').value        = t.regisseur_telephone || '';
+        document.getElementById('tpe-suppleants').value     = t.regisseurs_suppleants || '';
+        document.getElementById('tpe-shop-id').value        = t.shop_id ?? '';
+        document.getElementById('tpe-nombre').value         = t.nombre_tpe ?? 1;
+        document.getElementById('tpe-modele').value         = t.modele_tpe || '';
+        document.getElementById('tpe-backoffice-actif').checked = !!t.backoffice_actif;
+        document.getElementById('tpe-backoffice-email').value   = t.backoffice_email || '';
+        document.getElementById('tpe-type-ethernet').checked    = !!t.type_ethernet;
+        document.getElementById('tpe-type-4g').checked          = !!t.type_4_5g;
+        document.getElementById('tpe-reseau-ip').value          = t.reseau_ip || '';
+        document.getElementById('tpe-reseau-masque').value      = t.reseau_masque || '';
+        document.getElementById('tpe-reseau-passerelle').value  = t.reseau_passerelle || '';
+        toggleTpeBackoffice();
+        toggleTpeEthernet();
+        (t.cartes || []).forEach(c => addTpeCarte(c));
+        openModal('modal-tpe');
+    } catch (e) {
+        showMsg('Erreur chargement TPE : ' + e.message, false);
+    }
+}
+
+// ─── TPE : sauvegarder ───────────────────────────────────────
+async function saveTpe() {
+    const id      = document.getElementById('tpe-id').value;
+    const service = document.getElementById('tpe-service').value.trim();
+    if (!service) { showMsg('Le champ Service est obligatoire.', false); return; }
+
+    const payload = {
+        service,
+        regisseur_prenom:    document.getElementById('tpe-reg-prenom').value.trim() || null,
+        regisseur_nom:       document.getElementById('tpe-reg-nom').value.trim()    || null,
+        regisseur_telephone: document.getElementById('tpe-reg-tel').value.trim()    || null,
+        regisseurs_suppleants: document.getElementById('tpe-suppleants').value.trim() || null,
+        shop_id:             parseInt(document.getElementById('tpe-shop-id').value)  || 0,
+        nombre_tpe:          parseInt(document.getElementById('tpe-nombre').value)   || 1,
+        modele_tpe:          document.getElementById('tpe-modele').value.trim()      || null,
+        backoffice_actif:    document.getElementById('tpe-backoffice-actif').checked,
+        backoffice_email:    document.getElementById('tpe-backoffice-email').value.trim() || null,
+        type_ethernet:       document.getElementById('tpe-type-ethernet').checked,
+        type_4_5g:           document.getElementById('tpe-type-4g').checked,
+        reseau_ip:           document.getElementById('tpe-reseau-ip').value.trim()          || null,
+        reseau_masque:       document.getElementById('tpe-reseau-masque').value.trim()      || null,
+        reseau_passerelle:   document.getElementById('tpe-reseau-passerelle').value.trim()  || null,
+        cartes: _getTpeCartes(),
+    };
+    try {
+        if (id) {
+            await apiFetch(`/tpe/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+            showMsg('TPE mis à jour.');
+        } else {
+            await apiFetch('/tpe', { method: 'POST', body: JSON.stringify(payload) });
+            showMsg('TPE créé.');
+        }
+        closeModal('modal-tpe');
+        loadTpe();
+    } catch (e) {
+        showMsg('Erreur : ' + e.message, false);
+    }
+}
+
+// ─── TPE : supprimer ─────────────────────────────────────────
+async function deleteTpe(id, label) {
+    if (!confirm(`Supprimer le TPE "${label}" ?`)) return;
+    try {
+        await apiFetch(`/tpe/${id}`, { method: 'DELETE' });
+        showMsg('TPE supprimé.');
+        loadTpe();
+    } catch (e) {
+        showMsg('Erreur : ' + e.message, false);
+    }
 }

@@ -319,6 +319,7 @@
     <button onclick="showView('etp')">ETP</button>
     <button onclick="showView('gantt')">Gantt</button>
     <button onclick="showView('notifications')">Notifications</button>
+    <button id="nav-tpe" onclick="showView('tpe')" style="display:none;">TPE</button>
     <button id="nav-admin" onclick="showView('admin')" style="display:none;background:#c0392b;">Admin</button>
 </nav>
 
@@ -987,6 +988,48 @@
     <div id="notif-list"></div>
 </div>
 
+<!-- ══════════════════ TPE ══════════════════ -->
+<div id="view-tpe" class="view">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <h2 style="margin:0;">Terminaux de Paiement (TPE)</h2>
+    </div>
+    <!-- Stats -->
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+        <div class="kpi-card" style="flex:1;min-width:110px;"><div class="kpi-value" id="tpe-stat-fiches">-</div><div class="kpi-label">Fiches</div></div>
+        <div class="kpi-card" style="flex:1;min-width:110px;"><div class="kpi-value" id="tpe-stat-appareils">-</div><div class="kpi-label">Appareils</div></div>
+        <div class="kpi-card" style="flex:1;min-width:110px;"><div class="kpi-value" id="tpe-stat-ethernet">-</div><div class="kpi-label">Ethernet</div></div>
+        <div class="kpi-card" style="flex:1;min-width:110px;"><div class="kpi-value" id="tpe-stat-4g">-</div><div class="kpi-label">4/5G</div></div>
+        <div class="kpi-card" style="flex:1;min-width:110px;"><div class="kpi-value" id="tpe-stat-bo">-</div><div class="kpi-label">Backoffice</div></div>
+    </div>
+    <!-- Toolbar -->
+    <div class="toolbar" style="margin-bottom:12px;">
+        <input id="tpe-search" type="search" placeholder="Rechercher service, régisseur…"
+               style="flex:1;padding:7px 10px;border:1px solid #ccc;border-radius:4px;" oninput="loadTpe()">
+        <button class="btn btn-primary" id="tpe-add-btn" onclick="openAddTpe()" style="display:none;">+ Nouveau TPE</button>
+        <button class="btn" onclick="exportTpe()" style="background:#27ae60;color:#fff;">Export Excel</button>
+    </div>
+    <!-- Table -->
+    <div class="tbl-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Régisseur</th>
+                    <th>Tél.</th>
+                    <th>Shop ID</th>
+                    <th>Modèle</th>
+                    <th>Type</th>
+                    <th>Cartes</th>
+                    <th>Backoffice</th>
+                    <th>Nb TPE</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="tpe-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
 <!-- ══════════════════ ADMIN ══════════════════ -->
 <div id="view-admin" class="view">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
@@ -996,6 +1039,7 @@
     <div class="budget-subtabs">
         <div class="budget-subtab active" id="admin-tab-users" onclick="switchAdminTab('users')">Utilisateurs</div>
         <div class="budget-subtab" id="admin-tab-audit" onclick="switchAdminTab('audit')">Journal d'audit</div>
+        <div class="budget-subtab" id="admin-tab-modules" onclick="switchAdminTab('modules')">Modules</div>
     </div>
 
     <!-- Sous-onglet Utilisateurs -->
@@ -1007,6 +1051,14 @@
             </tr></thead>
             <tbody id="admin-users-tbody"></tbody>
         </table>
+    </div>
+
+    <!-- Sous-onglet Modules -->
+    <div id="admin-sub-modules" class="budget-subview" style="display:none;">
+        <p style="color:#666;margin-bottom:16px;font-size:.9em;">
+            Activez ou désactivez les modules optionnels. Le changement est immédiat (sans redémarrage).
+        </p>
+        <div id="admin-modules-list"></div>
     </div>
 
     <!-- Sous-onglet Journal d'audit -->
@@ -1748,9 +1800,87 @@
     </div>
 </div>
 
+<!-- ══════════════════ MODAL ADD/EDIT TPE ══════════════════ -->
+<div class="modal-overlay" id="modal-tpe">
+    <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto;">
+        <button class="modal-close" onclick="closeModal('modal-tpe')">&#x2715;</button>
+        <h3 id="modal-tpe-titre">Nouveau TPE</h3>
+        <input type="hidden" id="tpe-id">
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+            <div style="grid-column:1/-1;">
+                <label>Service *</label>
+                <input id="tpe-service" class="form-control" placeholder="Nom du service">
+            </div>
+            <div><label>Prénom régisseur</label><input id="tpe-reg-prenom" class="form-control"></div>
+            <div><label>Nom régisseur</label><input id="tpe-reg-nom" class="form-control"></div>
+            <div style="grid-column:1/-1;">
+                <label>Téléphone régisseur</label>
+                <input id="tpe-reg-tel" class="form-control" placeholder="0601020304">
+            </div>
+            <div style="grid-column:1/-1;">
+                <label>Régisseurs suppléants</label>
+                <textarea id="tpe-suppleants" class="form-control" rows="2" placeholder="Noms des suppléants…"></textarea>
+            </div>
+            <div><label>Shop ID</label><input id="tpe-shop-id" class="form-control" type="number" min="0"></div>
+            <div><label>Nombre de TPE</label><input id="tpe-nombre" class="form-control" type="number" min="1" value="1"></div>
+            <div style="grid-column:1/-1;">
+                <label>Modèle TPE</label>
+                <input id="tpe-modele" class="form-control" placeholder="ex : Ingenico iWL250">
+            </div>
+
+            <!-- Backoffice -->
+            <div style="grid-column:1/-1;border-top:1px solid #eee;padding-top:10px;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="tpe-backoffice-actif" onchange="toggleTpeBackoffice()">
+                    <strong>Accès Backoffice</strong>
+                </label>
+            </div>
+            <div style="grid-column:1/-1;display:none;" id="tpe-backoffice-email-row">
+                <label>Email backoffice</label>
+                <input id="tpe-backoffice-email" class="form-control" type="email">
+            </div>
+
+            <!-- Type connexion -->
+            <div style="grid-column:1/-1;border-top:1px solid #eee;padding-top:10px;">
+                <strong>Type de connexion</strong>
+                <div style="display:flex;gap:24px;margin-top:8px;">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                        <input type="checkbox" id="tpe-type-ethernet" onchange="toggleTpeEthernet()"> Ethernet
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                        <input type="checkbox" id="tpe-type-4g"> 4/5G
+                    </label>
+                </div>
+            </div>
+            <div style="grid-column:1/-1;display:none;" id="tpe-reseau-row">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                    <div><label>Adresse IP</label><input id="tpe-reseau-ip" class="form-control" placeholder="192.168.1.x"></div>
+                    <div><label>Masque</label><input id="tpe-reseau-masque" class="form-control" placeholder="255.255.255.0"></div>
+                    <div><label>Passerelle</label><input id="tpe-reseau-passerelle" class="form-control" placeholder="192.168.1.1"></div>
+                </div>
+            </div>
+
+            <!-- Cartes -->
+            <div style="grid-column:1/-1;border-top:1px solid #eee;padding-top:10px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                    <strong>Cartes commerçant</strong>
+                    <button type="button" class="btn" onclick="addTpeCarte()" style="font-size:.8em;padding:4px 10px;">+ Ajouter</button>
+                </div>
+                <div id="tpe-cartes-container"></div>
+            </div>
+        </div>
+
+        <div style="margin-top:16px;text-align:right;">
+            <button class="btn" onclick="closeModal('modal-tpe')" style="margin-right:8px;">Annuler</button>
+            <button class="btn btn-primary" onclick="saveTpe()">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="app.js?v=6.12"></script>
+<script src="app.js?v=6.13"></script>
 </body>
 </html>
