@@ -3763,7 +3763,7 @@ function switchAdminTab(tab) {
     ['users', 'audit', 'modules'].forEach(t => {
         const sub = document.getElementById('admin-sub-' + t);
         const btn = document.getElementById('admin-tab-' + t);
-        if (sub) sub.style.display = t === tab ? '' : 'none';
+        if (sub) sub.classList.toggle('active', t === tab);
         if (btn) btn.classList.toggle('active', t === tab);
     });
     const addBtn = document.getElementById('admin-add-user-btn');
