@@ -1582,6 +1582,7 @@ function editContrat(id) {
     document.getElementById('edit-contrat-montant').value  = data.montant_total_ht || '';
     document.getElementById('edit-contrat-debut').value    = _toISODate(data.date_debut);
     document.getElementById('edit-contrat-fin').value      = _toISODate(data.date_fin);
+    document.getElementById('edit-contrat-type').value     = data.type_marche || '';
     document.getElementById('edit-contrat-statut').value   = data.statut || 'ACTIF';
     openModal('modal-edit-contrat');
 }
@@ -1595,6 +1596,7 @@ async function saveContrat() {
         montant_total_ht: document.getElementById('edit-contrat-montant').value || null,
         date_debut:       document.getElementById('edit-contrat-debut').value || null,
         date_fin:         document.getElementById('edit-contrat-fin').value || null,
+        type_marche:      document.getElementById('edit-contrat-type').value || null,
         statut:           document.getElementById('edit-contrat-statut').value,
     };
     if (!body.numero_contrat) { showMsg('Le N° contrat est obligatoire', false); return; }
