@@ -197,6 +197,47 @@ def run_migrations():
     except Exception:
         pass
 
+    # ── Jalons projet (dates clés / livrables critiques) ────────
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS jalons (
+                id SERIAL PRIMARY KEY,
+                projet_id INTEGER NOT NULL,
+                titre VARCHAR(300) NOT NULL,
+                date_echeance DATE,
+                statut VARCHAR(30) DEFAULT 'A_VENIR',
+                description TEXT,
+                created_by_id INTEGER,
+                date_creation TIMESTAMP DEFAULT NOW()
+            )
+        """)
+    except Exception:
+        pass
+
+    # ── Journal de bord projet ───────────────────────────────────
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS journal_projet (
+                id SERIAL PRIMARY KEY,
+                projet_id INTEGER NOT NULL,
+                date_entree TIMESTAMP DEFAULT NOW(),
+                auteur VARCHAR(200),
+                type_entree VARCHAR(50) DEFAULT 'EVENEMENT',
+                contenu TEXT NOT NULL,
+                created_by_id INTEGER
+            )
+        """)
+    except Exception:
+        pass
+
+    # ── Statut RAG sur projets ───────────────────────────────────
+    try:
+        db.execute(
+            "ALTER TABLE projets ADD COLUMN IF NOT EXISTS statut_rag VARCHAR(10) DEFAULT 'VERT'"
+        )
+    except Exception:
+        pass
+
     # ── Resync séquences (évite duplicate key après import CSV) ─
     for table in ['projets', 'services', 'utilisateurs', 'contacts',
                   'taches', 'contrats', 'bons_commande', 'fournisseurs']:
