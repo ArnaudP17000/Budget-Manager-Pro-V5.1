@@ -1,7 +1,10 @@
 import bcrypt as _bcrypt
+import logging
 from flask import Flask, send_from_directory, jsonify
 import os
 from routes import routes
+
+_mlog = logging.getLogger('migrations')
 
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend'))
 
@@ -36,8 +39,8 @@ def run_migrations():
             db.execute(
                 f"ALTER TABLE projets ADD COLUMN IF NOT EXISTS {col} {typ}"
             )
-        except Exception:
-            pass
+        except Exception as _me:
+            _mlog.warning("Migration skipped: %s", _me)
 
     # ── Colonnes utilisateurs (auth) ────────────────────────
     auth_cols = [
@@ -51,99 +54,99 @@ def run_migrations():
             db.execute(
                 f"ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS {col} {typ}"
             )
-        except Exception:
-            pass
+        except Exception as _me:
+            _mlog.warning("Migration skipped: %s", _me)
 
     # ── Colonne projet_equipe ────────────────────────────────
     try:
         db.execute(
             "ALTER TABLE projet_equipe ADD COLUMN IF NOT EXISTS membre_label TEXT"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Colonnes taches (Gantt) ─────────────────────────────
     try:
         db.execute(
             "ALTER TABLE taches ADD COLUMN IF NOT EXISTS date_debut DATE"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
     try:
         db.execute(
             "ALTER TABLE taches ADD COLUMN IF NOT EXISTS responsable_label TEXT"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
     try:
         db.execute(
             "ALTER TABLE taches ADD COLUMN IF NOT EXISTS assignee_id INTEGER"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Colonnes services (Unités) ──────────────────────────
     try:
         db.execute(
             "ALTER TABLE services ADD COLUMN IF NOT EXISTS nb_personnes INTEGER"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
     try:
         db.execute(
             "ALTER TABLE services ADD COLUMN IF NOT EXISTS membres_label TEXT"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
     try:
         db.execute(
             "ALTER TABLE services ADD COLUMN IF NOT EXISTS is_unite BOOLEAN DEFAULT FALSE"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Colonne projet_contacts (contact libre + contact_id nullable) ─────
     try:
         db.execute(
             "ALTER TABLE projet_contacts ADD COLUMN IF NOT EXISTS contact_libre TEXT"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
     try:
         db.execute(
             "ALTER TABLE projet_contacts ALTER COLUMN contact_id DROP NOT NULL"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Email optionnel : supprimer NOT NULL + nettoyer valeurs vides ─
     try:
         db.execute(
             "ALTER TABLE utilisateurs ALTER COLUMN email DROP NOT NULL"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
     try:
         db.execute(
             "UPDATE utilisateurs SET email = NULL WHERE email = ''"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Colonne societe dans contacts ───────────────────────────
     try:
         db.execute(
             "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS societe VARCHAR(200)"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Propriété des enregistrements (created_by_id) ───────────
     for tbl in ['bons_commande', 'contrats', 'projets', 'contacts', 'taches', 'fournisseurs']:
         try:
             db.execute(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS created_by_id INTEGER")
-        except Exception:
-            pass
+        except Exception as _me:
+            _mlog.warning("Migration skipped: %s", _me)
 
     # ── Contacts liés aux fournisseurs ──────────────────────────
     try:
@@ -154,8 +157,8 @@ def run_migrations():
                 PRIMARY KEY (fournisseur_id, contact_id)
             )
         """)
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Journal d'audit ─────────────────────────────────────
     try:
@@ -171,16 +174,16 @@ def run_migrations():
                 date_creation TIMESTAMP DEFAULT NOW()
             )
         """)
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Colonne motif_refus sur bons_commande ───────────────
     try:
         db.execute(
             "ALTER TABLE bons_commande ADD COLUMN IF NOT EXISTS motif_refus TEXT"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Permissions budgets (accès explicite par utilisateur) ───
     try:
@@ -194,8 +197,8 @@ def run_migrations():
                 UNIQUE(budget_id, user_id)
             )
         """)
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Jalons projet (dates clés / livrables critiques) ────────
     try:
@@ -211,8 +214,8 @@ def run_migrations():
                 date_creation TIMESTAMP DEFAULT NOW()
             )
         """)
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Journal de bord projet ───────────────────────────────────
     try:
@@ -227,16 +230,16 @@ def run_migrations():
                 created_by_id INTEGER
             )
         """)
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Statut RAG sur projets ───────────────────────────────────
     try:
         db.execute(
             "ALTER TABLE projets ADD COLUMN IF NOT EXISTS statut_rag VARCHAR(10) DEFAULT 'VERT'"
         )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Resync séquences (évite duplicate key après import CSV) ─
     for table in ['projets', 'services', 'utilisateurs', 'contacts',
@@ -246,8 +249,8 @@ def run_migrations():
                 f"SELECT setval('{table}_id_seq', "
                 f"GREATEST(1, (SELECT COALESCE(MAX(id), 1) FROM {table})))"
             )
-        except Exception:
-            pass
+        except Exception as _me:
+            _mlog.warning("Migration skipped: %s", _me)
 
     # ── Compte admin par défaut (idempotent) ────────────────
     try:
@@ -263,22 +266,21 @@ def run_migrations():
                 ['Administrateur', 'Système', 'admin@local.fr',
                  'admin', hashed, 'admin', True]
             )
-    except Exception:
-        pass
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
 
 run_migrations()
 
-# Réinitialiser la connexion DB après les migrations
-# (psycopg2 n'est pas fork-safe : chaque worker gunicorn doit créer sa propre connexion)
+# Fermer le pool après les migrations — chaque worker Gunicorn crée le sien au démarrage
+# (psycopg2.pool.ThreadedConnectionPool n'est pas fork-safe)
 try:
     from app.services.database_service import DatabaseService
-    if DatabaseService._connection and not DatabaseService._connection.closed:
-        DatabaseService._connection.close()
-    DatabaseService._connection = None
-    DatabaseService._instance = None
-except Exception:
-    pass
+    if DatabaseService._pool is not None:
+        DatabaseService._pool.closeall()
+        DatabaseService._pool = None
+except Exception as _me:
+    _mlog.warning("Pool reset after migrations: %s", _me)
 
 
 @app.after_request
