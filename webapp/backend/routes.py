@@ -1557,11 +1557,14 @@ def remove_projet_contact_libre(projet_id):
 @routes.route('/projet/<int:projet_id>/jalons', methods=['GET'])
 @require_auth()
 def get_jalons(projet_id):
-    rows = projet_service.db.fetch_all(
-        "SELECT * FROM jalons WHERE projet_id=%s ORDER BY date_echeance ASC NULLS LAST",
-        [projet_id]
-    )
-    return jsonify({"list": [dict(r) for r in (rows or [])]})
+    try:
+        rows = projet_service.db.fetch_all(
+            "SELECT * FROM jalons WHERE projet_id=%s ORDER BY date_echeance ASC NULLS LAST",
+            [projet_id]
+        )
+        return jsonify({"list": [dict(r) for r in (rows or [])]})
+    except Exception as e:
+        return jsonify({"list": [], "warning": str(e)}), 200
 
 
 @routes.route('/projet/<int:projet_id>/jalons', methods=['POST'])
@@ -1616,11 +1619,14 @@ def delete_jalon(projet_id, jalon_id):
 @routes.route('/projet/<int:projet_id>/journal', methods=['GET'])
 @require_auth()
 def get_journal_projet(projet_id):
-    rows = projet_service.db.fetch_all(
-        "SELECT * FROM journal_projet WHERE projet_id=%s ORDER BY date_entree DESC",
-        [projet_id]
-    )
-    return jsonify({"list": [dict(r) for r in (rows or [])]})
+    try:
+        rows = projet_service.db.fetch_all(
+            "SELECT * FROM journal_projet WHERE projet_id=%s ORDER BY date_entree DESC",
+            [projet_id]
+        )
+        return jsonify({"list": [dict(r) for r in (rows or [])]})
+    except Exception as e:
+        return jsonify({"list": [], "warning": str(e)}), 200
 
 
 @routes.route('/projet/<int:projet_id>/journal', methods=['POST'])
