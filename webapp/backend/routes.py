@@ -2813,3 +2813,85 @@ def toggle_module(module_name):
         return _ok(enabled=enabled)
     except Exception as e:
         return _err(e)
+
+
+# ── SMTP config & test ─────────────────────────────────────────────────────────
+
+@routes.route('/admin/smtp/config', methods=['GET'])
+@require_auth('admin')
+def get_smtp_config():
+    """Retourne la config SMTP (sans le mot de passe)."""
+    import os
+    return jsonify({
+        'host':    os.getenv('SMTP_HOST', ''),
+        'port':    os.getenv('SMTP_PORT', '587'),
+        'user':    os.getenv('SMTP_USER', ''),
+        'from':    os.getenv('SMTP_FROM', ''),
+        'tls':     os.getenv('SMTP_TLS', 'true'),
+        'configured': bool(os.getenv('SMTP_HOST') and os.getenv('SMTP_USER')),
+    })
+
+
+@routes.route('/admin/smtp/test', methods=['POST'])
+@require_auth('admin')
+def test_smtp():
+    """Teste la connexion SMTP et envoie un mail de test."""
+    import os, smtplib, ssl
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    data = request.json or {}
+    to_email = data.get('to_email', '').strip()
+    if not to_email:
+        return _err("Email destinataire requis")
+
+    host   = os.getenv('SMTP_HOST', '')
+    port   = int(os.getenv('SMTP_PORT', '587'))
+    user   = os.getenv('SMTP_USER', '')
+    passwd = os.getenv('SMTP_PASS', '')
+    from_  = os.getenv('SMTP_FROM', user)
+    use_tls = os.getenv('SMTP_TLS', 'true').lower() not in ('false', '0', 'no')
+
+    if not host:
+        return _err("SMTP_HOST non configuré dans les variables d'environnement")
+    if not user:
+        return _err("SMTP_USER non configuré dans les variables d'environnement")
+
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = '[Budget Manager] Test de connexion SMTP'
+        msg['From']    = from_
+        msg['To']      = to_email
+        html = """<html><body>
+            <p>✅ <strong>La connexion SMTP fonctionne correctement.</strong></p>
+            <p>Ce message a été envoyé automatiquement par Budget Manager Pro pour valider la configuration.</p>
+            <hr><small>Serveur : {host}:{port} — TLS : {tls}</small>
+        </body></html>""".format(host=host, port=port, tls='oui' if use_tls else 'non')
+        msg.attach(MIMEText(html, 'html', 'utf-8'))
+
+        if use_tls:
+            context = ssl.create_default_context()
+            with smtplib.SMTP(host, port, timeout=10) as smtp:
+                smtp.ehlo()
+                smtp.starttls(context=context)
+                smtp.ehlo()
+                if passwd:
+                    smtp.login(user, passwd)
+                smtp.sendmail(from_, [to_email], msg.as_string())
+        else:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(host, port, context=context, timeout=10) as smtp:
+                if passwd:
+                    smtp.login(user, passwd)
+                smtp.sendmail(from_, [to_email], msg.as_string())
+
+        return _ok(message=f"Email de test envoyé à {to_email}")
+
+    except smtplib.SMTPAuthenticationError:
+        return _err("Échec d'authentification — vérifiez SMTP_USER et SMTP_PASS"), 400
+    except smtplib.SMTPConnectError:
+        return _err(f"Impossible de se connecter à {host}:{port}"), 400
+    except TimeoutError:
+        return _err(f"Timeout — {host}:{port} ne répond pas (vérifiez le port et le pare-feu)"), 400
+    except Exception as e:
+        return _err(f"Erreur SMTP : {e}"), 400
