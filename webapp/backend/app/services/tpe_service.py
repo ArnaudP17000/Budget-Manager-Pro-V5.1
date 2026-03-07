@@ -248,16 +248,61 @@ class TpeService:
             return 0  # déjà peuplé
 
         with open(path, encoding='utf-8') as f:
-            records = json.load(f)
+            raw = json.load(f)
+
+        # Support format imbriqué (TpeComplet-v2) ou format plat
+        records = raw.get('tpes', raw) if isinstance(raw, dict) else raw
 
         imported = 0
         for rec in records:
             try:
-                self.create(rec)
+                flat = self._normalize_import(rec)
+                self.create(flat)
                 imported += 1
             except Exception as e:
                 logger.warning("TPE import skipped: %s", e)
         return imported
+
+    @staticmethod
+    def _normalize_import(rec):
+        """Convertit le format imbriqué TpeComplet-v2 vers le format plat."""
+        # Déjà plat (champs directs)
+        if 'regisseur_nom' in rec or 'regisseur_prenom' in rec:
+            return rec
+
+        reg  = rec.get('regisseur') or {}
+        bo   = rec.get('acces_backoffice') or {}
+        ttyp = rec.get('type_tpe') or {}
+        net  = ttyp.get('config_reseau') or {}
+
+        cartes_src = rec.get('cartes_commercant') or rec.get('cartes') or []
+        cartes = [
+            {
+                'numero':          str(c.get('numero', '')),
+                'numero_serie_tpe': c.get('numero_serie_tpe'),
+                'modele_tpe':       c.get('modele_tpe'),
+            }
+            for c in cartes_src if c.get('numero')
+        ]
+
+        return {
+            'service':               rec.get('service'),
+            'regisseur_prenom':      reg.get('prenom'),
+            'regisseur_nom':         reg.get('nom'),
+            'regisseur_telephone':   reg.get('telephone'),
+            'regisseurs_suppleants': rec.get('regisseurs_suppleants'),
+            'shop_id':               rec.get('shop_id', 0),
+            'backoffice_actif':      bool(bo.get('actif')),
+            'backoffice_email':      bo.get('email'),
+            'modele_tpe':            rec.get('modele_tpe'),
+            'type_ethernet':         bool(ttyp.get('ethernet')),
+            'type_4_5g':             bool(ttyp.get('quatre_cinq_g')),
+            'reseau_ip':             net.get('adresse_ip'),
+            'reseau_masque':         net.get('masque'),
+            'reseau_passerelle':     net.get('passerelle'),
+            'nombre_tpe':            rec.get('nombre_tpe', 1),
+            'cartes':                cartes,
+        }
 
     # ── Cartes (helper interne) ────────────────────────────────────────────
     def _save_cartes(self, tpe_id, cartes):
