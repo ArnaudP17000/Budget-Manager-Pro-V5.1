@@ -50,6 +50,8 @@ class DatabaseService:
 
     def _get_conn(self):
         """Emprunte une connexion au pool, réinitialise si nécessaire."""
+        if DatabaseService._pool is None:
+            self._init_pool()
         try:
             return DatabaseService._pool.getconn()
         except psycopg2.pool.PoolError:
