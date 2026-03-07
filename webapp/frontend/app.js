@@ -3237,25 +3237,29 @@ async function loadServices() {
     }
 }
 
-function _serviceRowHtml(s) {
+function _serviceRowHtml(s, hasChildren) {
     let badge, rowStyle = '';
     if (s._isDir) {
         badge = '<span style="background:#7b2d8b;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Direction</span>';
-        rowStyle = 'style="background:#faf5ff;font-weight:bold;"';
+        rowStyle = 'background:#faf5ff;font-weight:bold;';
     } else if (s._isUnite) {
         badge = '<span style="background:#27ae60;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Unité</span>';
     } else {
         badge = '<span style="background:#2563a8;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Service</span>';
     }
     const depth = s._depth || 0;
-    const indent = depth === 1 ? '&nbsp;&nbsp;&nbsp;└─ ' : depth >= 2 ? '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ ' : '';
+    const padLeft = depth * 22; // px indent
+    const toggleBtn = hasChildren
+        ? `<span class="svc-toggle" data-open="0" data-id="${s.id}" onclick="toggleServiceBranch(${s.id})" title="Développer / Réduire"
+              style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#e0d4f0;color:#7b2d8b;font-size:.8em;margin-right:5px;user-select:none;">▶</span>`
+        : `<span style="display:inline-block;width:20px;margin-right:5px;"></span>`;
     const nbP = s.nb_personnes != null ? s.nb_personnes : '-';
     const nbM = s.nb_membres || 0;
-    return `<tr ${rowStyle}>
+    return `<tr data-svc-id="${s.id}" data-svc-parent="${s.parent_id || ''}" data-svc-depth="${depth}" style="${rowStyle}">
         <td>${badge}</td>
         <td><strong>${s.code || '-'}</strong></td>
-        <td>${indent}${s.nom || '-'}</td>
-        <td>${s.responsable_nom || '-'}</td>
+        <td style="padding-left:${padLeft}px;">${toggleBtn}${_h(s.nom || '-')}</td>
+        <td>${_h(s.responsable_nom || '-')}</td>
         <td style="text-align:center;">${nbP}</td>
         <td style="text-align:center;">${nbM > 0 ? `<span style="color:#2563a8;font-weight:bold;">${nbM}</span>` : '-'}</td>
         <td style="white-space:nowrap;">
@@ -3267,6 +3271,37 @@ function _serviceRowHtml(s) {
     </tr>`;
 }
 
+function toggleServiceBranch(id) {
+    const btn = document.querySelector(`#services-tbody .svc-toggle[data-id="${id}"]`);
+    if (!btn) return;
+    const isOpen = btn.dataset.open === '1';
+    // Fermer : cacher récursivement tous les descendants
+    function _hideDescendants(parentId) {
+        document.querySelectorAll(`#services-tbody tr[data-svc-parent="${parentId}"]`).forEach(tr => {
+            tr.style.display = 'none';
+            const childId = tr.dataset.svcId;
+            const childBtn = tr.querySelector('.svc-toggle');
+            if (childBtn) { childBtn.dataset.open = '0'; childBtn.textContent = '▶'; }
+            _hideDescendants(childId);
+        });
+    }
+    // Ouvrir : afficher uniquement les enfants directs
+    function _showChildren(parentId) {
+        document.querySelectorAll(`#services-tbody tr[data-svc-parent="${parentId}"]`).forEach(tr => {
+            tr.style.display = '';
+        });
+    }
+    if (isOpen) {
+        _hideDescendants(id);
+        btn.dataset.open = '0';
+        btn.textContent = '▶';
+    } else {
+        _showChildren(id);
+        btn.dataset.open = '1';
+        btn.textContent = '▼';
+    }
+}
+
 function renderServicesTable() {
     const q = (document.getElementById('service-search')?.value || '').toLowerCase().trim();
     let rows = _servicesRows;
@@ -3276,12 +3311,11 @@ function renderServicesTable() {
         rows = rows.filter(s =>
             (s.code || '').toLowerCase().includes(q) ||
             (s.nom  || '').toLowerCase().includes(q) ||
-            (s.responsable_nom || '').toLowerCase().includes(q) ||
-            (s.parent_nom || '').toLowerCase().includes(q)
+            (s.responsable_nom || '').toLowerCase().includes(q)
         );
     }
 
-    // Tri colonne
+    // Tri colonne (désactive la vue arbre)
     if (_servicesSortCol) {
         const col = _servicesSortCol;
         rows = [...rows].sort((a, b) => {
@@ -3296,8 +3330,19 @@ function renderServicesTable() {
         });
     }
 
-    document.getElementById('services-tbody').innerHTML = rows.map(_serviceRowHtml).join('') ||
-        '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:16px;">Aucun résultat</td></tr>';
+    // Calculer quels IDs ont des enfants
+    const childParents = new Set(rows.map(s => s.parent_id).filter(Boolean));
+
+    document.getElementById('services-tbody').innerHTML = rows.map(s =>
+        _serviceRowHtml(s, childParents.has(s.id))
+    ).join('') || '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:16px;">Aucun résultat</td></tr>';
+
+    // Vue arbre : par défaut, masquer les noeuds enfants (depth > 0) si pas de recherche active
+    if (!q && !_servicesSortCol) {
+        document.querySelectorAll('#services-tbody tr[data-svc-depth]').forEach(tr => {
+            if (parseInt(tr.dataset.svcDepth) > 0) tr.style.display = 'none';
+        });
+    }
 
     // Indicateurs de tri
     ['type','code','nom','responsable_nom'].forEach(c => {
