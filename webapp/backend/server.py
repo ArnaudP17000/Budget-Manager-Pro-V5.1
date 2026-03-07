@@ -106,6 +106,12 @@ def run_migrations():
         )
     except Exception as _me:
         _mlog.warning("Migration skipped: %s", _me)
+    try:
+        db.execute(
+            "ALTER TABLE services ADD COLUMN IF NOT EXISTS is_direction BOOLEAN DEFAULT FALSE"
+        )
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Colonne projet_contacts (contact libre + contact_id nullable) ─────
     try:
