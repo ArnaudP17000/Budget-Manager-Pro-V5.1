@@ -2844,24 +2844,23 @@ async function editTache(id) {
     // Type de tâche
     const typeSel = document.getElementById('edit-tache-type');
     if (typeSel) typeSel.value = data.type_tache || 'autre';
-    toggleRapportEditor();
-    // Rapport de réunion (Quill)
-    if (_quillRapport) {
-        _quillRapport.root.innerHTML = data.rapport_reunion || '';
-    } else if ((data.type_tache || 'autre') === 'reunion') {
-        // Quill sera initialisé par toggleRapportEditor — on définit le contenu après
-        setTimeout(() => { if (_quillRapport) _quillRapport.root.innerHTML = data.rapport_reunion || ''; }, 50);
-    }
+    const _pendingRapport = data.rapport_reunion || '';
     openModal('modal-edit-tache');
+    // Init Quill APRÈS ouverture (modal visible sinon Quill ne mesure pas le container)
+    requestAnimationFrame(() => {
+        toggleRapportEditor();
+        if (_quillRapport) {
+            _quillRapport.clipboard.dangerouslyPasteHTML(0, _pendingRapport);
+        }
+    });
 }
 
 async function saveTache() {
     const id = document.getElementById('edit-tache-id').value;
     const assigneeVal = document.getElementById('edit-tache-assignee')?.value;
     const typeTache = document.getElementById('edit-tache-type')?.value || 'autre';
-    const rapportHtml = (_quillRapport && typeTache === 'reunion')
-        ? _quillRapport.root.innerHTML
-        : null;
+    const _rawRapport = (_quillRapport && typeTache === 'reunion') ? _quillRapport.root.innerHTML : '';
+    const rapportHtml = (_rawRapport && _rawRapport !== '<p><br></p>') ? _rawRapport : null;
     const body = {
         titre:             document.getElementById('edit-tache-titre').value,
         projet_id:         document.getElementById('edit-tache-projet').value || null,
