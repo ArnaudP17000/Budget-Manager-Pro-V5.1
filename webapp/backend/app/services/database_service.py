@@ -71,7 +71,7 @@ class DatabaseService:
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(query, params or [])
-                return [dict(r) for r in cur.fetchall()]
+                rows = [dict(r) for r in cur.fetchall()]
         except Exception:
             try:
                 conn.rollback()
@@ -82,6 +82,7 @@ class DatabaseService:
             raise
         else:
             self._put_conn(conn)
+        return rows
 
     def fetch_one(self, query, params=None):
         conn = self._get_conn()
@@ -89,7 +90,7 @@ class DatabaseService:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(query, params or [])
                 row = cur.fetchone()
-                return dict(row) if row else None
+                result = dict(row) if row else None
         except Exception:
             try:
                 conn.rollback()
@@ -100,6 +101,7 @@ class DatabaseService:
             raise
         else:
             self._put_conn(conn)
+        return result
 
     def execute(self, query, params=None):
         """Exécute une requête d'écriture (INSERT/UPDATE/DELETE/DDL) et commit."""
@@ -127,7 +129,6 @@ class DatabaseService:
                 cur.execute(query, params or [])
                 result = cur.fetchone()
             conn.commit()
-            return result
         except Exception:
             try:
                 conn.rollback()
@@ -138,6 +139,7 @@ class DatabaseService:
             raise
         else:
             self._put_conn(conn)
+        return result
 
 
 # Singleton partagé entre tous les services
