@@ -3,6 +3,7 @@ import logging
 from flask import Flask, send_from_directory, jsonify
 import os
 from routes import routes
+from tpe_routes import tpe_routes  # TPE MODULE — retirer cette ligne pour désinstaller
 
 _mlog = logging.getLogger('migrations')
 
@@ -10,6 +11,7 @@ FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'fr
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path='')
 app.register_blueprint(routes, url_prefix='/api')
+app.register_blueprint(tpe_routes, url_prefix='/api')  # TPE MODULE
 
 
 def run_migrations():
@@ -248,6 +250,75 @@ def run_migrations():
         )
     except Exception as _me:
         _mlog.warning("Migration skipped: %s", _me)
+
+    # ── TPE MODULE : tables + données initiales ──────────────────
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS modules_config (
+                module_name VARCHAR(50) PRIMARY KEY,
+                enabled     BOOLEAN DEFAULT FALSE,
+                date_activation TIMESTAMP DEFAULT NOW()
+            )
+        """)
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
+    try:
+        db.execute("""
+            INSERT INTO modules_config (module_name, enabled)
+            VALUES ('tpe', FALSE)
+            ON CONFLICT (module_name) DO NOTHING
+        """)
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS tpe (
+                id                   SERIAL PRIMARY KEY,
+                service              VARCHAR(300) NOT NULL,
+                regisseur_prenom     VARCHAR(100),
+                regisseur_nom        VARCHAR(100),
+                regisseur_telephone  VARCHAR(30),
+                regisseurs_suppleants TEXT,
+                shop_id              BIGINT DEFAULT 0,
+                backoffice_actif     BOOLEAN DEFAULT FALSE,
+                backoffice_email     VARCHAR(200),
+                modele_tpe           VARCHAR(100),
+                type_ethernet        BOOLEAN DEFAULT FALSE,
+                type_4_5g            BOOLEAN DEFAULT FALSE,
+                reseau_ip            VARCHAR(20),
+                reseau_masque        VARCHAR(20),
+                reseau_passerelle    VARCHAR(20),
+                nombre_tpe           INTEGER DEFAULT 1,
+                created_by_id        INTEGER,
+                date_creation        TIMESTAMP DEFAULT NOW(),
+                date_maj             TIMESTAMP
+            )
+        """)
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS tpe_cartes (
+                id               SERIAL PRIMARY KEY,
+                tpe_id           INTEGER NOT NULL REFERENCES tpe(id) ON DELETE CASCADE,
+                numero           VARCHAR(100) NOT NULL,
+                numero_serie_tpe VARCHAR(100),
+                modele_tpe       VARCHAR(100)
+            )
+        """)
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
+    # Import données initiales si la table est vide
+    try:
+        _import_path = os.path.join(os.path.dirname(__file__), 'data', 'tpe_import.json')
+        if os.path.exists(_import_path):
+            from app.services.tpe_service import TpeService as _TpeSvc
+            _n = _TpeSvc().import_from_json(_import_path)
+            if _n:
+                _mlog.info("TPE: %d enregistrements importés", _n)
+    except Exception as _me:
+        _mlog.warning("TPE import skipped: %s", _me)
+    # ── /TPE MODULE ───────────────────────────────────────────────
 
     # ── Resync séquences (évite duplicate key après import CSV) ─
     for table in ['projets', 'services', 'utilisateurs', 'contacts',

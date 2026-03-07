@@ -2748,3 +2748,45 @@ def export_budget():
         )
     except Exception as e:
         return jsonify({"error": str(e), "detail": traceback.format_exc()}), 500
+
+
+# ─────────────────────────────────────────────
+# MODULES (activation plugins — admin)
+# ─────────────────────────────────────────────
+
+@routes.route('/modules', methods=['GET'])
+def get_modules_public():
+    """Public : retourne les modules et leur statut (utilisé par le frontend au login)."""
+    try:
+        rows = auth_service.db.fetch_all(
+            "SELECT module_name, enabled FROM modules_config ORDER BY module_name"
+        )
+        return jsonify({"list": rows or []})
+    except Exception:
+        return jsonify({"list": []})
+
+
+@routes.route('/admin/modules', methods=['GET'])
+@require_auth('admin')
+def get_modules_admin():
+    rows = auth_service.db.fetch_all(
+        "SELECT module_name, enabled, date_activation FROM modules_config ORDER BY module_name"
+    )
+    return jsonify({"list": rows or []})
+
+
+@routes.route('/admin/modules/<string:module_name>', methods=['PUT'])
+@require_auth('admin')
+def toggle_module(module_name):
+    data = request.json or {}
+    enabled = bool(data.get('enabled', False))
+    try:
+        auth_service.db.execute("""
+            INSERT INTO modules_config (module_name, enabled, date_activation)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (module_name) DO UPDATE
+                SET enabled=EXCLUDED.enabled, date_activation=NOW()
+        """, [module_name, enabled])
+        return _ok(enabled=enabled)
+    except Exception as e:
+        return _err(e)
