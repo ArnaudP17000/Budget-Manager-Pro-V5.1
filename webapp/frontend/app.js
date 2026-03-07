@@ -4328,8 +4328,12 @@ async function loadTpe() {
 function _renderTpeRows(list) {
     const tbody = document.getElementById('tpe-tbody');
     if (!tbody) return;
+    // Réinitialiser l'état de sélection
+    _updateTpeBulkBar();
+    const chkAll = document.getElementById('tpe-check-all');
+    if (chkAll) chkAll.checked = false;
     if (!list.length) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:16px;font-style:italic;">Aucun TPE enregistré.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#999;padding:16px;font-style:italic;">Aucun TPE enregistré.</td></tr>';
         return;
     }
     const p = decodeToken(getToken());
@@ -4349,9 +4353,10 @@ function _renderTpeRows(list) {
             : '<span style="color:#ccc;">Non</span>';
         const actions = canEdit
             ? `<button class="btn btn-sm" onclick="editTpe(${t.id})" style="margin-right:4px;">Modifier</button>
-               <button class="btn btn-danger btn-sm" onclick="deleteTpe(${t.id}, '${_h(t.service).replace(/'/g,'&#39;')}')">Suppr.</button>`
+               <button class="btn btn-danger btn-sm" onclick="deleteTpe(${t.id}, '${_h(t.service).replace(/['\u2018\u2019]/g,'&#39;')}')">Suppr.</button>`
             : '';
         return `<tr>
+            <td style="text-align:center;"><input type="checkbox" class="tpe-chk" value="${t.id}" onchange="_updateTpeBulkBar()"></td>
             <td>${_h(t.service)}</td>
             <td>${_h(regisseur)}</td>
             <td>${_h(t.regisseur_telephone) || '-'}</td>
@@ -4364,6 +4369,54 @@ function _renderTpeRows(list) {
             <td>${actions}</td>
         </tr>`;
     }).join('');
+}
+
+function toggleAllTpe() {
+    const checked = document.getElementById('tpe-check-all')?.checked;
+    document.querySelectorAll('#tpe-tbody .tpe-chk').forEach(cb => { cb.checked = checked; });
+    _updateTpeBulkBar();
+}
+
+function _updateTpeBulkBar() {
+    const selected = document.querySelectorAll('#tpe-tbody .tpe-chk:checked');
+    const bar = document.getElementById('tpe-bulk-bar');
+    const cnt = document.getElementById('tpe-bulk-count');
+    if (!bar) return;
+    if (selected.length > 0) {
+        bar.style.display = 'flex';
+        if (cnt) cnt.textContent = `${selected.length} TPE sélectionné${selected.length > 1 ? 's' : ''}`;
+    } else {
+        bar.style.display = 'none';
+    }
+    // Mettre à jour l'état indéterminé de la case "tout sélectionner"
+    const all = document.querySelectorAll('#tpe-tbody .tpe-chk');
+    const chkAll = document.getElementById('tpe-check-all');
+    if (chkAll) {
+        chkAll.indeterminate = selected.length > 0 && selected.length < all.length;
+        chkAll.checked = all.length > 0 && selected.length === all.length;
+    }
+}
+
+function clearTpeSelection() {
+    document.querySelectorAll('#tpe-tbody .tpe-chk').forEach(cb => { cb.checked = false; });
+    const chkAll = document.getElementById('tpe-check-all');
+    if (chkAll) { chkAll.checked = false; chkAll.indeterminate = false; }
+    _updateTpeBulkBar();
+}
+
+async function deleteTpeSelected() {
+    const checked = [...document.querySelectorAll('#tpe-tbody .tpe-chk:checked')];
+    if (!checked.length) return;
+    if (!confirm(`Supprimer ${checked.length} TPE sélectionné${checked.length > 1 ? 's' : ''} ?`)) return;
+    let errors = 0;
+    for (const cb of checked) {
+        try {
+            await apiFetch(`/tpe/${cb.value}`, { method: 'DELETE' });
+        } catch { errors++; }
+    }
+    if (errors) showMsg(`${checked.length - errors} supprimé(s), ${errors} erreur(s).`, false);
+    else showMsg(`${checked.length} TPE supprimé${checked.length > 1 ? 's' : ''}.`);
+    loadTpe();
 }
 
 // ─── TPE : export Excel ──────────────────────────────────────
