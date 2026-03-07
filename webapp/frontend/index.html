@@ -149,6 +149,18 @@
 
         .tbl-wrap { overflow-x: auto; }
 
+        /* ── Colonnes redimensionnables ── */
+        .resizable-table { table-layout: fixed; width: 100%; }
+        .resizable-table th { position: relative; overflow: hidden; white-space: nowrap; }
+        .col-resizer {
+            position: absolute; right: 0; top: 0;
+            width: 5px; height: 100%;
+            cursor: col-resize; user-select: none;
+            background: transparent;
+            z-index: 1;
+        }
+        .col-resizer:hover, .col-resizer.is-dragging { background: rgba(255,255,255,0.45); }
+
         .badge {
             display: inline-block; padding: 2px 8px; border-radius: 12px;
             font-size: .75em; font-weight: bold; white-space: nowrap;
@@ -1010,22 +1022,22 @@
     </div>
     <!-- Table -->
     <div class="tbl-wrap">
-        <table>
+        <table id="tpe-table" class="resizable-table">
             <thead>
                 <tr>
-                    <th style="width:32px;text-align:center;">
+                    <th style="width:36px;text-align:center;">
                         <input type="checkbox" id="tpe-check-all" title="Tout sélectionner" onchange="toggleAllTpe()">
                     </th>
-                    <th>Service</th>
-                    <th>Régisseur</th>
-                    <th>Tél.</th>
-                    <th>Shop ID</th>
-                    <th>Modèle</th>
-                    <th>Type</th>
-                    <th>Cartes</th>
-                    <th>Backoffice</th>
-                    <th>Nb TPE</th>
-                    <th>Actions</th>
+                    <th style="width:180px;">Service</th>
+                    <th style="width:140px;">Régisseur</th>
+                    <th style="width:110px;">Tél.</th>
+                    <th style="width:100px;">Shop ID</th>
+                    <th style="width:130px;">Modèle</th>
+                    <th style="width:100px;">Type</th>
+                    <th style="width:160px;">Cartes</th>
+                    <th style="width:150px;">Backoffice</th>
+                    <th style="width:70px;">Nb TPE</th>
+                    <th style="width:120px;">Actions</th>
                 </tr>
             </thead>
             <tbody id="tpe-tbody"></tbody>
@@ -1892,6 +1904,6 @@
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="app.js?v=6.16"></script>
+<script src="app.js?v=6.17"></script>
 </body>
 </html>
