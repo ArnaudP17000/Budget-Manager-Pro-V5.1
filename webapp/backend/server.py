@@ -308,6 +308,13 @@ def run_migrations():
         """)
     except Exception as _me:
         _mlog.warning("Migration skipped: %s", _me)
+    # ── Colonne email régisseur sur tpe ──────────────────────────────────
+    try:
+        db.execute(
+            "ALTER TABLE tpe ADD COLUMN IF NOT EXISTS regisseur_email VARCHAR(200)"
+        )
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
     # Import données initiales si la table est vide
     try:
         _import_path = os.path.join(os.path.dirname(__file__), 'data', 'tpe_import.json')

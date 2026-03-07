@@ -4491,7 +4491,7 @@ function _getTpeCartes() {
 }
 
 function _resetTpeModal() {
-    ['tpe-id','tpe-service','tpe-reg-prenom','tpe-reg-nom','tpe-reg-tel',
+    ['tpe-id','tpe-service','tpe-reg-prenom','tpe-reg-nom','tpe-reg-tel','tpe-reg-email',
      'tpe-suppleants','tpe-shop-id','tpe-nombre','tpe-modele',
      'tpe-backoffice-email','tpe-reseau-ip','tpe-reseau-masque','tpe-reseau-passerelle'
     ].forEach(id => {
@@ -4527,6 +4527,7 @@ async function editTpe(id) {
         document.getElementById('tpe-reg-prenom').value     = t.regisseur_prenom || '';
         document.getElementById('tpe-reg-nom').value        = t.regisseur_nom || '';
         document.getElementById('tpe-reg-tel').value        = t.regisseur_telephone || '';
+        document.getElementById('tpe-reg-email').value      = t.regisseur_email || '';
         document.getElementById('tpe-suppleants').value     = t.regisseurs_suppleants || '';
         document.getElementById('tpe-shop-id').value        = t.shop_id ?? '';
         document.getElementById('tpe-nombre').value         = t.nombre_tpe ?? 1;
@@ -4558,6 +4559,7 @@ async function saveTpe() {
         regisseur_prenom:    document.getElementById('tpe-reg-prenom').value.trim() || null,
         regisseur_nom:       document.getElementById('tpe-reg-nom').value.trim()    || null,
         regisseur_telephone: document.getElementById('tpe-reg-tel').value.trim()    || null,
+        regisseur_email:     document.getElementById('tpe-reg-email').value.trim()  || null,
         regisseurs_suppleants: document.getElementById('tpe-suppleants').value.trim() || null,
         shop_id:             parseInt(document.getElementById('tpe-shop-id').value)  || 0,
         nombre_tpe:          parseInt(document.getElementById('tpe-nombre').value)   || 1,

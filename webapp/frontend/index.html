@@ -1823,10 +1823,8 @@
             </div>
             <div><label>Prénom régisseur</label><input id="tpe-reg-prenom" class="form-control"></div>
             <div><label>Nom régisseur</label><input id="tpe-reg-nom" class="form-control"></div>
-            <div style="grid-column:1/-1;">
-                <label>Téléphone régisseur</label>
-                <input id="tpe-reg-tel" class="form-control" placeholder="0601020304">
-            </div>
+            <div><label>Téléphone régisseur</label><input id="tpe-reg-tel" class="form-control" placeholder="0601020304"></div>
+            <div><label>Email régisseur</label><input id="tpe-reg-email" class="form-control" type="email" placeholder="prenom.nom@domaine.fr"></div>
             <div style="grid-column:1/-1;">
                 <label>Régisseurs suppléants</label>
                 <textarea id="tpe-suppleants" class="form-control" rows="2" placeholder="Noms des suppléants…"></textarea>
@@ -1835,7 +1833,11 @@
             <div><label>Nombre de TPE</label><input id="tpe-nombre" class="form-control" type="number" min="1" value="1"></div>
             <div style="grid-column:1/-1;">
                 <label>Modèle TPE</label>
-                <input id="tpe-modele" class="form-control" placeholder="ex : Ingenico iWL250">
+                <select id="tpe-modele" class="form-control">
+                    <option value="">— Sélectionner —</option>
+                    <option value="Ingenico Move 5000">Ingenico Move 5000</option>
+                    <option value="Ingenico Desk 5000">Ingenico Desk 5000</option>
+                </select>
             </div>
 
             <!-- Backoffice -->
@@ -1890,6 +1892,6 @@
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="app.js?v=6.15"></script>
+<script src="app.js?v=6.16"></script>
 </body>
 </html>

@@ -83,12 +83,14 @@ class TpeService:
         row = self.db.execute_returning("""
             INSERT INTO tpe (
                 service, regisseur_prenom, regisseur_nom, regisseur_telephone,
+                regisseur_email,
                 regisseurs_suppleants, shop_id, backoffice_actif, backoffice_email,
                 modele_tpe, type_ethernet, type_4_5g,
                 reseau_ip, reseau_masque, reseau_passerelle,
                 nombre_tpe, created_by_id, date_maj
             ) VALUES (
                 %s,%s,%s,%s,
+                %s,
                 %s,%s,%s,%s,
                 %s,%s,%s,
                 %s,%s,%s,
@@ -99,6 +101,7 @@ class TpeService:
             data.get('regisseur_prenom'),
             data.get('regisseur_nom'),
             data.get('regisseur_telephone'),
+            data.get('regisseur_email'),
             data.get('regisseurs_suppleants'),
             data.get('shop_id', 0),
             bool(data.get('backoffice_actif')),
@@ -124,6 +127,7 @@ class TpeService:
                 regisseur_prenom      = %s,
                 regisseur_nom         = %s,
                 regisseur_telephone   = %s,
+                regisseur_email       = %s,
                 regisseurs_suppleants = %s,
                 shop_id               = %s,
                 backoffice_actif      = %s,
@@ -142,6 +146,7 @@ class TpeService:
             data.get('regisseur_prenom'),
             data.get('regisseur_nom'),
             data.get('regisseur_telephone'),
+            data.get('regisseur_email'),
             data.get('regisseurs_suppleants'),
             data.get('shop_id', 0),
             bool(data.get('backoffice_actif')),
