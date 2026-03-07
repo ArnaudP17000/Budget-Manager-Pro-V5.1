@@ -97,6 +97,15 @@ function showMsg(text, ok = true) {
     setTimeout(() => { el.style.display = 'none'; }, 3000);
 }
 
+// ── Sécurité : échappement HTML systématique pour innerHTML ──────────────
+// Utiliser _h() pour toute donnée utilisateur insérée dans le DOM via innerHTML.
+const _hDiv = document.createElement('div');
+function _h(s) {
+    if (s == null) return '';
+    _hDiv.textContent = String(s);
+    return _hDiv.innerHTML;
+}
+
 function fmt(n) {
     if (n == null || n === '') return '-';
     return Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1611,13 +1620,13 @@ function _renderProjets(list) {
     tbody.innerHTML = list.map(p => `
         <tr>
             <td style="text-align:center;">${_ragDot(p.statut_rag)}</td>
-            <td>${p.code || '-'}</td>
-            <td><strong>${p.nom || '-'}</strong></td>
-            <td style="font-size:.8em;">${p.type_projet || '-'}</td>
-            <td style="font-size:.8em;">${p.phase || '-'}</td>
+            <td>${_h(p.code) || '-'}</td>
+            <td><strong>${_h(p.nom) || '-'}</strong></td>
+            <td style="font-size:.8em;">${_h(p.type_projet) || '-'}</td>
+            <td style="font-size:.8em;">${_h(p.phase) || '-'}</td>
             <td>${badge(p.statut)}</td>
             <td>${badge(p.priorite)}</td>
-            <td style="font-size:.8em;">${p.service_code || p.service_nom || '-'}</td>
+            <td style="font-size:.8em;">${_h(p.service_code || p.service_nom) || '-'}</td>
             <td>${fmt(p.budget_estime)}</td>
             <td>${p.avancement != null ? p.avancement + ' %' : '-'}</td>
             <td>${fmtDate(p.date_debut)}</td>
@@ -1790,8 +1799,8 @@ function _renderJalons() {
             const isLate = echeance && echeance < now && j.statut === 'A_VENIR';
             const dateStr = echeance ? echeance.toLocaleDateString('fr-FR') : '-';
             return `<tr style="border-bottom:1px solid #eee;${isLate?'background:#fff5f5;':''}">
-                <td style="padding:6px 8px;">${j.titre || ''}</td>
-                <td style="padding:6px 8px;white-space:nowrap;">${dateStr}</td>
+                <td style="padding:6px 8px;">${_h(j.titre)}</td>
+                <td style="padding:6px 8px;white-space:nowrap;">${_h(dateStr)}</td>
                 <td style="padding:6px 8px;"><span style="border-radius:10px;padding:2px 8px;font-size:.8em;font-weight:bold;${st}">${stLbl}</span></td>
                 <td style="padding:6px 8px;text-align:center;">
                     <button class="btn btn-danger btn-sm" onclick="deleteJalon(${j.id})">✕</button>
@@ -1851,11 +1860,11 @@ function _renderJournal() {
         const dt = e.date_entree ? new Date(e.date_entree).toLocaleString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
         return `<div style="padding:8px 12px;border-radius:4px;margin-bottom:8px;${st}">
             <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
-                <span style="font-size:.75em;font-weight:bold;text-transform:uppercase;">${stLbl}</span>
-                <span style="font-size:.72em;opacity:.7;">${dt}${e.auteur ? ' — ' + e.auteur : ''}</span>
+                <span style="font-size:.75em;font-weight:bold;text-transform:uppercase;">${_h(stLbl)}</span>
+                <span style="font-size:.72em;opacity:.7;">${_h(dt)}${e.auteur ? ' — ' + _h(e.auteur) : ''}</span>
                 <button onclick="deleteJournalEntry(${e.id})" style="background:none;border:none;cursor:pointer;opacity:.5;font-size:.9em;padding:0 2px;">✕</button>
             </div>
-            <div style="font-size:.85em;white-space:pre-wrap;">${e.contenu || ''}</div>
+            <div style="font-size:.85em;white-space:pre-wrap;">${_h(e.contenu)}</div>
         </div>`;
     }).join('');
 }
@@ -1902,8 +1911,8 @@ function _renderPortfolio(list) {
         return `<tr>
             <td style="text-align:center;">${_ragDot(p.statut_rag)}</td>
             <td style="font-size:.8em;">${p.code || '-'}</td>
-            <td><button onclick="openProjetDashboard(${p.id})" style="background:none;border:none;cursor:pointer;text-align:left;font-size:.85em;font-weight:600;color:#2563a8;padding:0;">${p.nom || '-'}</button></td>
-            <td style="font-size:.78em;">${p.phase || '-'}</td>
+            <td><button onclick="openProjetDashboard(${p.id})" style="background:none;border:none;cursor:pointer;text-align:left;font-size:.85em;font-weight:600;color:#2563a8;padding:0;">${_h(p.nom) || '-'}</button></td>
+            <td style="font-size:.78em;">${_h(p.phase) || '-'}</td>
             <td style="min-width:90px;">${avBar}</td>
             <td style="font-size:.8em;">${fmt(p.budget_estime || 0)}</td>
             <td style="font-size:.78em;text-align:center;">-</td>

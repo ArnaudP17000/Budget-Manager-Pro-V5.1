@@ -1,5 +1,14 @@
 import logging
+from decimal import Decimal, InvalidOperation
 from app.services.database_service import DatabaseService
+
+
+def _dec(v):
+    """Convertit une valeur en Decimal sans lever d'exception."""
+    try:
+        return Decimal(str(v)) if v is not None else Decimal(0)
+    except InvalidOperation:
+        return Decimal(0)
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +61,8 @@ class ProjetService:
                 s = t.get('statut', 'Inconnu')
                 stats_taches[s] = stats_taches.get(s, 0) + 1
             p['taches_stats'] = stats_taches
-            p['heures_estimees'] = sum(float(t.get('estimation_heures') or 0) for t in p['taches'])
-            p['heures_reelles']  = sum(float(t.get('heures_reelles') or 0) for t in p['taches'])
+            p['heures_estimees'] = float(sum(_dec(t.get('estimation_heures')) for t in p['taches']))
+            p['heures_reelles']  = float(sum(_dec(t.get('heures_reelles'))  for t in p['taches']))
             bcs = self.db.fetch_all(
                 "SELECT bc.id, bc.numero_bc, bc.objet, bc.montant_ht, bc.montant_ttc, "
                 "bc.statut, bc.date_creation, f.nom as fournisseur_nom "
@@ -63,14 +72,17 @@ class ProjetService:
                 [projet_id]
             )
             p['bons_commande'] = [dict(b) for b in bcs] if bcs else []
-            # Budget consommé calculé depuis les BCs (IMPUTE + SOLDE)
+            # Budget consommé calculé depuis les BCs (IMPUTE + SOLDE + VALIDE)
+            # Utilisation de Decimal pour éviter les erreurs d'arrondi float
             bc_consomme = sum(
-                float(b.get('montant_ttc') or 0)
+                _dec(b.get('montant_ttc'))
                 for b in p['bons_commande']
                 if b.get('statut') in ('IMPUTE', 'SOLDE', 'VALIDE')
             )
-            p['budget_consomme_calcule'] = round(bc_consomme, 2)
-            p['montant_bc_total'] = round(sum(float(b.get('montant_ttc') or 0) for b in p['bons_commande']), 2)
+            p['budget_consomme_calcule'] = float(round(bc_consomme, 2))
+            p['montant_bc_total'] = float(round(
+                sum(_dec(b.get('montant_ttc')) for b in p['bons_commande']), 2
+            ))
 
             # ── Équipe : membres (projet_equipe → utilisateurs) ─────────────
             try:
