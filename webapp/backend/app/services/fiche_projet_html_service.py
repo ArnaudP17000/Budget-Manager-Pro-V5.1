@@ -347,11 +347,25 @@ body.edit-mode .contact-ac-wrap{{display:block}}
     if taches:
         for i, tk in enumerate(taches):
             bg = GRAY4 if i % 2 else '#fff'
+            ttype = tk.get('type_tache', 'autre')
+            if ttype == 'reunion':
+                type_badge = ' <span style="background:#1565C0;color:#fff;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:bold;">Réunion</span>'
+            elif ttype == 'bc':
+                type_badge = ' <span style="background:#e67e22;color:#fff;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:bold;">BC</span>'
+            else:
+                type_badge = ''
             h += (f'<tr style="background:{bg}">'
-                  f'<td style="width:55%">{_e(tk.get("titre",""))}</td>'
+                  f'<td style="width:55%">{_e(tk.get("titre",""))}{type_badge}</td>'
                   f'<td class="ctr">{_e(tk.get("statut",""))}</td>'
                   f'<td class="val ctr">{_e(tk.get("echeance",""))}</td>'
                   f'<td class="val ctr">{_e(tk.get("heures",""))}</td></tr>\n')
+            rapport = (tk.get('rapport_reunion') or '').strip()
+            if ttype == 'reunion' and rapport:
+                h += (f'<tr style="background:{bg}">'
+                      f'<td colspan="4" style="padding:8px 14px;font-size:10px;border-top:1px dashed #ccc;">'
+                      f'<strong style="color:#1565C0;">Rapport de réunion :</strong>'
+                      f'<div style="margin-top:5px;line-height:1.5;">{rapport}</div>'
+                      f'</td></tr>\n')
     else:
         h += '<tr><td colspan="4" style="text-align:center;color:#888;padding:16px">Aucune tâche enregistrée</td></tr>\n'
     h += (f'<tr><td colspan="4" class="vv" style="background:#fafafa;padding:4px 8px;font-size:10px;color:#888">'
@@ -843,12 +857,14 @@ def generer_fiche_html_depuis_id_pg(projet_id: int, db) -> str:
 
     # Tâches
     taches_rows = db.fetch_all(
-        "SELECT titre, statut, date_echeance, estimation_heures "
+        "SELECT titre, statut, date_echeance, estimation_heures, type_tache, rapport_reunion "
         "FROM taches WHERE projet_id=%s ORDER BY date_echeance", [projet_id]
     ) or []
     taches = [{'titre': r.get('titre') or '', 'statut': r.get('statut') or '',
                'echeance': _fmt_date(r.get('date_echeance')),
-               'heures': f"{int(r.get('estimation_heures') or 0)}h"} for r in taches_rows]
+               'heures': f"{int(r.get('estimation_heures') or 0)}h",
+               'type_tache': r.get('type_tache') or 'autre',
+               'rapport_reunion': r.get('rapport_reunion') or ''} for r in taches_rows]
 
     # Bons de commande
     bcs_rows = db.fetch_all(
