@@ -4392,9 +4392,10 @@ function _renderTpeRows(list) {
         const cartesStr = cartes.length
             ? cartes.map(c => _h(c.numero)).join(', ')
             : '<span style="color:#ccc;">—</span>';
+        const boEmail = t.backoffice_email ? `<br><small style="color:#555;">${_h(t.backoffice_email)}</small>` : '';
         const bo = t.backoffice_actif
-            ? `<span style="color:#27ae60;">Oui${t.backoffice_email ? ' (' + _h(t.backoffice_email) + ')' : ''}</span>`
-            : '<span style="color:#ccc;">Non</span>';
+            ? `<span style="color:#27ae60;">Oui</span>${boEmail}`
+            : `<span style="color:#ccc;">Non</span>${boEmail}`;
         const actions = canEdit
             ? `<button class="btn btn-sm" onclick="editTpe(${t.id})" style="margin-right:4px;">Modifier</button>
                <button class="btn btn-danger btn-sm" onclick="deleteTpe(${t.id}, '${_h(t.service).replace(/['\u2018\u2019]/g,'&#39;')}')">Suppr.</button>`
@@ -4538,7 +4539,7 @@ function _getTpeCartes() {
 }
 
 function _resetTpeModal() {
-    ['tpe-id','tpe-service','tpe-reg-prenom','tpe-reg-nom','tpe-reg-tel','tpe-reg-email',
+    ['tpe-id','tpe-service','tpe-reg-prenom','tpe-reg-nom','tpe-reg-tel',
      'tpe-suppleants','tpe-shop-id','tpe-nombre','tpe-modele',
      'tpe-backoffice-email','tpe-reseau-ip','tpe-reseau-masque','tpe-reseau-passerelle'
     ].forEach(id => {
@@ -4574,7 +4575,6 @@ async function editTpe(id) {
         document.getElementById('tpe-reg-prenom').value     = t.regisseur_prenom || '';
         document.getElementById('tpe-reg-nom').value        = t.regisseur_nom || '';
         document.getElementById('tpe-reg-tel').value        = t.regisseur_telephone || '';
-        document.getElementById('tpe-reg-email').value      = t.regisseur_email || '';
         document.getElementById('tpe-suppleants').value     = t.regisseurs_suppleants || '';
         document.getElementById('tpe-shop-id').value        = t.shop_id ?? '';
         document.getElementById('tpe-nombre').value         = t.nombre_tpe ?? 1;
@@ -4606,7 +4606,6 @@ async function saveTpe() {
         regisseur_prenom:    document.getElementById('tpe-reg-prenom').value.trim() || null,
         regisseur_nom:       document.getElementById('tpe-reg-nom').value.trim()    || null,
         regisseur_telephone: document.getElementById('tpe-reg-tel').value.trim()    || null,
-        regisseur_email:     document.getElementById('tpe-reg-email').value.trim()  || null,
         regisseurs_suppleants: document.getElementById('tpe-suppleants').value.trim() || null,
         shop_id:             parseInt(document.getElementById('tpe-shop-id').value)  || 0,
         nombre_tpe:          parseInt(document.getElementById('tpe-nombre').value)   || 1,
