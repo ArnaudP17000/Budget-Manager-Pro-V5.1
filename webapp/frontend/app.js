@@ -51,6 +51,7 @@ async function doLogin() {
             return;
         }
         setToken(data.token);
+        _sessionExpired = false;
         hideLoginOverlay();
         applyRoleUI(data.user);
         initRefs().then(() => { loadDashboard(); loadNotifications(); });
@@ -180,14 +181,19 @@ function progressBar(val, max) {
     </div><small>${pct}%</small>`;
 }
 
+let _sessionExpired = false; // évite les déconnexions multiples simultanées
+
 async function apiFetch(path, opts = {}) {
     const token = getToken();
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = 'Bearer ' + token;
     const res = await fetch(API + path, { headers, ...opts });
     if (res.status === 401) {
-        removeToken();
-        showLoginOverlay();
+        if (!_sessionExpired) {
+            _sessionExpired = true;
+            removeToken();
+            showLoginOverlay();
+        }
         throw new Error('Session expirée, veuillez vous reconnecter');
     }
     if (res.status === 403) {
