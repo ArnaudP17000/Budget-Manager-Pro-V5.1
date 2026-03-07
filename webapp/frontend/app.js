@@ -3002,14 +3002,20 @@ async function editFournisseur(id) {
     document.getElementById('edit-fournisseur-adresse').value  = data.adresse || '';
     document.getElementById('edit-fournisseur-ville').value    = data.ville || '';
 
-    // Charger les contacts existants dans le select
+    // Charger uniquement les contacts PRESTATAIRE dans le select
     const sel = document.getElementById('fournisseur-contact-select');
     sel.innerHTML = '<option value="">— Sélectionner un contact existant —</option>';
     try {
-        const cd = await apiFetch('/contact');
+        const cd = await apiFetch('/contact?type=PRESTATAIRE');
         (cd.list || []).forEach(c => {
             const label = [c.nom, c.prenom, c.societe || c.organisation].filter(Boolean).join(' – ');
-            sel.innerHTML += `<option value="${c.id}">${label}</option>`;
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = label;
+            opt.dataset.nom       = [c.nom, c.prenom].filter(Boolean).join(' ');
+            opt.dataset.email     = c.email || '';
+            opt.dataset.telephone = c.telephone || '';
+            sel.appendChild(opt);
         });
     } catch(e) {}
 
@@ -3038,6 +3044,15 @@ async function loadFournisseurContacts(fournisseurId) {
     } catch(e) {
         container.innerHTML = '<p style="color:#c00;font-size:.82em;">Erreur chargement contacts.</p>';
     }
+}
+
+function prefillFournisseurFromContact(sel) {
+    const opt = sel.selectedOptions[0];
+    if (!opt || !opt.value) return;
+    const _set = (id, val) => { const el = document.getElementById(id); if (el && !el.value) el.value = val; };
+    _set('edit-fournisseur-contact',   opt.dataset.nom);
+    _set('edit-fournisseur-email',     opt.dataset.email);
+    _set('edit-fournisseur-telephone', opt.dataset.telephone);
 }
 
 async function linkContactFournisseur() {

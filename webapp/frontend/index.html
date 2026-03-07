@@ -1777,7 +1777,7 @@
             <div style="font-size:.85em;font-weight:600;color:#2563a8;margin-bottom:8px;">Contacts liés</div>
             <div id="fournisseur-contacts-list" style="margin-bottom:10px;"></div>
             <div style="display:flex;gap:8px;align-items:center;">
-                <select id="fournisseur-contact-select" style="flex:1;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;">
+                <select id="fournisseur-contact-select" style="flex:1;padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:.85em;" onchange="prefillFournisseurFromContact(this)">
                     <option value="">— Sélectionner un contact existant —</option>
                 </select>
                 <button class="btn btn-primary btn-sm" onclick="linkContactFournisseur()">Lier</button>
@@ -1959,6 +1959,6 @@
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
-<script src="app.js?v=6.24"></script>
+<script src="app.js?v=6.25"></script>
 </body>
 </html>
