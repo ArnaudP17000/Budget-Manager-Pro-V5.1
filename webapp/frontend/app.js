@@ -3184,30 +3184,41 @@ let _servicesSortAsc = true;
 
 async function loadServices() {
     try {
-        // Services (critique — séparé des contacts)
         const data = await apiFetch('/service_org');
         const services = data.list || [];
 
-        // Build ordered rows (parents → enfants)
-        const parents = services.filter(s => !s.parent_id);
+        // Arbre 3 niveaux : Direction → Service → Unité
         const rows = [];
-        parents.forEach(p => {
-            rows.push({ ...p, _isUnite: !!p.is_unite });
-            services.filter(c => c.parent_id === p.id).forEach(c => rows.push({ ...c, _isUnite: !!c.is_unite }));
-        });
+        function _buildTree(parentId, depth) {
+            services
+                .filter(s => (s.parent_id || null) === parentId)
+                .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr'))
+                .forEach(s => {
+                    rows.push({ ...s, _isUnite: !!s.is_unite, _isDir: !!s.is_direction, _depth: depth });
+                    _buildTree(s.id, depth + 1);
+                });
+        }
+        _buildTree(null, 0);
+        // Orphelins non vus (sécurité)
         const seen = new Set(rows.map(s => s.id));
-        services.filter(s => !seen.has(s.id)).forEach(s => rows.push({ ...s, _isUnite: !!s.is_unite }));
+        services.filter(s => !seen.has(s.id)).forEach(s =>
+            rows.push({ ...s, _isUnite: !!s.is_unite, _isDir: !!s.is_direction, _depth: 0 })
+        );
 
         _servicesRows = rows;
         _servicesSortCol = '';
         _servicesSortAsc = true;
         renderServicesTable();
 
-        // Select service parent (formulaire ajout)
+        // Select service parent (formulaire ajout) — affichage hiérarchique
         const parentSel = document.getElementById('service-parent');
         if (parentSel) {
-            parentSel.innerHTML = '<option value="">-- Service parent (optionnel) --</option>' +
-                services.map(s => `<option value="${s.id}">${s.code ? s.code + ' - ' : ''}${s.nom}</option>`).join('');
+            parentSel.innerHTML = '<option value="">-- Parent (optionnel) --</option>' +
+                rows.map(s => {
+                    const prefix = '&nbsp;&nbsp;'.repeat(s._depth);
+                    const typeLabel = s._isDir ? '[Dir]' : s._isUnite ? '[Unité]' : '[Svc]';
+                    return `<option value="${s.id}">${prefix}${typeLabel} ${s.code ? s.code + ' – ' : ''}${s.nom}</option>`;
+                }).join('');
         }
 
         // Contacts pour responsable (non-bloquant)
@@ -3227,17 +3238,24 @@ async function loadServices() {
 }
 
 function _serviceRowHtml(s) {
-    const badge = s._isUnite
-        ? '<span style="background:#27ae60;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Unité</span>'
-        : '<span style="background:#2563a8;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Service</span>';
+    let badge, rowStyle = '';
+    if (s._isDir) {
+        badge = '<span style="background:#7b2d8b;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Direction</span>';
+        rowStyle = 'style="background:#faf5ff;font-weight:bold;"';
+    } else if (s._isUnite) {
+        badge = '<span style="background:#27ae60;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Unité</span>';
+    } else {
+        badge = '<span style="background:#2563a8;color:#fff;padding:2px 7px;border-radius:10px;font-size:.75em;">Service</span>';
+    }
+    const depth = s._depth || 0;
+    const indent = depth === 1 ? '&nbsp;&nbsp;&nbsp;└─ ' : depth >= 2 ? '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ ' : '';
     const nbP = s.nb_personnes != null ? s.nb_personnes : '-';
     const nbM = s.nb_membres || 0;
-    return `<tr>
+    return `<tr ${rowStyle}>
         <td>${badge}</td>
         <td><strong>${s.code || '-'}</strong></td>
-        <td>${s.nom || '-'}</td>
+        <td>${indent}${s.nom || '-'}</td>
         <td>${s.responsable_nom || '-'}</td>
-        <td style="font-size:.85em;">${s.parent_nom || '-'}</td>
         <td style="text-align:center;">${nbP}</td>
         <td style="text-align:center;">${nbM > 0 ? `<span style="color:#2563a8;font-weight:bold;">${nbM}</span>` : '-'}</td>
         <td style="white-space:nowrap;">
@@ -3267,18 +3285,22 @@ function renderServicesTable() {
     if (_servicesSortCol) {
         const col = _servicesSortCol;
         rows = [...rows].sort((a, b) => {
-            let va = col === 'type' ? (a._isUnite ? 'Unité' : 'Service') : (a[col] || '');
-            let vb = col === 'type' ? (b._isUnite ? 'Unité' : 'Service') : (b[col] || '');
+            let va = col === 'type'
+                ? (a._isDir ? 'Direction' : a._isUnite ? 'Unité' : 'Service')
+                : (a[col] || '');
+            let vb = col === 'type'
+                ? (b._isDir ? 'Direction' : b._isUnite ? 'Unité' : 'Service')
+                : (b[col] || '');
             va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
             return _servicesSortAsc ? va.localeCompare(vb, 'fr') : vb.localeCompare(va, 'fr');
         });
     }
 
     document.getElementById('services-tbody').innerHTML = rows.map(_serviceRowHtml).join('') ||
-        '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:16px;">Aucun résultat</td></tr>';
+        '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:16px;">Aucun résultat</td></tr>';
 
     // Indicateurs de tri
-    ['type','code','nom','responsable_nom','parent_nom'].forEach(c => {
+    ['type','code','nom','responsable_nom'].forEach(c => {
         const el = document.getElementById(`sort-services-${c}`);
         if (el) el.textContent = _servicesSortCol === c ? (_servicesSortAsc ? ' ▲' : ' ▼') : ' ↕';
     });
@@ -3300,13 +3322,15 @@ async function addService() {
     const parentVal = document.getElementById('service-parent')?.value;
     const respVal   = document.getElementById('service-responsable')?.value;
     const nbP       = document.getElementById('service-nb-personnes')?.value;
+    const svcType = document.getElementById('service-type')?.value || 'service';
     const body = {
         code:           document.getElementById('service-code').value.trim(),
         nom:            document.getElementById('service-nom').value.trim(),
         parent_id:      parentVal ? parseInt(parentVal) : null,
         responsable_id: respVal   ? parseInt(respVal)   : null,
         nb_personnes:   nbP       ? parseInt(nbP)        : null,
-        is_unite:       document.getElementById('service-is-unite')?.checked || false,
+        is_direction:   svcType === 'direction',
+        is_unite:       svcType === 'unite',
     };
     if (!body.nom) { showMsg('Le nom est obligatoire', false); return; }
     try {
@@ -3346,23 +3370,34 @@ async function editService(id) {
         const s = services.find(x => x.id === id);
         if (!s) return;
 
-        const isUnite = !!s.is_unite;
+        const typeVal = s.is_direction ? 'direction' : (s.is_unite ? 'unite' : 'service');
+        const typeLabel = s.is_direction ? 'Direction' : (s.is_unite ? 'Unité' : 'Service');
         const titleEl = document.getElementById('edit-service-title');
-        if (titleEl) titleEl.textContent = isUnite ? 'Modifier l\'unité' : 'Modifier le service';
+        if (titleEl) titleEl.textContent = 'Modifier — ' + typeLabel;
 
         document.getElementById('edit-service-id').value            = id;
         document.getElementById('edit-service-code').value          = s.code || '';
         document.getElementById('edit-service-nom').value           = s.nom  || '';
         document.getElementById('edit-service-nb-personnes').value  = s.nb_personnes != null ? s.nb_personnes : '';
         document.getElementById('edit-service-membres').value       = s.membres_label || '';
-        const isUniteChk = document.getElementById('edit-service-is-unite');
-        if (isUniteChk) isUniteChk.checked = isUnite;
+        const typeSel = document.getElementById('edit-service-type');
+        if (typeSel) typeSel.value = typeVal;
 
+        // Construire select parent hiérarchique (exclure soi-même)
+        const parentRows = [];
+        function _buildEditTree(pid, depth) {
+            services.filter(x => (x.parent_id || null) === pid && x.id !== id)
+                .sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr'))
+                .forEach(x => { parentRows.push({ ...x, _depth: depth }); _buildEditTree(x.id, depth + 1); });
+        }
+        _buildEditTree(null, 0);
         const parentSel = document.getElementById('edit-service-parent');
-        parentSel.innerHTML = '<option value="">-- Aucun (service racine) --</option>' +
-            services.filter(x => x.id !== id).map(x =>
-                `<option value="${x.id}" ${s.parent_id === x.id ? 'selected' : ''}>${x.code ? x.code + ' - ' : ''}${x.nom}</option>`
-            ).join('');
+        parentSel.innerHTML = '<option value="">-- Aucun (racine) --</option>' +
+            parentRows.map(x => {
+                const prefix = '\u00a0\u00a0'.repeat(x._depth);
+                const tl = x.is_direction ? '[Dir]' : x.is_unite ? '[Unité]' : '[Svc]';
+                return `<option value="${x.id}" ${s.parent_id === x.id ? 'selected' : ''}>${prefix}${tl} ${x.code ? x.code + ' – ' : ''}${x.nom}</option>`;
+            }).join('');
 
         const respSel = document.getElementById('edit-service-responsable');
         respSel.innerHTML = '<option value="">-- Aucun --</option>' +
@@ -3396,7 +3431,8 @@ async function saveEditService() {
         responsable_id: respVal   ? parseInt(respVal)   : null,
         nb_personnes:   nbP       ? parseInt(nbP)        : null,
         membres_label:  document.getElementById('edit-service-membres').value || null,
-        is_unite:       document.getElementById('edit-service-is-unite')?.checked || false,
+        is_direction:   document.getElementById('edit-service-type')?.value === 'direction',
+        is_unite:       document.getElementById('edit-service-type')?.value === 'unite',
     };
     if (!body.nom) { showMsg('Le nom est obligatoire', false); return; }
     try {

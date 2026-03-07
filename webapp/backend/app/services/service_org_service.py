@@ -46,22 +46,22 @@ class ServiceOrgService:
 
     def create(self, data):
         self.db.execute(
-            "INSERT INTO services (code, nom, responsable_id, parent_id, nb_personnes, membres_label, is_unite) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            "INSERT INTO services (code, nom, responsable_id, parent_id, nb_personnes, membres_label, is_unite, is_direction) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
             [data.get('code'), data.get('nom'),
              data.get('responsable_id') or None, data.get('parent_id') or None,
              data.get('nb_personnes') or None, data.get('membres_label') or None,
-             bool(data.get('is_unite'))]
+             bool(data.get('is_unite')), bool(data.get('is_direction'))]
         )
 
     def update(self, service_id, data):
         self.db.execute(
             "UPDATE services SET code=%s, nom=%s, responsable_id=%s, parent_id=%s, "
-            "nb_personnes=%s, membres_label=%s, is_unite=%s WHERE id=%s",
+            "nb_personnes=%s, membres_label=%s, is_unite=%s, is_direction=%s WHERE id=%s",
             [data.get('code'), data.get('nom'),
              data.get('responsable_id') or None, data.get('parent_id') or None,
              data.get('nb_personnes') or None, data.get('membres_label') or None,
-             bool(data.get('is_unite')),
+             bool(data.get('is_unite')), bool(data.get('is_direction')),
              service_id]
         )
 
