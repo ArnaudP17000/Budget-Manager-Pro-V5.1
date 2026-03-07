@@ -67,12 +67,12 @@ function doLogout() {
     showLoginOverlay();
 }
 
-// ─── Déconnexion automatique après 5 min d'inactivité ───
+// ─── Déconnexion automatique après 30 min d'inactivité ───
 let inactivityTimeout;
 
 function resetInactivityTimer() {
     clearTimeout(inactivityTimeout);
-    inactivityTimeout = setTimeout(doLogout, 5 * 60 * 1000); // 5 minutes
+    inactivityTimeout = setTimeout(doLogout, 30 * 60 * 1000); // 30 minutes
 }
 
 ['mousemove', 'keydown', 'mousedown', 'touchstart'].forEach(event => {
