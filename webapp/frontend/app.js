@@ -1337,7 +1337,7 @@ function _renderContratsRows() {
             <td>${fmtDate(c.date_fin)}</td>
             <td>${jours}</td>
             <td>${badge(c.statut)}</td>
-            <td style="font-size:.78em;">${c.type_contrat || '-'}</td>
+            <td style="font-size:.78em;">${{MARCHE_PUBLIC:'Marché public',MAPA:'MAPA',ACCORD_CADRE:'Accord-cadre',CONVENTION:'Convention',DSP:'DSP'}[c.type_marche] || c.type_marche || '-'}</td>
             <td>${alerteBadge(niveau)}</td>
             <td style="font-size:.78em;color:#555;">${c.createur_nom ? c.createur_nom.trim() : '<span style="color:#bbb">—</span>'}</td>
             <td style="white-space:nowrap;">
