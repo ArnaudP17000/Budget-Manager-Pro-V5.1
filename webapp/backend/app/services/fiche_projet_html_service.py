@@ -203,6 +203,24 @@ body.edit-mode .val input.ef,body.edit-mode .val textarea.ef,
 body.edit-mode .val select.ef{{background:#fdf4ff}}
 body.edit-mode .val-g input.ef{{background:#f5f5f5}}
 
+/* Autocomplete contact */
+.contact-ac-wrap{{display:none;position:relative}}
+body.edit-mode .contact-ac-wrap{{display:block}}
+.ac-input{{width:100%;border:1px solid #93c;border-radius:3px;padding:5px 8px;font-size:11px;
+  background:#fdf4ff;font-family:inherit;box-sizing:border-box;outline:none}}
+.ac-input:focus{{border-color:#6f42c1;box-shadow:0 0 0 2px rgba(111,66,193,.15)}}
+.ac-input.ac-ok{{border-color:#198754;background:#f0fdf4}}
+.ac-input.ac-err{{border-color:#dc3545;background:#fff5f5}}
+.ac-drop{{position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;
+  border:1px solid #93c;border-radius:4px;box-shadow:0 4px 14px rgba(0,0,0,.18);
+  max-height:200px;overflow-y:auto;z-index:9999;display:none}}
+.ac-drop.open{{display:block}}
+.ac-item{{padding:6px 9px;cursor:pointer;font-size:11px;border-bottom:1px solid #f0e0ff;line-height:1.5}}
+.ac-item:last-child{{border-bottom:none}}
+.ac-item:hover,.ac-item.ac-active{{background:#ede0ff}}
+.ac-item .ac-sub{{color:#888;font-size:10px;margin-left:5px}}
+.ac-empty{{padding:10px;color:#999;font-size:11px;text-align:center;font-style:italic}}
+
 /* Registre risques editor */
 #risques-editor table{{width:100%;border-collapse:collapse}}
 #risques-editor td,#risques-editor th{{border:1px solid #bbb;padding:3px 5px;font-size:10px}}
@@ -273,19 +291,16 @@ body.edit-mode .val-g input.ef{{background:#f5f5f5}}
         ('row-resp', 'Responsable métier',  p.get('responsable',''), 'responsable_contact_id'),
     ]:
         cid = p.get(contact_id_field) or ''
+        vv_html = _e(contact_name) if contact_name else "<em style='color:#aaa'>Non défini</em>"
         h += (f'<tr id="{row_id}">'
               f'<td class="lbl">{_e(role_lbl)}</td>'
               f'<td class="val-w" colspan="3">'
-              f'<span class="vv">{_e(contact_name) or "<em style=\'color:#aaa\'>Non défini</em>"}</span>'
-              f'<div class="ef ef-flex">'
-              f'<input class="ef" type="text" placeholder="Rechercher un contact…" '
-              f'oninput="filterContactSelect(this, \'sel-{contact_id_field}\')" '
-              f'style="border:1px solid #93c;border-radius:3px;padding:3px 6px;font-size:11px">'
-              f'<select id="sel-{contact_id_field}" name="{_e(contact_id_field)}" class="ef" '
-              f'size="4" data-current="{_e(cid)}" '
-              f'style="border:1px solid #93c;border-radius:3px;font-size:11px;min-width:280px">'
-              f'<option value="">-- Aucun --</option>'
-              f'</select>'
+              f'<span class="vv">{vv_html}</span>'
+              f'<div class="contact-ac-wrap">'
+              f'<input class="ac-input" type="text" placeholder="Tapez un nom, prénom ou fonction…" '
+              f'data-field="{_e(contact_id_field)}" autocomplete="off" spellcheck="false">'
+              f'<input type="hidden" name="{_e(contact_id_field)}" class="ef" value="{_e(str(cid))}">'
+              f'<div class="ac-drop"></div>'
               f'</div>'
               f'</td></tr>\n')
     for role, nom, fn, email in acteurs[2:]:
@@ -685,8 +700,9 @@ function _esc(s) {{
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }}
 
-// Charger les contacts pour les selects chef/responsable
+// ── Autocomplete contacts ──────────────────────────────────────────────────
 let _allContacts = [];
+
 async function loadContactsForSelects() {{
   try {{
     const res = await fetch('/api/contact', {{
@@ -694,37 +710,106 @@ async function loadContactsForSelects() {{
     }});
     const data = await res.json();
     _allContacts = data.list || [];
-    ['chef_projet_contact_id','responsable_contact_id'].forEach(field => {{
-      _populateContactSelect('sel-' + field, field);
-    }});
+    document.querySelectorAll('.ac-input').forEach(ac => initContactAC(ac));
   }} catch(e) {{ console.warn('Contacts load:', e); }}
 }}
 
-function _populateContactSelect(selId, field, filterText) {{
-  const sel = document.getElementById(selId);
-  if (!sel) return;
-  const current = sel.dataset.current;
-  const q = (filterText || '').toLowerCase().trim();
-  const filtered = q
-    ? _allContacts.filter(c => {{
-        const txt = ((c.prenom||'') + ' ' + (c.nom||'') + ' ' + (c.fonction||'') + ' ' + (c.email||'')).toLowerCase();
-        return txt.includes(q);
-      }})
-    : _allContacts;
-  sel.innerHTML = '<option value="">-- Aucun --</option>';
-  filtered.forEach(c => {{
-    const nom = ((c.prenom||'') + ' ' + (c.nom||'')).trim();
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = nom + (c.fonction ? ' — ' + c.fonction : '');
-    if (String(c.id) === String(current)) opt.selected = true;
-    sel.appendChild(opt);
-  }});
+function _cLabel(c) {{
+  const nom = ((c.prenom||'')+' '+(c.nom||'')).trim();
+  return nom + (c.fonction ? ' \u2014 '+c.fonction : '');
 }}
 
-function filterContactSelect(input, selId) {{
-  const field = selId.replace('sel-', '');
-  _populateContactSelect(selId, field, input.value);
+function _hilight(text, q) {{
+  if (!q) return _esc(text);
+  const i = text.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0) return _esc(text);
+  return _esc(text.slice(0,i))+'<strong>'+_esc(text.slice(i,i+q.length))+'</strong>'+_esc(text.slice(i+q.length));
+}}
+
+function initContactAC(acInput) {{
+  const hidden = acInput.nextElementSibling;   // <input type="hidden" name="...">
+  const drop   = hidden.nextElementSibling;    // <div class="ac-drop">
+  let activeIdx = -1;
+
+  // Pré-remplir si un contact est déjà sélectionné
+  if (hidden.value) {{
+    const c = _allContacts.find(c => String(c.id) === String(hidden.value));
+    if (c) {{ acInput.value = _cLabel(c); acInput.classList.add('ac-ok'); }}
+  }}
+
+  acInput.addEventListener('input', () => {{
+    hidden.value = '';
+    acInput.classList.remove('ac-ok', 'ac-err');
+    const q = acInput.value.trim();
+    if (!q) {{ _closeDrop(); return; }}
+    _showDrop(q);
+  }});
+
+  acInput.addEventListener('focus', () => {{
+    if (acInput.value.trim() && !hidden.value) _showDrop(acInput.value.trim());
+  }});
+
+  acInput.addEventListener('keydown', e => {{
+    const items = drop.querySelectorAll('.ac-item');
+    if (e.key === 'ArrowDown') {{
+      e.preventDefault();
+      activeIdx = Math.min(activeIdx+1, items.length-1);
+      _setActive(items);
+    }} else if (e.key === 'ArrowUp') {{
+      e.preventDefault();
+      activeIdx = Math.max(activeIdx-1, 0);
+      _setActive(items);
+    }} else if (e.key === 'Enter') {{
+      e.preventDefault();
+      if (items[activeIdx]) items[activeIdx].click();
+    }} else if (e.key === 'Escape') {{
+      _closeDrop(); acInput.blur();
+    }}
+  }});
+
+  acInput.addEventListener('blur', () => {{
+    setTimeout(() => {{
+      _closeDrop();
+      if (acInput.value.trim() && !hidden.value) acInput.classList.add('ac-err');
+    }}, 200);
+  }});
+
+  function _showDrop(q) {{
+    activeIdx = -1;
+    const ql = q.toLowerCase();
+    const matches = ql
+      ? _allContacts.filter(c => ((c.prenom||'')+' '+(c.nom||'')+' '+(c.fonction||'')+' '+(c.email||'')).toLowerCase().includes(ql))
+      : _allContacts;
+    drop.innerHTML = '';
+    if (!matches.length) {{
+      drop.innerHTML = '<div class="ac-empty">Aucun contact trouvé</div>';
+    }} else {{
+      matches.slice(0, 14).forEach(c => {{
+        const nom = _cLabel(c);
+        const div = document.createElement('div');
+        div.className = 'ac-item';
+        div.innerHTML = _hilight(nom, q)
+          + (c.email ? '<span class="ac-sub">'+_esc(c.email)+'</span>' : '');
+        div.addEventListener('mousedown', ev => ev.preventDefault()); // empêche blur
+        div.addEventListener('click', () => {{
+          hidden.value = String(c.id);
+          acInput.value = nom;
+          acInput.classList.add('ac-ok');
+          acInput.classList.remove('ac-err');
+          _closeDrop();
+        }});
+        drop.appendChild(div);
+      }});
+    }}
+    drop.classList.add('open');
+  }}
+
+  function _closeDrop() {{ drop.classList.remove('open'); activeIdx = -1; }}
+
+  function _setActive(items) {{
+    items.forEach((it,i) => it.classList.toggle('ac-active', i===activeIdx));
+    if (items[activeIdx]) items[activeIdx].scrollIntoView({{block:'nearest'}});
+  }}
 }}
 
 // Réception token Word depuis parent
