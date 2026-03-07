@@ -16,6 +16,62 @@ from app.services.auth_service import AuthService
 
 routes = Blueprint('routes', __name__)
 
+# ── Helpers réponses standardisées ──────────────────────────────────────────
+
+def _err(msg, code=400):
+    """Réponse d'erreur uniforme : {"success": false, "error": "..."}"""
+    return jsonify({"success": False, "error": str(msg)}), code
+
+def _ok(**data):
+    """Réponse de succès uniforme : {"success": true, ...}"""
+    return jsonify({"success": True, **data})
+
+# ── Validation des inputs ────────────────────────────────────────────────────
+
+def _validate(data, rules):
+    """
+    Valide un dict de données.
+    rules = {
+        'field': {
+            'label':    str   (affiché dans l'erreur, défaut = nom du champ),
+            'required': bool,
+            'max':      int   (longueur max),
+            'type':     'number'|'email'|'date',
+            'enum':     list[str],
+        }
+    }
+    Retourne une liste de messages d'erreur (vide = valide).
+    """
+    errors = []
+    for field, rule in rules.items():
+        val  = data.get(field)
+        lbl  = rule.get('label', field)
+        sval = str(val).strip() if val is not None else ''
+
+        if rule.get('required') and not sval:
+            errors.append(f"'{lbl}' est obligatoire")
+            continue
+
+        if not sval:
+            continue  # champ vide non requis — ok
+
+        if rule.get('max') and len(sval) > rule['max']:
+            errors.append(f"'{lbl}' dépasse {rule['max']} caractères")
+
+        if rule.get('type') == 'number':
+            try:
+                float(val)
+            except (TypeError, ValueError):
+                errors.append(f"'{lbl}' doit être un nombre valide")
+
+        if rule.get('type') == 'email' and '@' not in sval:
+            errors.append(f"'{lbl}' n'est pas une adresse email valide")
+
+        if rule.get('enum') and sval not in rule['enum']:
+            errors.append(f"'{lbl}' : valeur invalide (attendu : {', '.join(rule['enum'])})")
+
+    return errors
+
 projet_service      = ProjetService()
 budget_service      = BudgetV5Service()
 bc_service          = BonCommandeService()
@@ -1341,11 +1397,22 @@ def get_projet(projet_id):
             return jsonify({"error": "Accès interdit"}), 403
     return jsonify(p)
 
+_PROJET_RULES = {
+    'code': {'label': 'Code projet', 'required': True, 'max': 50},
+    'nom':  {'label': 'Intitulé',    'required': True, 'max': 300},
+    'statut': {'label': 'Statut', 'enum': ['ACTIF','EN_ATTENTE','TERMINE','ANNULE','EN_PAUSE']},
+    'priorite': {'label': 'Priorité', 'enum': ['CRITIQUE','HAUTE','MOYENNE','BASSE','']},
+    'avancement': {'label': 'Avancement', 'type': 'number'},
+}
+
 @routes.route('/projet', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def create_projet():
-    data    = request.json
+    data    = request.json or {}
     user_id = g.user.get('sub')
+    errs = _validate(data, _PROJET_RULES)
+    if errs:
+        return _err(' | '.join(errs))
     try:
         projet_service.db.execute(
             "INSERT INTO projets (code, nom, description, statut, priorite, type_projet, phase, "
@@ -1371,7 +1438,10 @@ def create_projet():
 @routes.route('/projet/<int:projet_id>', methods=['PUT'])
 @require_auth('admin', 'gestionnaire')
 def update_projet(projet_id):
-    data = request.json
+    data = request.json or {}
+    errs = _validate(data, _PROJET_RULES)
+    if errs:
+        return _err(' | '.join(errs))
     try:
         import json as _json
         def _jstr(v):
@@ -1545,9 +1615,9 @@ def remove_projet_contact_libre(projet_id):
     data = request.json or {}
     try:
         projet_service.remove_projet_contact(projet_id, contact_libre=data.get('contact_libre'))
-        return jsonify({"ok": True})
+        return _ok()
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return _err(e)
 
 
 # ─────────────────────────────────────────────
@@ -1579,9 +1649,9 @@ def add_jalon(projet_id):
             [projet_id, data.get('titre'), data.get('date_echeance') or None,
              data.get('statut', 'A_VENIR'), data.get('description') or None, user_id]
         )
-        return jsonify({"success": True}), 201
+        return _ok(), 201
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        return _err(e)
 
 
 @routes.route('/projet/<int:projet_id>/jalons/<int:jalon_id>', methods=['PUT'])
@@ -1595,9 +1665,9 @@ def update_jalon(projet_id, jalon_id):
             [data.get('titre'), data.get('date_echeance') or None,
              data.get('statut'), data.get('description') or None, jalon_id, projet_id]
         )
-        return jsonify({"success": True})
+        return _ok()
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        return _err(e)
 
 
 @routes.route('/projet/<int:projet_id>/jalons/<int:jalon_id>', methods=['DELETE'])
@@ -1607,9 +1677,9 @@ def delete_jalon(projet_id, jalon_id):
         projet_service.db.execute(
             "DELETE FROM jalons WHERE id=%s AND projet_id=%s", [jalon_id, projet_id]
         )
-        return jsonify({"success": True})
+        return _ok()
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        return _err(e)
 
 
 # ─────────────────────────────────────────────
@@ -1643,9 +1713,9 @@ def add_journal_entry(projet_id):
             [projet_id, auteur, data.get('type_entree', 'EVENEMENT'),
              data.get('contenu', ''), user_id]
         )
-        return jsonify({"success": True}), 201
+        return _ok(), 201
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        return _err(e)
 
 
 @routes.route('/projet/<int:projet_id>/journal/<int:entry_id>', methods=['DELETE'])
@@ -1655,9 +1725,9 @@ def delete_journal_entry(projet_id, entry_id):
         projet_service.db.execute(
             "DELETE FROM journal_projet WHERE id=%s AND projet_id=%s", [entry_id, projet_id]
         )
-        return jsonify({"success": True})
+        return _ok()
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        return _err(e)
 
 
 # ─────────────────────────────────────────────
@@ -1670,14 +1740,14 @@ def update_rag(projet_id):
     data = request.json or {}
     rag = data.get('statut_rag', 'VERT')
     if rag not in ('ROUGE', 'AMBER', 'VERT'):
-        return jsonify({"success": False, "error": "Valeur RAG invalide"}), 400
+        return _err("Valeur RAG invalide")
     try:
         projet_service.db.execute(
             "UPDATE projets SET statut_rag=%s WHERE id=%s", [rag, projet_id]
         )
-        return jsonify({"success": True})
+        return _ok()
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        return _err(e)
 
 
 # ─────────────────────────────────────────────
@@ -1994,26 +2064,39 @@ def get_contacts():
 
     return jsonify({"count": len(contacts), "list": contacts})
 
+_CONTACT_RULES = {
+    'nom':   {'label': 'Nom',   'required': True, 'max': 200},
+    'prenom':{'label': 'Prénom','max': 200},
+    'email': {'label': 'Email', 'type': 'email', 'max': 200},
+    'type':  {'label': 'Type',  'enum': ['INTERNE','EXTERNE','PRESTATAIRE','PARTENAIRE','']},
+}
+
 @routes.route('/contact', methods=['POST'])
 @require_auth('admin', 'gestionnaire')
 def create_contact():
-    data = request.json
+    data = request.json or {}
+    errs = _validate(data, _CONTACT_RULES)
+    if errs:
+        return _err(' | '.join(errs))
     data['created_by_id'] = g.user.get('sub')
     try:
         contact_service.create(data)
-        return jsonify({"success": True}), 201
+        return _ok(), 201
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        return _err(e)
 
 @routes.route('/contact/<int:contact_id>', methods=['PUT'])
 @require_auth('admin', 'gestionnaire')
 def update_contact(contact_id):
-    data = request.json
+    data = request.json or {}
+    errs = _validate(data, _CONTACT_RULES)
+    if errs:
+        return _err(' | '.join(errs))
     try:
         contact_service.update(contact_id, data)
-        return jsonify({"success": True})
+        return _ok()
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        return _err(e)
 
 @routes.route('/contact/<int:contact_id>', methods=['DELETE'])
 @require_auth('admin')
