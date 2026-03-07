@@ -185,6 +185,14 @@ def run_migrations():
     except Exception as _me:
         _mlog.warning("Migration skipped: %s", _me)
 
+    # ── Colonne type_marche sur contrats ─────────────────────
+    try:
+        db.execute(
+            "ALTER TABLE contrats ADD COLUMN IF NOT EXISTS type_marche VARCHAR(50)"
+        )
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
+
     # ── Permissions budgets (accès explicite par utilisateur) ───
     try:
         db.execute("""
