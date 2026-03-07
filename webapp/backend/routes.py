@@ -1315,13 +1315,13 @@ def update_contrat(contrat_id):
         contrat_service.db.execute(
             "UPDATE contrats SET numero_contrat=%s, objet=%s, fournisseur_id=%s, "
             "montant_total_ht=%s, montant_ttc=%s, date_debut=%s, date_fin=%s, "
-            "statut=%s, date_maj=NOW() WHERE id=%s",
+            "statut=%s, type_marche=%s, date_maj=NOW() WHERE id=%s",
             [data.get('numero_contrat'), data.get('objet'), data.get('fournisseur_id') or None,
              montant_ht, round(montant_ht * 1.2, 2),
              data.get('date_debut') or None, data.get('date_fin') or None,
-             data.get('statut'), contrat_id]
+             data.get('statut'), data.get('type_marche') or None, contrat_id]
         )
-        return jsonify({"success": True})
+        return _ok()
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 

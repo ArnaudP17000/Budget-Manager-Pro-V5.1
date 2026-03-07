@@ -1558,6 +1558,15 @@
                 <input id="edit-contrat-debut" type="date" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
             <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Date fin</label>
                 <input id="edit-contrat-fin" type="date" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;"></div>
+            <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Type de marché</label>
+                <select id="edit-contrat-type" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">-- Type --</option>
+                    <option value="MARCHE_PUBLIC">Marché public</option>
+                    <option value="MAPA">MAPA</option>
+                    <option value="ACCORD_CADRE">Accord-cadre</option>
+                    <option value="CONVENTION">Convention</option>
+                    <option value="DSP">DSP</option>
+                </select></div>
             <div style="flex:1;min-width:130px;"><label style="font-size:.82em;color:#666;">Statut</label>
                 <select id="edit-contrat-statut" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
                     <option value="ACTIF">Actif</option>
@@ -1742,6 +1751,6 @@
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="app.js?v=6.10"></script>
+<script src="app.js?v=6.11"></script>
 </body>
 </html>
