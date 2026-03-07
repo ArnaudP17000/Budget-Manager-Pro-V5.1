@@ -1064,6 +1064,7 @@
         <div class="budget-subtab active" id="admin-tab-users" onclick="switchAdminTab('users')">Utilisateurs</div>
         <div class="budget-subtab" id="admin-tab-audit" onclick="switchAdminTab('audit')">Journal d'audit</div>
         <div class="budget-subtab" id="admin-tab-modules" onclick="switchAdminTab('modules')">Modules</div>
+        <div class="budget-subtab" id="admin-tab-smtp" onclick="switchAdminTab('smtp')">Messagerie SMTP</div>
     </div>
 
     <!-- Sous-onglet Utilisateurs -->
@@ -1083,6 +1084,38 @@
             Activez ou désactivez les modules optionnels. Le changement est immédiat (sans redémarrage).
         </p>
         <div id="admin-modules-list"></div>
+    </div>
+
+    <!-- Sous-onglet Messagerie SMTP -->
+    <div id="admin-sub-smtp" class="budget-subview">
+        <p style="color:#666;margin-bottom:16px;font-size:.9em;">
+            Configurez les variables d'environnement suivantes dans le <code>.env</code> du serveur,
+            puis testez la connexion ci-dessous.
+        </p>
+        <div style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;padding:14px 18px;margin-bottom:18px;font-family:monospace;font-size:.88em;line-height:2;">
+            SMTP_HOST=mail.mondomaine.fr<br>
+            SMTP_PORT=587<br>
+            SMTP_USER=budget-manager@mondomaine.fr<br>
+            SMTP_PASS=votre_mot_de_passe<br>
+            SMTP_FROM=budget-manager@mondomaine.fr<br>
+            SMTP_TLS=true&nbsp;&nbsp;<span style="font-family:sans-serif;color:#888;"># true = STARTTLS (port 587) / false = SSL (port 465)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div>
+                <label style="font-size:.85em;color:#555;">Email de test (destinataire)</label>
+                <input id="smtp-test-email" class="form-control" type="email"
+                    placeholder="votre@email.fr" style="width:280px;margin-top:4px;">
+            </div>
+            <div style="align-self:flex-end;">
+                <button class="btn btn-primary" onclick="testSmtp()" id="smtp-test-btn"
+                    style="padding:8px 20px;">Tester la connexion</button>
+            </div>
+        </div>
+        <div id="smtp-test-result" style="margin-top:16px;padding:12px 16px;border-radius:6px;display:none;font-size:.9em;"></div>
+        <div style="margin-top:24px;padding-top:18px;border-top:1px solid #dee2e6;">
+            <h4 style="margin-bottom:8px;color:#333;">Configuration actuelle (lue depuis le serveur)</h4>
+            <div id="smtp-config-display" style="font-family:monospace;font-size:.85em;color:#555;"></div>
+        </div>
     </div>
 
     <!-- Sous-onglet Journal d'audit -->
@@ -1909,6 +1942,6 @@
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="app.js?v=6.21"></script>
+<script src="app.js?v=6.22"></script>
 </body>
 </html>

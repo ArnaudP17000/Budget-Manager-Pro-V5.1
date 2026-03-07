@@ -3841,7 +3841,7 @@ async function loadAdminUsers() {
 }
 
 function switchAdminTab(tab) {
-    ['users', 'audit', 'modules'].forEach(t => {
+    ['users', 'audit', 'modules', 'smtp'].forEach(t => {
         const sub = document.getElementById('admin-sub-' + t);
         const btn = document.getElementById('admin-tab-' + t);
         if (sub) sub.classList.toggle('active', t === tab);
@@ -3849,8 +3849,9 @@ function switchAdminTab(tab) {
     });
     const addBtn = document.getElementById('admin-add-user-btn');
     if (addBtn) addBtn.style.display = tab === 'users' ? '' : 'none';
-    if (tab === 'audit') loadAuditLog();
+    if (tab === 'audit')   loadAuditLog();
     if (tab === 'modules') loadAdminModules();
+    if (tab === 'smtp')    loadSmtpConfig();
 }
 
 async function loadAuditLog() {
@@ -4420,6 +4421,66 @@ async function toggleModule(moduleName, enabled) {
     } catch (e) {
         showMsg('Erreur : ' + e.message, false);
         loadAdminModules(); // remettre l'état UI à jour
+    }
+}
+
+// ─── SMTP config & test ─────────────────────────────────────
+async function loadSmtpConfig() {
+    const el = document.getElementById('smtp-config-display');
+    if (!el) return;
+    try {
+        const cfg = await apiFetch('/admin/smtp/config');
+        if (cfg.configured) {
+            el.innerHTML = `
+                <span style="color:#27ae60;font-weight:bold;">✔ Configuré</span><br>
+                Serveur : <strong>${_h(cfg.host)}</strong> : <strong>${_h(cfg.port)}</strong><br>
+                Compte  : <strong>${_h(cfg.user)}</strong><br>
+                Expéditeur : <strong>${_h(cfg.from)}</strong><br>
+                TLS/STARTTLS : <strong>${cfg.tls === 'true' ? 'Oui (port 587)' : 'Non — SSL (port 465)'}</strong>
+            `;
+        } else {
+            el.innerHTML = '<span style="color:#e74c3c;">✘ Non configuré — ajoutez SMTP_HOST et SMTP_USER dans le .env</span>';
+        }
+    } catch (e) {
+        el.textContent = 'Impossible de lire la configuration : ' + e.message;
+    }
+}
+
+async function testSmtp() {
+    const toEmail = document.getElementById('smtp-test-email')?.value.trim();
+    if (!toEmail) { showMsg('Saisissez un email destinataire', false); return; }
+    const btn = document.getElementById('smtp-test-btn');
+    const res  = document.getElementById('smtp-test-result');
+    btn.disabled = true;
+    btn.textContent = 'Envoi en cours…';
+    res.style.display = 'none';
+    try {
+        const data = await apiFetch('/admin/smtp/test', {
+            method: 'POST',
+            body: JSON.stringify({ to_email: toEmail })
+        });
+        res.style.display = 'block';
+        if (data.success) {
+            res.style.background = '#d4edda';
+            res.style.border = '1px solid #c3e6cb';
+            res.style.color = '#155724';
+            res.innerHTML = `✅ <strong>Succès !</strong> Email de test envoyé à <strong>${_h(toEmail)}</strong>.<br>
+                <small>Vérifiez votre boîte mail (et le dossier spam).</small>`;
+        } else {
+            res.style.background = '#f8d7da';
+            res.style.border = '1px solid #f5c6cb';
+            res.style.color = '#721c24';
+            res.innerHTML = `✘ <strong>Échec :</strong> ${_h(data.error || 'Erreur inconnue')}`;
+        }
+    } catch (e) {
+        res.style.display = 'block';
+        res.style.background = '#f8d7da';
+        res.style.border = '1px solid #f5c6cb';
+        res.style.color = '#721c24';
+        res.innerHTML = `✘ <strong>Erreur :</strong> ${_h(e.message)}`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Tester la connexion';
     }
 }
 
