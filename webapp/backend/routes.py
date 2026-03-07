@@ -2142,6 +2142,29 @@ def update_service_org(service_id):
 @require_auth('admin')
 def delete_service_org(service_id):
     try:
+        # Vérifier les dépendances avant suppression
+        db = service_org_service.db
+        nb_projets = db.fetch_one(
+            "SELECT COUNT(*) AS n FROM projets WHERE service_id = %s", [service_id]
+        )
+        nb_users = db.fetch_one(
+            "SELECT COUNT(*) AS n FROM utilisateurs WHERE service_id = %s AND actif = true", [service_id]
+        )
+        nb_enfants = db.fetch_one(
+            "SELECT COUNT(*) AS n FROM services WHERE parent_id = %s", [service_id]
+        )
+        msgs = []
+        if nb_projets and int(nb_projets['n']) > 0:
+            msgs.append(f"{nb_projets['n']} projet(s) lié(s)")
+        if nb_users and int(nb_users['n']) > 0:
+            msgs.append(f"{nb_users['n']} utilisateur(s) rattaché(s)")
+        if nb_enfants and int(nb_enfants['n']) > 0:
+            msgs.append(f"{nb_enfants['n']} service(s)/unité(s) enfant(s)")
+        if msgs:
+            return jsonify({
+                "success": False,
+                "error": f"Impossible de supprimer : {', '.join(msgs)}. Réattribuez-les d'abord."
+            }), 400
         service_org_service.delete(service_id)
         return jsonify({"success": True})
     except Exception as e:
