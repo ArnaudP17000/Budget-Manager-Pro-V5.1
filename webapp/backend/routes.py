@@ -1814,14 +1814,16 @@ def create_tache():
     try:
         tache_service.db.execute(
             "INSERT INTO taches (projet_id, titre, statut, priorite, date_debut, date_echeance, "
-            "estimation_heures, avancement, responsable_label, assignee_id, created_by_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "estimation_heures, avancement, responsable_label, assignee_id, created_by_id, "
+            "type_tache, rapport_reunion) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             [data.get('projet_id') or None, data.get('titre'),
              data.get('statut', 'A faire'), data.get('priorite'),
              data.get('date_debut') or None, data.get('date_echeance') or None,
              data.get('estimation_heures') or None, data.get('avancement') or 0,
              data.get('responsable_label') or None,
-             data.get('assignee_id') or None, user_id]
+             data.get('assignee_id') or None, user_id,
+             data.get('type_tache', 'autre'), data.get('rapport_reunion') or None]
         )
         return jsonify({"success": True}), 201
     except Exception as e:
@@ -1874,13 +1876,16 @@ def update_tache(tache_id):
         tache_service.db.execute(
             "UPDATE taches SET projet_id=%s, titre=%s, statut=%s, priorite=%s, "
             "date_debut=%s, date_echeance=%s, estimation_heures=%s, avancement=%s, "
-            "responsable_label=%s, assignee_id=%s, updated_at=NOW() WHERE id=%s",
+            "responsable_label=%s, assignee_id=%s, type_tache=%s, rapport_reunion=%s, "
+            "updated_at=NOW() WHERE id=%s",
             [data.get('projet_id') or None, data.get('titre'), data.get('statut'),
              data.get('priorite'), data.get('date_debut') or None,
              data.get('date_echeance') or None,
              data.get('estimation_heures') or None, data.get('avancement') or 0,
              data.get('responsable_label') or None,
-             data.get('assignee_id') or None, tache_id]
+             data.get('assignee_id') or None,
+             data.get('type_tache', 'autre'), data.get('rapport_reunion') or None,
+             tache_id]
         )
         return jsonify({"success": True})
     except Exception as e:

@@ -86,6 +86,18 @@ def run_migrations():
         )
     except Exception as _me:
         _mlog.warning("Migration skipped: %s", _me)
+    try:
+        db.execute(
+            "ALTER TABLE taches ADD COLUMN IF NOT EXISTS type_tache VARCHAR(50) DEFAULT 'autre'"
+        )
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
+    try:
+        db.execute(
+            "ALTER TABLE taches ADD COLUMN IF NOT EXISTS rapport_reunion TEXT"
+        )
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
 
     # ── Colonnes services (Unités) ──────────────────────────
     try:
