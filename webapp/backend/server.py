@@ -373,6 +373,24 @@ def run_migrations():
     except Exception as _me:
         _mlog.warning("Migration skipped: %s", _me)
 
+    # ── Notes (post-its et notes de projet) ─────────────────────
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS notes (
+                id            SERIAL PRIMARY KEY,
+                titre         VARCHAR(200),
+                contenu       TEXT,
+                type          VARCHAR(20)  DEFAULT 'postit',
+                projet_id     INTEGER,
+                couleur       VARCHAR(20)  DEFAULT '#fff9c4',
+                created_by_id INTEGER,
+                created_at    TIMESTAMP    DEFAULT NOW(),
+                updated_at    TIMESTAMP    DEFAULT NOW()
+            )
+        """)
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
+
 
 run_migrations()
 
