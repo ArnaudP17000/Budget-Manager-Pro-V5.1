@@ -353,6 +353,18 @@
         </table>
         </div>
     </div>
+    <div style="padding:0 24px 20px;">
+        <h3 style="color:#1a3c5e;margin-bottom:10px;font-size:.95em;">Portefeuille projets</h3>
+        <div class="tbl-wrap">
+        <table id="portfolio-table">
+            <thead><tr>
+                <th>RAG</th><th>Code</th><th>Nom</th><th>Phase</th>
+                <th>Avancement</th><th>Budget est.</th><th>Tâches</th><th>Fin prévue</th>
+            </tr></thead>
+            <tbody id="portfolio-tbody"></tbody>
+        </table>
+        </div>
+    </div>
 </div>
 
 <!-- ══════════════════ BUDGETS ANNUELS ══════════════════ -->
@@ -660,7 +672,7 @@
     <div class="tbl-wrap">
     <table>
         <thead><tr>
-            <th>Code</th><th>Nom</th><th>Type</th><th>Phase</th>
+            <th>RAG</th><th>Code</th><th>Nom</th><th>Type</th><th>Phase</th>
             <th>Statut</th><th>Priorité</th><th>Service</th>
             <th>Budget est. (€)</th><th>Avancement</th><th>Début</th><th>Fin prévue</th><th>Actions</th>
         </tr></thead>
@@ -1408,6 +1420,75 @@
     </div>
 </div>
 
+<!-- ══════════════════ MODAL TABLEAU DE BORD PROJET ══════════════════ -->
+<div class="modal-overlay" id="modal-projet-dashboard">
+    <div class="modal" style="max-width:820px;width:96%;">
+        <button class="modal-close" onclick="closeModal('modal-projet-dashboard')">✕</button>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+            <h3 id="dash-projet-titre" style="margin:0;flex:1;">Tableau de bord projet</h3>
+            <!-- RAG selector -->
+            <div style="display:flex;gap:4px;align-items:center;">
+                <span style="font-size:.78em;color:#666;font-weight:bold;">Statut&nbsp;:</span>
+                <button id="rag-btn-VERT"  onclick="setRag('VERT')"  style="border:2px solid #27ae60;border-radius:12px;padding:3px 12px;font-size:.8em;cursor:pointer;font-weight:bold;">🟢 OK</button>
+                <button id="rag-btn-AMBER" onclick="setRag('AMBER')" style="border:2px solid #f39c12;border-radius:12px;padding:3px 12px;font-size:.8em;cursor:pointer;font-weight:bold;">🟡 Attention</button>
+                <button id="rag-btn-ROUGE" onclick="setRag('ROUGE')" style="border:2px solid #e74c3c;border-radius:12px;padding:3px 12px;font-size:.8em;cursor:pointer;font-weight:bold;">🔴 Alerte</button>
+            </div>
+        </div>
+        <!-- Onglets -->
+        <div style="display:flex;gap:2px;border-bottom:2px solid #e0e0e0;margin-bottom:14px;">
+            <button class="dash-tab active" onclick="switchDashTab('synthese')" id="dtab-btn-synthese" style="background:none;border:none;padding:8px 16px;cursor:pointer;font-size:.88em;font-weight:600;border-bottom:2px solid #2563a8;color:#2563a8;margin-bottom:-2px;">Synthèse</button>
+            <button class="dash-tab" onclick="switchDashTab('jalons')"  id="dtab-btn-jalons"  style="background:none;border:none;padding:8px 16px;cursor:pointer;font-size:.88em;color:#555;border-bottom:2px solid transparent;margin-bottom:-2px;">Jalons</button>
+            <button class="dash-tab" onclick="switchDashTab('journal')" id="dtab-btn-journal" style="background:none;border:none;padding:8px 16px;cursor:pointer;font-size:.88em;color:#555;border-bottom:2px solid transparent;margin-bottom:-2px;">Journal de bord</button>
+        </div>
+        <!-- Tab : Synthèse -->
+        <div id="dtab-synthese">
+            <div id="dash-kpis" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"></div>
+            <div id="dash-details"></div>
+        </div>
+        <!-- Tab : Jalons -->
+        <div id="dtab-jalons" style="display:none;">
+            <div id="jalons-list" style="margin-bottom:14px;"></div>
+            <div style="background:#f7f9fc;border-radius:6px;padding:12px;border:1px solid #e0e0e0;" id="jalon-form-wrap">
+                <div style="font-size:.82em;font-weight:bold;color:#1a3c5e;margin-bottom:8px;">Nouveau jalon</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+                    <div style="flex:2;min-width:180px;"><label style="font-size:.78em;color:#666;">Titre *</label>
+                        <input id="jalon-titre" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:.85em;" placeholder="Livraison, COPIL, Recette…"></div>
+                    <div style="flex:1;min-width:130px;"><label style="font-size:.78em;color:#666;">Échéance</label>
+                        <input id="jalon-date" type="date" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:.85em;"></div>
+                    <div style="flex:1;min-width:130px;"><label style="font-size:.78em;color:#666;">Statut</label>
+                        <select id="jalon-statut" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:.85em;">
+                            <option value="A_VENIR">À venir</option>
+                            <option value="ATTEINT">Atteint ✓</option>
+                            <option value="EN_RETARD">En retard ⚠</option>
+                            <option value="REPORTE">Reporté</option>
+                        </select></div>
+                    <div><button class="btn btn-success btn-sm" onclick="addJalon()" style="height:32px;margin-bottom:1px;">+ Ajouter</button></div>
+                </div>
+            </div>
+        </div>
+        <!-- Tab : Journal -->
+        <div id="dtab-journal" style="display:none;">
+            <div id="journal-list" style="margin-bottom:14px;max-height:320px;overflow-y:auto;"></div>
+            <div style="background:#f7f9fc;border-radius:6px;padding:12px;border:1px solid #e0e0e0;">
+                <div style="font-size:.82em;font-weight:bold;color:#1a3c5e;margin-bottom:8px;">Nouvelle entrée</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+                    <div style="flex:0 0 140px;"><label style="font-size:.78em;color:#666;">Type</label>
+                        <select id="journal-type" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:.85em;">
+                            <option value="EVENEMENT">Événement</option>
+                            <option value="DECISION">Décision</option>
+                            <option value="COPIL">COPIL</option>
+                            <option value="RISQUE">Risque</option>
+                            <option value="AUTRE">Autre</option>
+                        </select></div>
+                    <div style="flex:1;min-width:200px;"><label style="font-size:.78em;color:#666;">Contenu *</label>
+                        <textarea id="journal-contenu" rows="2" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:.85em;resize:vertical;" placeholder="Décrivez l'événement, la décision…"></textarea></div>
+                    <div><button class="btn btn-primary btn-sm" onclick="addJournalEntry()" style="height:32px;margin-bottom:1px;">Ajouter</button></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ══════════════════ MODAL ÉDITION TÂCHE ══════════════════ -->
 <div class="modal-overlay" id="modal-edit-tache">
     <div class="modal">
@@ -1661,6 +1742,6 @@
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="app.js?v=6.00"></script>
+<script src="app.js?v=6.10"></script>
 </body>
 </html>

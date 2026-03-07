@@ -1551,6 +1551,130 @@ def remove_projet_contact_libre(projet_id):
 
 
 # ─────────────────────────────────────────────
+# JALONS
+# ─────────────────────────────────────────────
+
+@routes.route('/projet/<int:projet_id>/jalons', methods=['GET'])
+@require_auth()
+def get_jalons(projet_id):
+    rows = projet_service.db.fetch_all(
+        "SELECT * FROM jalons WHERE projet_id=%s ORDER BY date_echeance ASC NULLS LAST",
+        [projet_id]
+    )
+    return jsonify({"list": [dict(r) for r in (rows or [])]})
+
+
+@routes.route('/projet/<int:projet_id>/jalons', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
+def add_jalon(projet_id):
+    data = request.json or {}
+    user_id = g.user.get('sub')
+    try:
+        projet_service.db.execute(
+            "INSERT INTO jalons (projet_id, titre, date_echeance, statut, description, created_by_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            [projet_id, data.get('titre'), data.get('date_echeance') or None,
+             data.get('statut', 'A_VENIR'), data.get('description') or None, user_id]
+        )
+        return jsonify({"success": True}), 201
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@routes.route('/projet/<int:projet_id>/jalons/<int:jalon_id>', methods=['PUT'])
+@require_auth('admin', 'gestionnaire')
+def update_jalon(projet_id, jalon_id):
+    data = request.json or {}
+    try:
+        projet_service.db.execute(
+            "UPDATE jalons SET titre=%s, date_echeance=%s, statut=%s, description=%s "
+            "WHERE id=%s AND projet_id=%s",
+            [data.get('titre'), data.get('date_echeance') or None,
+             data.get('statut'), data.get('description') or None, jalon_id, projet_id]
+        )
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@routes.route('/projet/<int:projet_id>/jalons/<int:jalon_id>', methods=['DELETE'])
+@require_auth('admin', 'gestionnaire')
+def delete_jalon(projet_id, jalon_id):
+    try:
+        projet_service.db.execute(
+            "DELETE FROM jalons WHERE id=%s AND projet_id=%s", [jalon_id, projet_id]
+        )
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+# ─────────────────────────────────────────────
+# JOURNAL DE BORD PROJET
+# ─────────────────────────────────────────────
+
+@routes.route('/projet/<int:projet_id>/journal', methods=['GET'])
+@require_auth()
+def get_journal_projet(projet_id):
+    rows = projet_service.db.fetch_all(
+        "SELECT * FROM journal_projet WHERE projet_id=%s ORDER BY date_entree DESC",
+        [projet_id]
+    )
+    return jsonify({"list": [dict(r) for r in (rows or [])]})
+
+
+@routes.route('/projet/<int:projet_id>/journal', methods=['POST'])
+@require_auth()
+def add_journal_entry(projet_id):
+    data = request.json or {}
+    user_id = g.user.get('sub')
+    nom    = (g.user.get('prenom', '') + ' ' + g.user.get('nom', '')).strip()
+    auteur = nom or g.user.get('login', 'Utilisateur')
+    try:
+        projet_service.db.execute(
+            "INSERT INTO journal_projet (projet_id, auteur, type_entree, contenu, created_by_id) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            [projet_id, auteur, data.get('type_entree', 'EVENEMENT'),
+             data.get('contenu', ''), user_id]
+        )
+        return jsonify({"success": True}), 201
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@routes.route('/projet/<int:projet_id>/journal/<int:entry_id>', methods=['DELETE'])
+@require_auth('admin', 'gestionnaire')
+def delete_journal_entry(projet_id, entry_id):
+    try:
+        projet_service.db.execute(
+            "DELETE FROM journal_projet WHERE id=%s AND projet_id=%s", [entry_id, projet_id]
+        )
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+# ─────────────────────────────────────────────
+# RAG PROJET
+# ─────────────────────────────────────────────
+
+@routes.route('/projet/<int:projet_id>/rag', methods=['PUT'])
+@require_auth('admin', 'gestionnaire')
+def update_rag(projet_id):
+    data = request.json or {}
+    rag = data.get('statut_rag', 'VERT')
+    if rag not in ('ROUGE', 'AMBER', 'VERT'):
+        return jsonify({"success": False, "error": "Valeur RAG invalide"}), 400
+    try:
+        projet_service.db.execute(
+            "UPDATE projets SET statut_rag=%s WHERE id=%s", [rag, projet_id]
+        )
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+# ─────────────────────────────────────────────
 # TÂCHES
 # ─────────────────────────────────────────────
 

@@ -1599,11 +1599,18 @@ async function saveContrat() {
 
 // ─── PROJETS ───────────────────────────────────────────────
 
+function _ragDot(rag) {
+    const map = { ROUGE: ['🔴','#e74c3c'], AMBER: ['🟡','#f39c12'], VERT: ['🟢','#27ae60'] };
+    const [icon] = map[rag] || map['VERT'];
+    return `<span title="${rag || 'VERT'}" style="font-size:1.1em;cursor:default;">${icon}</span>`;
+}
+
 function _renderProjets(list) {
     const tbody = document.getElementById('projets-tbody');
     if (!tbody) return;
     tbody.innerHTML = list.map(p => `
         <tr>
+            <td style="text-align:center;">${_ragDot(p.statut_rag)}</td>
             <td>${p.code || '-'}</td>
             <td><strong>${p.nom || '-'}</strong></td>
             <td style="font-size:.8em;">${p.type_projet || '-'}</td>
@@ -1616,11 +1623,293 @@ function _renderProjets(list) {
             <td>${fmtDate(p.date_debut)}</td>
             <td>${fmtDate(p.date_fin_prevue)}</td>
             <td style="white-space:nowrap;">
+                <button class="btn btn-sm" style="background:#6f42c1;color:#fff;" onclick="openProjetDashboard(${p.id})">📊</button>
                 <button class="btn btn-info btn-sm" onclick="ficheProjet(${p.id})">Fiche</button>
                 <button class="btn btn-warning btn-sm" onclick="editProjet(${p.id})">Éditer</button>
                 <button class="btn btn-danger btn-sm" onclick="deleteProjet(${p.id})">Suppr.</button>
             </td>
         </tr>`).join('');
+}
+
+// ── Tableau de bord projet ─────────────────────────────────────────────────
+let _dashProjetId = null;
+
+async function openProjetDashboard(projetId) {
+    _dashProjetId = projetId;
+    const p = await apiFetch(`/projet/${projetId}`);
+    if (!p || p.error) { showMsg('Projet introuvable', false); return; }
+    _cache._dashProjet = p;
+
+    document.getElementById('dash-projet-titre').textContent =
+        `${p.code || '#' + projetId} — ${p.nom || ''}`;
+
+    _renderDashSynthese(p);
+    switchDashTab('synthese');
+    _highlightRagBtn(p.statut_rag || 'VERT');
+    await loadJalons(projetId);
+    await loadJournal(projetId);
+    openModal('modal-projet-dashboard');
+}
+
+function switchDashTab(tab) {
+    ['synthese','jalons','journal'].forEach(t => {
+        const el = document.getElementById('dtab-' + t);
+        const btn = document.getElementById('dtab-btn-' + t);
+        if (el) el.style.display = t === tab ? '' : 'none';
+        if (btn) {
+            btn.style.color = t === tab ? '#2563a8' : '#555';
+            btn.style.borderBottom = t === tab ? '2px solid #2563a8' : '2px solid transparent';
+            btn.style.fontWeight   = t === tab ? '700' : '400';
+        }
+    });
+}
+
+function _renderDashSynthese(p) {
+    const taches    = p.taches || [];
+    const total     = taches.length;
+    const terminees = taches.filter(t => t.statut === 'Terminé').length;
+    const now       = new Date(); now.setHours(0,0,0,0);
+    const enRetard  = taches.filter(t => {
+        if (t.statut === 'Terminé') return false;
+        return t.date_echeance && new Date(t.date_echeance) < now;
+    }).length;
+
+    const av = p.avancement || 0;
+    const avColor = av >= 80 ? '#27ae60' : av >= 40 ? '#f39c12' : '#e74c3c';
+
+    const budgetPrev = parseFloat(p.budget_estime || p.budget_initial || 0);
+    const budgetCons = parseFloat(p.budget_consomme_calcule || 0);
+
+    const finDate = p.date_fin_prevue ? new Date(p.date_fin_prevue) : null;
+    const joursRestants = finDate ? Math.ceil((finDate - now) / 86400000) : null;
+    const joursStyle = joursRestants !== null && joursRestants < 0 ? 'color:#e74c3c;font-weight:bold;' : '';
+
+    const _kpi = (val, label, cls='', style='') =>
+        `<div class="kpi-card ${cls}" style="min-width:120px;${style}">
+            <div class="kpi-value">${val}</div>
+            <div class="kpi-label">${label}</div>
+        </div>`;
+
+    document.getElementById('dash-kpis').innerHTML =
+        _kpi(av + '%', 'Avancement', '', `--kpi-color:${avColor}`) +
+        _kpi(terminees + '/' + total, 'Tâches terminées') +
+        (enRetard > 0 ? _kpi(enRetard, 'Tâches en retard', 'alert') : '') +
+        _kpi(fmt(budgetCons), 'Budget consommé') +
+        _kpi(fmt(budgetPrev), 'Budget prévu') +
+        (joursRestants !== null ? _kpi(
+            joursRestants < 0 ? `${-joursRestants}j de retard` : `${joursRestants}j`,
+            'Fin prévue',
+            joursRestants < 0 ? 'alert' : ''
+        ) : '');
+
+    const avBar = `<div style="background:#e0e0e0;border-radius:4px;height:14px;margin:6px 0 12px;">
+        <div style="width:${av}%;background:${avColor};height:14px;border-radius:4px;"></div></div>`;
+
+    const tacheRetardHtml = enRetard > 0
+        ? `<div style="background:#fde8e8;border-left:4px solid #e74c3c;padding:8px 12px;border-radius:4px;margin-bottom:10px;font-size:.85em;">
+            ⚠ ${enRetard} tâche${enRetard>1?'s':''} en retard (échéance dépassée)
+           </div>` : '';
+
+    const chefNom = p.chef_projet_nom || p.chef_projet || '';
+    const respNom = p.responsable_nom || p.responsable || '';
+
+    document.getElementById('dash-details').innerHTML = `
+        <div style="margin-bottom:10px;">
+            <div style="font-size:.78em;color:#666;font-weight:bold;text-transform:uppercase;margin-bottom:3px;">Avancement global</div>
+            ${avBar}
+        </div>
+        ${tacheRetardHtml}
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:.85em;">
+            <div><label style="color:#666;font-size:.82em;display:block;">Phase</label>${badge(p.phase) || '-'}</div>
+            <div><label style="color:#666;font-size:.82em;display:block;">Statut</label>${badge(p.statut) || '-'}</div>
+            <div><label style="color:#666;font-size:.82em;display:block;">Priorité</label>${badge(p.priorite) || '-'}</div>
+            <div><label style="color:#666;font-size:.82em;display:block;">Chef de projet</label>${chefNom || '-'}</div>
+            <div><label style="color:#666;font-size:.82em;display:block;">Responsable</label>${respNom || '-'}</div>
+            <div><label style="color:#666;font-size:.82em;display:block;">Début</label>${fmtDate(p.date_debut) || '-'}</div>
+            <div><label style="color:#666;font-size:.82em;display:block;">Fin prévue</label><span style="${joursStyle}">${fmtDate(p.date_fin_prevue) || '-'}</span></div>
+        </div>`;
+}
+
+function _highlightRagBtn(rag) {
+    ['VERT','AMBER','ROUGE'].forEach(r => {
+        const btn = document.getElementById('rag-btn-' + r);
+        if (!btn) return;
+        btn.style.opacity = r === rag ? '1' : '0.45';
+        btn.style.fontWeight = r === rag ? '700' : '400';
+    });
+}
+
+async function setRag(rag) {
+    if (!_dashProjetId) return;
+    const res = await apiFetch(`/projet/${_dashProjetId}/rag`, {
+        method: 'PUT', body: JSON.stringify({ statut_rag: rag })
+    });
+    if (res.success) {
+        _highlightRagBtn(rag);
+        // Mettre à jour le cache local
+        const cached = (_cache.projets || []).find(p => p.id === _dashProjetId);
+        if (cached) cached.statut_rag = rag;
+        _renderProjets(_cache.projets || []);
+        _renderPortfolio(_cache.projets || []);
+    }
+}
+
+// ── Jalons ────────────────────────────────────────────────────────────────
+let _jalons = [];
+
+async function loadJalons(projetId) {
+    const data = await apiFetch(`/projet/${projetId}/jalons`);
+    _jalons = data.list || [];
+    _renderJalons();
+}
+
+function _renderJalons() {
+    const el = document.getElementById('jalons-list');
+    if (!el) return;
+    const now = new Date(); now.setHours(0,0,0,0);
+    const STATUT_STYLE = {
+        'A_VENIR':  ['background:#e3f2fd;color:#1565C0;','À venir'],
+        'ATTEINT':  ['background:#d4edda;color:#155724;','Atteint ✓'],
+        'EN_RETARD':['background:#fde8e8;color:#721c24;','En retard ⚠'],
+        'REPORTE':  ['background:#fff3cd;color:#856404;','Reporté'],
+    };
+    if (!_jalons.length) {
+        el.innerHTML = '<p style="color:#aaa;font-style:italic;font-size:.85em;">Aucun jalon défini.</p>';
+        return;
+    }
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.85em;">
+        <thead><tr style="background:#1a3c5e;color:#fff;">
+            <th style="padding:6px 8px;">Titre</th>
+            <th style="padding:6px 8px;">Échéance</th>
+            <th style="padding:6px 8px;">Statut</th>
+            <th style="padding:6px 8px;width:60px;"></th>
+        </tr></thead>
+        <tbody>${_jalons.map(j => {
+            const [st, stLbl] = STATUT_STYLE[j.statut] || ['background:#eee;',''];
+            const echeance = j.date_echeance ? new Date(j.date_echeance) : null;
+            const isLate = echeance && echeance < now && j.statut === 'A_VENIR';
+            const dateStr = echeance ? echeance.toLocaleDateString('fr-FR') : '-';
+            return `<tr style="border-bottom:1px solid #eee;${isLate?'background:#fff5f5;':''}">
+                <td style="padding:6px 8px;">${j.titre || ''}</td>
+                <td style="padding:6px 8px;white-space:nowrap;">${dateStr}</td>
+                <td style="padding:6px 8px;"><span style="border-radius:10px;padding:2px 8px;font-size:.8em;font-weight:bold;${st}">${stLbl}</span></td>
+                <td style="padding:6px 8px;text-align:center;">
+                    <button class="btn btn-danger btn-sm" onclick="deleteJalon(${j.id})">✕</button>
+                </td>
+            </tr>`;
+        }).join('')}</tbody>
+    </table>`;
+}
+
+async function addJalon() {
+    const titre  = document.getElementById('jalon-titre')?.value.trim();
+    const date   = document.getElementById('jalon-date')?.value;
+    const statut = document.getElementById('jalon-statut')?.value || 'A_VENIR';
+    if (!titre) { showMsg('Le titre du jalon est obligatoire', false); return; }
+    const res = await apiFetch(`/projet/${_dashProjetId}/jalons`, {
+        method: 'POST',
+        body: JSON.stringify({ titre, date_echeance: date || null, statut })
+    });
+    if (res.success) {
+        document.getElementById('jalon-titre').value = '';
+        document.getElementById('jalon-date').value  = '';
+        await loadJalons(_dashProjetId);
+    } else { showMsg('Erreur : ' + (res.error || ''), false); }
+}
+
+async function deleteJalon(jalonId) {
+    if (!confirm('Supprimer ce jalon ?')) return;
+    const res = await apiFetch(`/projet/${_dashProjetId}/jalons/${jalonId}`, { method: 'DELETE' });
+    if (res.success) await loadJalons(_dashProjetId);
+}
+
+// ── Journal de bord ───────────────────────────────────────────────────────
+let _journal = [];
+
+async function loadJournal(projetId) {
+    const data = await apiFetch(`/projet/${projetId}/journal`);
+    _journal = data.list || [];
+    _renderJournal();
+}
+
+function _renderJournal() {
+    const el = document.getElementById('journal-list');
+    if (!el) return;
+    const TYPE_STYLE = {
+        'DECISION': ['background:#e3f2fd;color:#1565C0;border-left:3px solid #1565C0;','Décision'],
+        'EVENEMENT':['background:#f5f5f5;color:#333;border-left:3px solid #999;','Événement'],
+        'COPIL':    ['background:#e8f5e9;color:#155724;border-left:3px solid #27ae60;','COPIL'],
+        'RISQUE':   ['background:#fde8e8;color:#721c24;border-left:3px solid #e74c3c;','Risque'],
+        'AUTRE':    ['background:#fff8e1;color:#795548;border-left:3px solid #f39c12;','Autre'],
+    };
+    if (!_journal.length) {
+        el.innerHTML = '<p style="color:#aaa;font-style:italic;font-size:.85em;">Aucune entrée dans le journal.</p>';
+        return;
+    }
+    el.innerHTML = _journal.map(e => {
+        const [st, stLbl] = TYPE_STYLE[e.type_entree] || TYPE_STYLE['AUTRE'];
+        const dt = e.date_entree ? new Date(e.date_entree).toLocaleString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+        return `<div style="padding:8px 12px;border-radius:4px;margin-bottom:8px;${st}">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+                <span style="font-size:.75em;font-weight:bold;text-transform:uppercase;">${stLbl}</span>
+                <span style="font-size:.72em;opacity:.7;">${dt}${e.auteur ? ' — ' + e.auteur : ''}</span>
+                <button onclick="deleteJournalEntry(${e.id})" style="background:none;border:none;cursor:pointer;opacity:.5;font-size:.9em;padding:0 2px;">✕</button>
+            </div>
+            <div style="font-size:.85em;white-space:pre-wrap;">${e.contenu || ''}</div>
+        </div>`;
+    }).join('');
+}
+
+async function addJournalEntry() {
+    const type    = document.getElementById('journal-type')?.value || 'EVENEMENT';
+    const contenu = document.getElementById('journal-contenu')?.value.trim();
+    if (!contenu) { showMsg('Le contenu est obligatoire', false); return; }
+    const res = await apiFetch(`/projet/${_dashProjetId}/journal`, {
+        method: 'POST',
+        body: JSON.stringify({ type_entree: type, contenu })
+    });
+    if (res.success) {
+        document.getElementById('journal-contenu').value = '';
+        await loadJournal(_dashProjetId);
+    } else { showMsg('Erreur : ' + (res.error || ''), false); }
+}
+
+async function deleteJournalEntry(entryId) {
+    if (!confirm('Supprimer cette entrée ?')) return;
+    const res = await apiFetch(`/projet/${_dashProjetId}/journal/${entryId}`, { method: 'DELETE' });
+    if (res.success) await loadJournal(_dashProjetId);
+}
+
+// ── Portfolio (vue multi-projets dans le dashboard global) ─────────────────
+function _renderPortfolio(list) {
+    const tbody = document.getElementById('portfolio-tbody');
+    if (!tbody) return;
+    const now = new Date(); now.setHours(0,0,0,0);
+    const actifs = list.filter(p => p.statut === 'ACTIF' || p.statut === 'EN_ATTENTE');
+    if (!actifs.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#aaa;padding:12px;">Aucun projet actif</td></tr>';
+        return;
+    }
+    tbody.innerHTML = actifs.map(p => {
+        const av = p.avancement || 0;
+        const avColor = av >= 80 ? '#27ae60' : av >= 40 ? '#f39c12' : '#e74c3c';
+        const avBar = `<div style="background:#e0e0e0;border-radius:3px;height:8px;min-width:60px;">
+            <div style="width:${av}%;background:${avColor};height:8px;border-radius:3px;"></div></div>
+            <span style="font-size:.75em;">${av}%</span>`;
+        const finDate = p.date_fin_prevue ? new Date(p.date_fin_prevue) : null;
+        const isLate = finDate && finDate < now && p.statut === 'ACTIF';
+        const finStr = finDate ? `<span style="${isLate?'color:#e74c3c;font-weight:bold;':''}">${finDate.toLocaleDateString('fr-FR')}</span>` : '-';
+        return `<tr>
+            <td style="text-align:center;">${_ragDot(p.statut_rag)}</td>
+            <td style="font-size:.8em;">${p.code || '-'}</td>
+            <td><button onclick="openProjetDashboard(${p.id})" style="background:none;border:none;cursor:pointer;text-align:left;font-size:.85em;font-weight:600;color:#2563a8;padding:0;">${p.nom || '-'}</button></td>
+            <td style="font-size:.78em;">${p.phase || '-'}</td>
+            <td style="min-width:90px;">${avBar}</td>
+            <td style="font-size:.8em;">${fmt(p.budget_estime || 0)}</td>
+            <td style="font-size:.78em;text-align:center;">-</td>
+            <td style="font-size:.78em;">${finStr}</td>
+        </tr>`;
+    }).join('');
 }
 
 function applyProjetFilters() {
@@ -1680,6 +1969,7 @@ async function loadProjets() {
         }
 
         applyProjetFilters();
+        _renderPortfolio(_cache.projets || []);
     } catch (e) { showMsg('Erreur chargement projets', false); }
 }
 
