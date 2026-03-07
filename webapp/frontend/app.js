@@ -182,6 +182,7 @@ function progressBar(val, max) {
 }
 
 let _sessionExpired = false; // évite les déconnexions multiples simultanées
+let _quillRapport = null;   // instance Quill pour rapport de réunion
 
 async function apiFetch(path, opts = {}) {
     const token = getToken();
@@ -2762,6 +2763,29 @@ async function loadTaches() {
     } catch (e) { showMsg('Erreur chargement tâches', false); }
 }
 
+function toggleRapportEditor() {
+    const type = document.getElementById('edit-tache-type')?.value;
+    const section = document.getElementById('rapport-reunion-section');
+    if (!section) return;
+    const show = type === 'reunion';
+    section.style.display = show ? 'block' : 'none';
+    if (show && !_quillRapport) {
+        _quillRapport = new Quill('#quill-rapport', {
+            theme: 'snow',
+            placeholder: 'Saisissez le rapport de réunion...',
+            modules: {
+                toolbar: [
+                    [{ header: [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    [{ list: 'ordered' }, { list: 'bullet' }],
+                    ['link'],
+                    ['clean']
+                ]
+            }
+        });
+    }
+}
+
 async function addTache() {
     const assigneeVal = document.getElementById('tache-assignee')?.value;
     const body = {
@@ -2774,6 +2798,7 @@ async function addTache() {
         estimation_heures: document.getElementById('tache-heures').value || null,
         assignee_id:       assigneeVal ? parseInt(assigneeVal) : null,
         avancement:        0,
+        type_tache:        document.getElementById('tache-type')?.value || 'autre',
     };
     if (!body.titre) { showMsg('Le titre est obligatoire', false); return; }
     try {
@@ -2816,12 +2841,27 @@ async function editTache(id) {
     if (assigneeSel) {
         await _populateMembresSelect(assigneeSel, data.assignee_id);
     }
+    // Type de tâche
+    const typeSel = document.getElementById('edit-tache-type');
+    if (typeSel) typeSel.value = data.type_tache || 'autre';
+    toggleRapportEditor();
+    // Rapport de réunion (Quill)
+    if (_quillRapport) {
+        _quillRapport.root.innerHTML = data.rapport_reunion || '';
+    } else if ((data.type_tache || 'autre') === 'reunion') {
+        // Quill sera initialisé par toggleRapportEditor — on définit le contenu après
+        setTimeout(() => { if (_quillRapport) _quillRapport.root.innerHTML = data.rapport_reunion || ''; }, 50);
+    }
     openModal('modal-edit-tache');
 }
 
 async function saveTache() {
     const id = document.getElementById('edit-tache-id').value;
     const assigneeVal = document.getElementById('edit-tache-assignee')?.value;
+    const typeTache = document.getElementById('edit-tache-type')?.value || 'autre';
+    const rapportHtml = (_quillRapport && typeTache === 'reunion')
+        ? _quillRapport.root.innerHTML
+        : null;
     const body = {
         titre:             document.getElementById('edit-tache-titre').value,
         projet_id:         document.getElementById('edit-tache-projet').value || null,
@@ -2832,6 +2872,8 @@ async function saveTache() {
         estimation_heures: document.getElementById('edit-tache-heures').value || null,
         avancement:        document.getElementById('edit-tache-avancement').value || 0,
         assignee_id:       assigneeVal ? parseInt(assigneeVal) : null,
+        type_tache:        typeTache,
+        rapport_reunion:   rapportHtml,
     };
     if (!body.titre) { showMsg('Le titre est obligatoire', false); return; }
     try {
