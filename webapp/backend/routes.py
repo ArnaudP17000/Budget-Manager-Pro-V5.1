@@ -2888,10 +2888,10 @@ def test_smtp():
         return _ok(message=f"Email de test envoyé à {to_email}")
 
     except smtplib.SMTPAuthenticationError:
-        return _err("Échec d'authentification — vérifiez SMTP_USER et SMTP_PASS"), 400
+        return _err("Échec d'authentification — vérifiez SMTP_USER et SMTP_PASS")
     except smtplib.SMTPConnectError:
-        return _err(f"Impossible de se connecter à {host}:{port}"), 400
+        return _err(f"Impossible de se connecter à {host}:{port}")
     except TimeoutError:
-        return _err(f"Timeout — {host}:{port} ne répond pas (vérifiez le port et le pare-feu)"), 400
+        return _err(f"Timeout — {host}:{port} ne répond pas (vérifiez le port et le pare-feu)")
     except Exception as e:
-        return _err(f"Erreur SMTP : {e}"), 400
+        return _err(f"Erreur SMTP : {e}")
