@@ -1,6 +1,14 @@
 # Service budget pour usage web
 import logging
+from decimal import Decimal, InvalidOperation
 from app.services.database_service import DatabaseService
+
+
+def _dec(v):
+    try:
+        return Decimal(str(v)) if v is not None else Decimal(0)
+    except InvalidOperation:
+        return Decimal(0)
 
 def _d(row):
     if row is None:
@@ -79,9 +87,9 @@ class BudgetV5Service:
             result = []
             for r in rows:
                 d = _d(r)
-                vote = float(d.get('montant_vote') or 0)
-                engage = float(d.get('montant_engage') or 0)
-                d['taux_engagement'] = round(engage / vote * 100, 1) if vote > 0 else 0
+                vote = _dec(d.get('montant_vote'))
+                engage = _dec(d.get('montant_engage'))
+                d['taux_engagement'] = float(round(engage / vote * 100, 1)) if vote > 0 else 0
                 d['alerte'] = d['taux_engagement'] >= 80
                 result.append(d)
             return result
