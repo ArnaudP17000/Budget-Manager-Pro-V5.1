@@ -4233,6 +4233,50 @@ if (_existingToken) {
     showLoginOverlay();
 }
 
+// ─── Colonnes redimensionnables ─────────────────────────────────
+function makeTableResizable(table) {
+    // Éviter de re-initialiser si déjà fait
+    if (table._resizable) return;
+    table._resizable = true;
+
+    table.querySelectorAll('th').forEach(th => {
+        // Ne pas ajouter sur la colonne checkbox (width fixe)
+        if (th.querySelector('input[type="checkbox"]')) return;
+
+        // Retirer un ancien handle s'il existe
+        const old = th.querySelector('.col-resizer');
+        if (old) old.remove();
+
+        const handle = document.createElement('div');
+        handle.className = 'col-resizer';
+        th.appendChild(handle);
+
+        handle.addEventListener('mousedown', e => {
+            const startX   = e.clientX;
+            const startW   = th.offsetWidth;
+            handle.classList.add('is-dragging');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+
+            const onMove = e => {
+                const newW = Math.max(50, startW + e.clientX - startX);
+                th.style.width    = newW + 'px';
+                th.style.minWidth = newW + 'px';
+            };
+            const onUp = () => {
+                handle.classList.remove('is-dragging');
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            };
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+            e.preventDefault();
+        });
+    });
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MODULE TPE — Terminaux de Paiement Électronique
 // ═══════════════════════════════════════════════════════════════
@@ -4369,6 +4413,9 @@ function _renderTpeRows(list) {
             <td>${actions}</td>
         </tr>`;
     }).join('');
+    // Activer le redimensionnement des colonnes (reset pour re-attacher après re-render)
+    const tbl = document.getElementById('tpe-table');
+    if (tbl) { tbl._resizable = false; makeTableResizable(tbl); }
 }
 
 function toggleAllTpe() {
