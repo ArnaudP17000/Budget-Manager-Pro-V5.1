@@ -1013,6 +1013,9 @@
         <table>
             <thead>
                 <tr>
+                    <th style="width:32px;text-align:center;">
+                        <input type="checkbox" id="tpe-check-all" title="Tout sélectionner" onchange="toggleAllTpe()">
+                    </th>
                     <th>Service</th>
                     <th>Régisseur</th>
                     <th>Tél.</th>
@@ -1027,6 +1030,12 @@
             </thead>
             <tbody id="tpe-tbody"></tbody>
         </table>
+    </div>
+    <!-- Barre de sélection masse -->
+    <div id="tpe-bulk-bar" style="display:none;margin-top:10px;padding:10px 14px;background:#fff3cd;border:1px solid #ffc107;border-radius:6px;align-items:center;gap:12px;">
+        <span id="tpe-bulk-count" style="font-size:.9em;font-weight:600;color:#856404;"></span>
+        <button class="btn btn-danger" onclick="deleteTpeSelected()" style="padding:5px 14px;">Supprimer la sélection</button>
+        <button class="btn" onclick="clearTpeSelection()" style="padding:5px 10px;background:#eee;color:#333;">Tout désélectionner</button>
     </div>
 </div>
 
@@ -1881,6 +1890,6 @@
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="app.js?v=6.14"></script>
+<script src="app.js?v=6.15"></script>
 </body>
 </html>
