@@ -2073,7 +2073,7 @@ _CONTACT_RULES = {
     'nom':   {'label': 'Nom',   'required': True, 'max': 200},
     'prenom':{'label': 'Prénom','max': 200},
     'email': {'label': 'Email', 'type': 'email', 'max': 200},
-    'type':  {'label': 'Type',  'enum': ['INTERNE','EXTERNE','PRESTATAIRE','PARTENAIRE','']},
+    'type':  {'label': 'Type',  'enum': ['INTERNE','EXTERNE','PRESTATAIRE','PARTENAIRE','DIRECTION','SERVICE','']},
 }
 
 @routes.route('/contact', methods=['POST'])
