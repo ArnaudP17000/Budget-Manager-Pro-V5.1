@@ -2389,6 +2389,85 @@ def lire_notification(notif_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@routes.route('/notifications/generate', methods=['POST'])
+@require_auth()
+def generate_notifications():
+    """Génère automatiquement les notifications pour tâches en retard,
+    contrats expirant bientôt et BC en attente trop longtemps."""
+    db = budget_service.db
+    created = 0
+    today = __import__('datetime').date.today()
+
+    def _upsert(ref_type, ref_id, titre, message, niveau):
+        """Insère une notif uniquement si elle n'existe pas déjà (non lue)."""
+        nonlocal created
+        existing = db.fetch_one(
+            "SELECT id FROM notifications WHERE ref_type=%s AND ref_id=%s AND lue=false",
+            [ref_type, ref_id]
+        )
+        if not existing:
+            db.execute(
+                "INSERT INTO notifications (titre, message, lue, ref_type, ref_id, niveau) "
+                "VALUES (%s, %s, false, %s, %s, %s)",
+                [titre, message, ref_type, ref_id, niveau]
+            )
+            created += 1
+
+    # ── Tâches en retard ──────────────────────────────────────────
+    try:
+        rows = db.fetch_all(
+            "SELECT t.id, t.titre, t.date_echeance, p.nom as projet_nom "
+            "FROM taches t LEFT JOIN projets p ON p.id = t.projet_id "
+            "WHERE t.date_echeance < %s AND t.statut NOT IN ('Terminé','ANNULE')",
+            [today]
+        )
+        for r in (rows or []):
+            _upsert(
+                'tache', r['id'],
+                f"Tâche en retard : {r['titre']}",
+                f"Échéance dépassée ({r['date_echeance']}) — Projet : {r['projet_nom'] or '—'}",
+                'URGENT'
+            )
+    except Exception as _e:
+        pass
+
+    # ── Contrats expirant dans les 30 jours ───────────────────────
+    try:
+        rows = db.fetch_all(
+            "SELECT id, objet, date_fin FROM contrats "
+            "WHERE date_fin BETWEEN %s AND %s AND statut IN ('ACTIF','RECONDUIT')",
+            [today, today + __import__('datetime').timedelta(days=30)]
+        )
+        for r in (rows or []):
+            _upsert(
+                'contrat', r['id'],
+                f"Contrat expirant bientôt : {r['objet']}",
+                f"Date de fin : {r['date_fin']}",
+                'ALERTE'
+            )
+    except Exception as _e:
+        pass
+
+    # ── BC en attente depuis plus de 15 jours ─────────────────────
+    try:
+        rows = db.fetch_all(
+            "SELECT id, objet, date_creation FROM bons_commande "
+            "WHERE statut = 'EN_ATTENTE' AND date_creation < %s",
+            [today - __import__('datetime').timedelta(days=15)]
+        )
+        for r in (rows or []):
+            _upsert(
+                'bc', r['id'],
+                f"BC en attente depuis plus de 15 jours : {r['objet']}",
+                f"Créé le {r['date_creation']} — en attente de validation",
+                'ALERTE'
+            )
+    except Exception as _e:
+        pass
+
+    return jsonify({"success": True, "created": created})
+
+
 # ─────────────────────────────────────────────
 # GANTT
 # ─────────────────────────────────────────────
