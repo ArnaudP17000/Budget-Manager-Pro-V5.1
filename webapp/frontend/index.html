@@ -804,11 +804,12 @@
             <input id="contact-fonction" placeholder="Fonction">
             <select id="contact-type">
                 <option value="">Type</option>
-                <option value="ELU">Élu</option>
+                <option value="INTERNE">Interne</option>
+                <option value="EXTERNE">Externe</option>
+                <option value="PRESTATAIRE">Prestataire</option>
+                <option value="PARTENAIRE">Partenaire</option>
                 <option value="DIRECTION">Direction</option>
                 <option value="SERVICE">Service</option>
-                <option value="PRESTATAIRE">Prestataire</option>
-                <option value="AMO">AMO</option>
             </select>
             <select id="contact-service">
                 <option value="">— Service —</option>
@@ -824,11 +825,12 @@
     <div class="toolbar">
         <select id="contact-filter-type" onchange="loadContacts()">
             <option value="">Tous types</option>
-            <option value="ELU">Élu</option>
+            <option value="INTERNE">Interne</option>
+            <option value="EXTERNE">Externe</option>
+            <option value="PRESTATAIRE">Prestataire</option>
+            <option value="PARTENAIRE">Partenaire</option>
             <option value="DIRECTION">Direction</option>
             <option value="SERVICE">Service</option>
-            <option value="PRESTATAIRE">Prestataire</option>
-            <option value="AMO">AMO</option>
         </select>
         <input id="contact-search" placeholder="Rechercher..." oninput="loadContacts()">
     </div>
@@ -1814,11 +1816,12 @@
             <div style="flex:1;min-width:120px;"><label style="font-size:.82em;color:#666;">Type</label>
                 <select id="edit-contact-type" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
                     <option value="">—</option>
-                    <option value="ELU">Élu</option>
+                    <option value="INTERNE">Interne</option>
+                    <option value="EXTERNE">Externe</option>
+                    <option value="PRESTATAIRE">Prestataire</option>
+                    <option value="PARTENAIRE">Partenaire</option>
                     <option value="DIRECTION">Direction</option>
                     <option value="SERVICE">Service</option>
-                    <option value="PRESTATAIRE">Prestataire</option>
-                    <option value="AMO">AMO</option>
                 </select></div>
             <div style="flex:1;min-width:150px;"><label style="font-size:.82em;color:#666;">Service</label>
                 <select id="edit-contact-service" style="width:100%;padding:7px;border:1px solid #ccc;border-radius:4px;">
@@ -2049,6 +2052,6 @@
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
-<script src="app.js?v=6.28"></script>
+<script src="app.js?v=6.29"></script>
 </body>
 </html>
