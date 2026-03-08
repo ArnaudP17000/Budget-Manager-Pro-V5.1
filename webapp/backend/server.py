@@ -391,6 +391,27 @@ def run_migrations():
     except Exception as _me:
         _mlog.warning("Migration skipped: %s", _me)
 
+    # ── Table notifications (créer si absente) + colonnes ref_type/ref_id/niveau ─
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id            SERIAL PRIMARY KEY,
+                titre         VARCHAR(300),
+                message       TEXT,
+                lue           BOOLEAN DEFAULT FALSE,
+                user_id       INTEGER,
+                date_creation TIMESTAMP DEFAULT NOW()
+            )
+        """)
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
+    for _col, _typ in [('ref_type', 'VARCHAR(50)'), ('ref_id', 'INTEGER'),
+                        ('niveau', "VARCHAR(20) DEFAULT 'INFO'")]:
+        try:
+            db.execute(f"ALTER TABLE notifications ADD COLUMN IF NOT EXISTS {_col} {_typ}")
+        except Exception as _me:
+            _mlog.warning("Migration skipped: %s", _me)
+
 
 run_migrations()
 

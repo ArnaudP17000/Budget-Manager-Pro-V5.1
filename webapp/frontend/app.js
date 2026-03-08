@@ -59,6 +59,7 @@ async function doLogin() {
         setToken(data.token);
         hideLoginOverlay();
         applyRoleUI(data.user);
+        apiFetch('/notifications/generate', { method: 'POST', body: '{}' }).catch(() => {});
         initRefs().then(() => { loadDashboard(); loadNotifications(); });
     } catch (e) {
         errEl.textContent = e.message;
@@ -622,6 +623,7 @@ function _renderLignesRows() {
         </tr>`;
     }).join('');
     _updateSortHeaders('lignes');
+    _initTable('lignes-table');
     // Remettre la sélection si toujours présente
     if (_lignesSelectId) selectLigne(_lignesSelectId, null, true);
 }
@@ -1010,6 +1012,7 @@ function _renderBcRows() {
         </tr>`).join('');
     _updateSortHeaders('bc');
     _renderPagination('bc', sorted.length);
+    _initTable('bc-table');
 }
 
 async function loadBC() {
@@ -1373,6 +1376,7 @@ function _renderContratsRows() {
     }).join('');
     _updateSortHeaders('contrats');
     _renderPagination('contrats', sorted.length);
+    _initTable('contrats-table');
 }
 
 async function loadContrats() {
@@ -1662,6 +1666,7 @@ function _renderProjets(list) {
                 <button class="btn btn-danger btn-sm" onclick="deleteProjet(${p.id})">Suppr.</button>
             </td>
         </tr>`).join('');
+    _initTable('projets-table');
 }
 
 // ── Tableau de bord projet ─────────────────────────────────────────────────
@@ -2768,6 +2773,8 @@ async function loadTaches() {
                 </td>
             </tr>`).join('');
 
+        _initTable('taches-table');
+
         // Peupler le select "Assigner à" du formulaire de création
         const addSel = document.getElementById('tache-assignee');
         if (addSel && addSel.options.length <= 1) {
@@ -2975,6 +2982,7 @@ async function loadFournisseurs() {
                     <button class="btn btn-danger btn-sm" onclick="deleteFournisseur(${f.id})">Suppr.</button>
                 </td>
             </tr>`).join('');
+        _initTable('fournisseurs-table');
     } catch (e) { showMsg('Erreur chargement fournisseurs', false); }
 }
 
@@ -3163,6 +3171,7 @@ async function loadContacts() {
                     <button class="btn btn-danger btn-sm" onclick="deleteContact(${c.id})">Suppr.</button>
                 </td>
             </tr>`).join('');
+        _initTable('contacts-table');
     } catch (e) { showMsg('Erreur chargement contacts', false); }
 }
 
@@ -3424,6 +3433,7 @@ function renderServicesTable() {
         const el = document.getElementById(`sort-services-${c}`);
         if (el) el.textContent = _servicesSortCol === c ? (_servicesSortAsc ? ' ▲' : ' ▼') : ' ↕';
     });
+    _initTable('services-table');
 }
 
 function filterServices() { renderServicesTable(); }
@@ -3854,17 +3864,28 @@ async function loadNotifications() {
             el.innerHTML = '<p style="padding:20px;color:#888;">Aucune notification.</p>';
             return;
         }
-        el.innerHTML = list.map(n => `
+        const niveauColor = { URGENT: '#c0392b', ALERTE: '#e67e22', INFO: '#2563a8' };
+        const niveauLabel = { URGENT: '🔴 Urgent', ALERTE: '🟠 Alerte', INFO: '🔵 Info' };
+        el.innerHTML = list.map(n => {
+            const niv = n.niveau || 'INFO';
+            const borderColor = n.lue ? '#ccc' : (niveauColor[niv] || '#2563a8');
+            return `
             <div style="background:#fff;border-radius:8px;padding:12px 16px;margin-bottom:8px;
                         box-shadow:0 1px 4px rgba(0,0,0,.06);
-                        border-left:4px solid ${n.lue ? '#ccc' : '#2563a8'};
+                        border-left:4px solid ${borderColor};
                         opacity:${n.lue ? .65 : 1};">
-                <div style="font-weight:bold;font-size:.9em;">${n.titre || '-'}</div>
-                <div style="font-size:.82em;color:#555;margin-top:3px;">${n.message || ''}</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:.72em;font-weight:700;padding:2px 7px;border-radius:10px;
+                                 background:${niveauColor[niv] || '#2563a8'};color:#fff;">
+                        ${niveauLabel[niv] || niv}</span>
+                    <span style="font-weight:bold;font-size:.9em;">${_h(n.titre) || '-'}</span>
+                </div>
+                <div style="font-size:.82em;color:#555;margin-top:4px;">${_h(n.message) || ''}</div>
                 <div style="font-size:.75em;color:#999;margin-top:4px;">${fmtDate(n.date_creation)}</div>
                 ${!n.lue ? `<button class="btn btn-sm btn-info" style="margin-top:6px;"
                     onclick="lireNotif(${n.id})">Marquer lue</button>` : ''}
-            </div>`).join('');
+            </div>`;
+        }).join('');
     } catch (e) { /* notifications optionnelles */ }
 }
 
@@ -4381,6 +4402,7 @@ if (_existingToken) {
     if (_payload && _payload.exp * 1000 > Date.now()) {
         hideLoginOverlay();
         applyRoleUI(_payload);
+        apiFetch('/notifications/generate', { method: 'POST', body: '{}' }).catch(() => {});
         initRefs().then(() => { loadDashboard(); loadNotifications(); });
     } else {
         removeToken();
@@ -4390,48 +4412,201 @@ if (_existingToken) {
     showLoginOverlay();
 }
 
-// ─── Colonnes redimensionnables ─────────────────────────────────
-function makeTableResizable(table) {
-    // Éviter de re-initialiser si déjà fait
-    if (table._resizable) return;
-    table._resizable = true;
+// ─── Colonnes : redimensionnables + déplaçables + persistance ────────────────
 
-    table.querySelectorAll('th').forEach(th => {
-        // Ne pas ajouter sur la colonne checkbox (width fixe)
-        if (th.querySelector('input[type="checkbox"]')) return;
+/** Clé propre d'une <th> (texte visible, sans le handle ⠿ et les spans de tri) */
+function _colKey(th) {
+    if (th.dataset.ck) return th.dataset.ck;
+    let txt = '';
+    const walker = document.createTreeWalker(th, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+        const p = node.parentElement;
+        if (p.classList.contains('col-dragger') || p.classList.contains('col-resizer')) continue;
+        // ignorer les spans de tri (▲▼↕)
+        if (p.tagName === 'SPAN' && /[▲▼↕]/.test(p.textContent)) continue;
+        txt += node.textContent;
+    }
+    txt = txt.trim().replace(/\s+/g, ' ');
+    th.dataset.ck = txt || ('col' + Array.from(th.parentElement.children).indexOf(th));
+    return th.dataset.ck;
+}
 
-        // Retirer un ancien handle s'il existe
-        const old = th.querySelector('.col-resizer');
-        if (old) old.remove();
+function _getLayouts() {
+    try { return JSON.parse(localStorage.getItem('bmp_col_layout') || '{}'); } catch { return {}; }
+}
+function _saveLayout(_tableId, layouts) {
+    localStorage.setItem('bmp_col_layout', JSON.stringify(layouts));
+}
 
-        const handle = document.createElement('div');
-        handle.className = 'col-resizer';
-        th.appendChild(handle);
+/** Réordonne physiquement thead th + chaque tbody tr selon un tableau de clés */
+function _applyColOrder(table, order) {
+    const thead = table.tHead;
+    if (!thead) return;
+    const ths = Array.from(thead.rows[0].cells);
+    const keyToIdx = {};
+    ths.forEach((th, i) => { keyToIdx[_colKey(th)] = i; });
 
-        handle.addEventListener('mousedown', e => {
-            const startX   = e.clientX;
-            const startW   = th.offsetWidth;
-            handle.classList.add('is-dragging');
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
+    const newOrder = [];
+    // colonnes présentes dans order, dans l'ordre
+    order.forEach(k => { if (keyToIdx[k] !== undefined) newOrder.push(keyToIdx[k]); });
+    // colonnes absentes de order (nouvelles) → à la fin
+    ths.forEach((_, i) => { if (!newOrder.includes(i)) newOrder.push(i); });
 
-            const onMove = e => {
-                const newW = Math.max(50, startW + e.clientX - startX);
-                th.style.width    = newW + 'px';
-                th.style.minWidth = newW + 'px';
-            };
-            const onUp = () => {
-                handle.classList.remove('is-dragging');
-                document.body.style.cursor = '';
-                document.body.style.userSelect = '';
-                document.removeEventListener('mousemove', onMove);
-                document.removeEventListener('mouseup', onUp);
-            };
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
-            e.preventDefault();
-        });
+    const reorderRow = row => {
+        const cells = Array.from(row.cells);
+        newOrder.forEach(i => row.appendChild(cells[i]));
+    };
+    reorderRow(thead.rows[0]);
+    Array.from(table.tBodies).forEach(tb => {
+        Array.from(tb.rows).forEach(reorderRow);
     });
+}
+
+/** Déplace la colonne fromIdx vers toIdx dans toutes les lignes */
+function _moveTableColumn(table, fromIdx, toIdx) {
+    if (fromIdx === toIdx) return;
+    const reorderRow = row => {
+        const cells = Array.from(row.cells);
+        if (fromIdx < 0 || fromIdx >= cells.length) return;
+        const cell = cells.splice(fromIdx, 1)[0];
+        cells.splice(toIdx, 0, cell);
+        cells.forEach(c => row.appendChild(c));
+    };
+    if (table.tHead) reorderRow(table.tHead.rows[0]);
+    Array.from(table.tBodies).forEach(tb => Array.from(tb.rows).forEach(reorderRow));
+}
+
+/**
+ * Initialise le redimensionnement + réordonnancement + persistance d'une table.
+ * À appeler à chaque re-render (idempotent grâce à _ck markers sur th).
+ */
+function _initTable(tableId) {
+    const table = document.getElementById(tableId);
+    if (!table || !table.tHead) return;
+    const thead = table.tHead.rows[0];
+    if (!thead) return;
+
+    const layouts = _getLayouts();
+    const layout  = layouts[tableId] || { widths: {}, order: [] };
+
+    // ── 1. Appliquer l'ordre sauvegardé ──────────────────────────
+    if (layout.order && layout.order.length) {
+        _applyColOrder(table, layout.order);
+    }
+
+    // ── 2. Attacher les handles (resize + drag) à chaque th ──────
+    Array.from(thead.cells).forEach(th => {
+        if (th._bmpHandled) return;   // déjà initialisé (tables statiques)
+        th._bmpHandled = true;
+
+        th.style.position = 'relative';
+        th.style.whiteSpace = 'nowrap';
+
+        const key = _colKey(th);
+
+        // Appliquer la largeur sauvegardée
+        if (layout.widths[key]) {
+            th.style.width = th.style.minWidth = layout.widths[key] + 'px';
+        }
+
+        // ── Handle de déplacement (⠿) ──────────────────────────
+        if (!th.querySelector('.col-dragger') && !th.querySelector('input[type="checkbox"]')) {
+            const dragger = document.createElement('span');
+            dragger.className = 'col-dragger';
+            dragger.textContent = '⠿';
+            dragger.title = 'Déplacer la colonne';
+            th.prepend(dragger);
+
+            dragger.addEventListener('mousedown', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                let _dropTh = null;
+
+                const allThs = Array.from(thead.cells);
+                th.classList.add('col-dragging');
+
+                const onMove = ev => {
+                    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+                    const targetTh = el ? el.closest('th') : null;
+                    allThs.forEach(t => t.classList.remove('col-drop-left', 'col-drop-right'));
+                    if (targetTh && targetTh !== th && thead.contains(targetTh)) {
+                        const rect = targetTh.getBoundingClientRect();
+                        const leftHalf = ev.clientX < rect.left + rect.width / 2;
+                        targetTh.classList.add(leftHalf ? 'col-drop-left' : 'col-drop-right');
+                        _dropTh = { th: targetTh, before: leftHalf };
+                    } else {
+                        _dropTh = null;
+                    }
+                };
+
+                const onUp = () => {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    th.classList.remove('col-dragging');
+                    Array.from(thead.cells).forEach(t => t.classList.remove('col-drop-left', 'col-drop-right'));
+
+                    if (_dropTh) {
+                        const allThs2 = Array.from(thead.cells);
+                        let toIdx = allThs2.indexOf(_dropTh.th);
+                        if (!_dropTh.before) toIdx++;
+                        const realFrom = allThs2.indexOf(th);
+                        if (toIdx > realFrom) toIdx--;
+                        _moveTableColumn(table, realFrom, toIdx);
+                        // Sauvegarder le nouvel ordre
+                        const lyt = _getLayouts();
+                        if (!lyt[tableId]) lyt[tableId] = { widths: {}, order: [] };
+                        lyt[tableId].order = Array.from(thead.cells).map(_colKey);
+                        _saveLayout(tableId, lyt);
+                    }
+                };
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+        }
+
+        // ── Handle de redimensionnement (bord droit) ────────────
+        if (!th.querySelector('.col-resizer') && !th.querySelector('input[type="checkbox"]')) {
+            const resizer = document.createElement('div');
+            resizer.className = 'col-resizer';
+            th.appendChild(resizer);
+
+            resizer.addEventListener('mousedown', e => {
+                const startX = e.clientX;
+                const startW = th.offsetWidth;
+                resizer.classList.add('is-dragging');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+
+                const onMove = e => {
+                    const newW = Math.max(50, startW + e.clientX - startX);
+                    th.style.width = th.style.minWidth = newW + 'px';
+                };
+                const onUp = () => {
+                    resizer.classList.remove('is-dragging');
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    // Sauvegarder la largeur
+                    const lyt = _getLayouts();
+                    if (!lyt[tableId]) lyt[tableId] = { widths: {}, order: [] };
+                    lyt[tableId].widths[_colKey(th)] = th.offsetWidth;
+                    _saveLayout(tableId, lyt);
+                };
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+                e.preventDefault();
+            });
+        }
+    });
+}
+
+/** Compatibilité — alias vers _initTable pour le module TPE */
+function makeTableResizable(table) {
+    if (!table || !table.id) return;
+    _initTable(table.id);
 }
 
 // ═══════════════════════════════════════════════════════════════
