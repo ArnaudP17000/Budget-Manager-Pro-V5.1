@@ -291,7 +291,7 @@ def dashboard():
         entite_map[e]['engage'] += float(b.get('montant_engage', 0) or 0)
 
     return jsonify({
-        "kpi_projets":        len(projets),
+        "kpi_projets":        len([p for p in projets if p.get('statut') == 'ACTIF']),
         "kpi_budget":         sum(b.get('montant_vote', 0) or 0 for b in budget),
         "kpi_bons_commande":  len(bons_commande),
         "kpi_montant_bc":     sum(b.get('montant_ttc', 0) or 0 for b in bons_commande),
