@@ -4904,16 +4904,19 @@ function _renderPostits(list) {
     }
     grid.innerHTML = list.map(n => {
         const bg = n.couleur || '#fff9c4';
-        const preview = n.contenu ? n.contenu.replace(/<[^>]+>/g, '').substring(0, 120) : '';
-        const date = n.updated_at ? new Date(n.updated_at).toLocaleDateString('fr-FR') : '';
-        return `<div style="background:${bg};border-radius:8px;padding:14px 14px 10px;min-width:180px;max-width:240px;
-                    flex:0 0 auto;box-shadow:2px 3px 8px rgba(0,0,0,.12);position:relative;cursor:pointer;"
-                    onclick="editNote(${n.id})">
-            <div style="font-weight:600;font-size:.9em;margin-bottom:6px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_h(n.titre || 'Sans titre')}</div>
-            <div style="font-size:.8em;color:#555;line-height:1.4;min-height:40px;">${_h(preview)}${preview.length >= 120 ? '…' : ''}</div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
-                <span style="font-size:.72em;color:#888;">${date}</span>
-                <button class="btn btn-danger btn-sm" style="padding:2px 7px;font-size:.75em;" onclick="event.stopPropagation();deleteNote(${n.id})">✕</button>
+        const date = n.updated_at ? new Date(n.updated_at).toLocaleDateString('fr-FR', {day:'2-digit',month:'short'}) : '';
+        return `<div style="background:${bg};border-radius:8px;padding:14px 14px 10px;min-width:200px;max-width:260px;
+                    flex:0 0 auto;box-shadow:2px 3px 10px rgba(0,0,0,.13);display:flex;flex-direction:column;">
+            <div style="font-weight:700;font-size:.88em;margin-bottom:8px;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_h(n.titre || 'Sans titre')}</div>
+            <div class="ql-snow" style="flex:1;overflow:hidden;max-height:160px;">
+                <div class="ql-editor" style="padding:0;font-size:.8em;line-height:1.5;color:#444;overflow:hidden;">${n.contenu || ''}</div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:6px;border-top:1px solid rgba(0,0,0,.07);">
+                <span style="font-size:.72em;color:#777;">${date}</span>
+                <div style="display:flex;gap:4px;">
+                    <button class="btn btn-warning btn-sm" style="padding:2px 6px;font-size:.72em;" onclick="editNote(${n.id})">✏️</button>
+                    <button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:.72em;" onclick="deleteNote(${n.id})">✕</button>
+                </div>
             </div>
         </div>`;
     }).join('');
@@ -4934,21 +4937,38 @@ function _renderNotesProjet(list) {
         grouped[key].notes.push(n);
     });
     container.innerHTML = Object.values(grouped).map(g => `
-        <div style="margin-bottom:18px;">
-            <div style="font-weight:700;font-size:.9em;color:#2563a8;border-bottom:1px solid #dbeafe;padding-bottom:4px;margin-bottom:8px;">📁 ${_h(g.label)}</div>
+        <div style="margin-bottom:24px;">
+            <div style="font-weight:700;font-size:.95em;color:#2563a8;border-bottom:2px solid #dbeafe;
+                        padding-bottom:6px;margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+                📁 ${_h(g.label)}
+                <span style="font-size:.78em;font-weight:400;color:#888;">(${g.notes.length} note${g.notes.length > 1 ? 's' : ''})</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:14px;">
             ${g.notes.map(n => {
-                const date = n.updated_at ? new Date(n.updated_at).toLocaleDateString('fr-FR') : '';
-                const preview = n.contenu ? n.contenu.replace(/<[^>]+>/g, '').substring(0, 100) : '';
-                return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;background:#f9fafb;margin-bottom:5px;cursor:pointer;"
-                             onclick="editNote(${n.id})">
-                    <div style="flex:1;min-width:0;">
-                        <div style="font-weight:600;font-size:.87em;">${_h(n.titre || 'Sans titre')}</div>
-                        <div style="font-size:.78em;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_h(preview)}${preview.length >= 100 ? '…' : ''}</div>
+                const date = n.updated_at ? new Date(n.updated_at).toLocaleDateString('fr-FR', {day:'2-digit',month:'short',year:'numeric'}) : '';
+                const auteur = n.auteur_nom || '';
+                return `<div style="flex:1 1 320px;max-width:520px;background:#fff;border:1px solid #e5e7eb;
+                                    border-left:4px solid #2563a8;border-radius:8px;padding:14px 16px;
+                                    box-shadow:0 1px 4px rgba(0,0,0,.06);">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:8px;">
+                        <div style="font-weight:700;font-size:.92em;color:#1e293b;flex:1;">${_h(n.titre || 'Sans titre')}</div>
+                        <div style="display:flex;gap:5px;flex-shrink:0;">
+                            <button class="btn btn-warning btn-sm" style="padding:2px 8px;font-size:.75em;"
+                                onclick="editNote(${n.id})">✏️</button>
+                            <button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:.75em;"
+                                onclick="deleteNote(${n.id})">✕</button>
+                        </div>
                     </div>
-                    <span style="font-size:.75em;color:#aaa;white-space:nowrap;">${date}</span>
-                    <button class="btn btn-danger btn-sm" style="padding:2px 7px;font-size:.75em;" onclick="event.stopPropagation();deleteNote(${n.id})">✕</button>
+                    <div class="ql-snow"><div class="ql-editor" style="padding:0;font-size:.85em;line-height:1.6;color:#374151;
+                        max-height:300px;overflow-y:auto;">${n.contenu || '<em style="color:#aaa;">Aucun contenu</em>'}</div></div>
+                    <div style="margin-top:10px;padding-top:8px;border-top:1px solid #f3f4f6;
+                                display:flex;justify-content:space-between;font-size:.75em;color:#9ca3af;">
+                        <span>${auteur ? '✍️ ' + _h(auteur) : ''}</span>
+                        <span>📅 ${date}</span>
+                    </div>
                 </div>`;
             }).join('')}
+            </div>
         </div>`).join('');
 }
 
