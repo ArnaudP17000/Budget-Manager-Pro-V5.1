@@ -28,16 +28,21 @@ function applyRoleUI(user) {
     loadModules();
 }
 
+let _loginInProgress = false;
 async function doLogin() {
+    if (_loginInProgress) return;
     const login = document.getElementById('login-user').value.trim();
     const pass  = document.getElementById('login-pass').value;
     const errEl = document.getElementById('login-error');
+    const btn   = document.querySelector('#login-overlay button[type=button], #login-overlay .btn');
     errEl.style.display = 'none';
     if (!login || !pass) {
         errEl.textContent = 'Identifiant et mot de passe requis';
         errEl.style.display = 'block';
         return;
     }
+    _loginInProgress = true;
+    if (btn) { btn.disabled = true; btn.textContent = 'Connexion…'; }
     try {
         const res = await fetch(API + '/auth/login', {
             method: 'POST',
@@ -50,14 +55,17 @@ async function doLogin() {
             errEl.style.display = 'block';
             return;
         }
-        setToken(data.token);
         _sessionExpired = false;
+        setToken(data.token);
         hideLoginOverlay();
         applyRoleUI(data.user);
         initRefs().then(() => { loadDashboard(); loadNotifications(); });
     } catch (e) {
         errEl.textContent = e.message;
         errEl.style.display = 'block';
+    } finally {
+        _loginInProgress = false;
+        if (btn) { btn.disabled = false; btn.textContent = 'Se connecter'; }
     }
 }
 
@@ -193,7 +201,8 @@ async function apiFetch(path, opts = {}) {
     if (token) headers['Authorization'] = 'Bearer ' + token;
     const res = await fetch(API + path, { headers, ...opts });
     if (res.status === 401) {
-        if (!_sessionExpired) {
+        // Ignorer si un nouveau login a eu lieu depuis cette requête (token différent)
+        if (!_sessionExpired && getToken() === token) {
             _sessionExpired = true;
             removeToken();
             showLoginOverlay();
