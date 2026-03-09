@@ -45,7 +45,7 @@ class AuthService:
             return None
 
         payload = {
-            'sub':        user['id'],
+            'sub':        str(user['id']),
             'login':      user['login'],
             'nom':        user['nom'],
             'prenom':     user['prenom'],
@@ -64,7 +64,9 @@ class AuthService:
 
     def verify_token(self, token: str):
         try:
-            return jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+            payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+            payload['sub'] = int(payload['sub'])
+            return payload
         except jwt.ExpiredSignatureError:
             return None
         except jwt.InvalidTokenError:
