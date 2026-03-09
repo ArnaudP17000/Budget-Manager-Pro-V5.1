@@ -31,6 +31,7 @@ def require_auth(*roles):
                 return jsonify({"error": "Non authentifie"}), 401
             try:
                 payload = _jwt.decode(token, _secret(), algorithms=["HS256"])
+                payload['sub'] = int(payload['sub'])
             except _jwt.ExpiredSignatureError:
                 return jsonify({"error": "Token expire"}), 401
             except _jwt.InvalidTokenError:
