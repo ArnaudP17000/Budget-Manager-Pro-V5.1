@@ -1367,7 +1367,8 @@ def get_projets():
         if filters.get('statut'):
             extra.append("p.statut = %s")
             params.append(filters['statut'])
-        clause = f"({where})" + (" AND " + " AND ".join(extra) if extra else "")
+        # Inclure aussi les projets sans created_by_id (cohérent avec GET /projet/<id>)
+        clause = f"({where} OR p.created_by_id IS NULL)" + (" AND " + " AND ".join(extra) if extra else "")
         rows = projet_service.db.fetch_all(
             "SELECT p.*, s.nom as service_nom, s.code as service_code "
             "FROM projets p "
