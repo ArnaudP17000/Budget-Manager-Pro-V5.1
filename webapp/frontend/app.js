@@ -56,6 +56,7 @@ async function doLogin() {
             return;
         }
         _sessionExpired = false;
+        _loginGen++;
         setToken(data.token);
         hideLoginOverlay();
         applyRoleUI(data.user);
@@ -191,6 +192,7 @@ function progressBar(val, max) {
 }
 
 let _sessionExpired = false; // évite les déconnexions multiples simultanées
+let _loginGen = 0;          // incrémenté à chaque login pour invalider les requêtes antérieures
 let _quillRapport = null;   // instance Quill pour rapport de réunion
 let _quillNote    = null;   // instance Quill pour les notes
 let _notesTab     = 'postit'; // onglet actif notes
@@ -198,12 +200,13 @@ let _noteColor    = '#fff9c4'; // couleur sélectionnée pour post-it
 
 async function apiFetch(path, opts = {}) {
     const token = getToken();
+    const gen = _loginGen; // génération de session au moment de l'appel
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = 'Bearer ' + token;
     const res = await fetch(API + path, { headers, ...opts });
     if (res.status === 401) {
-        // Ignorer si un nouveau login a eu lieu depuis cette requête (token différent)
-        if (!_sessionExpired && getToken() === token) {
+        // Ignorer si un nouveau login a eu lieu depuis cette requête
+        if (!_sessionExpired && gen === _loginGen) {
             _sessionExpired = true;
             removeToken();
             showLoginOverlay();
@@ -4400,6 +4403,7 @@ const _existingToken = getToken();
 if (_existingToken) {
     const _payload = decodeToken(_existingToken);
     if (_payload && _payload.exp * 1000 > Date.now()) {
+        _loginGen++;
         hideLoginOverlay();
         applyRoleUI(_payload);
         apiFetch('/notifications/generate', { method: 'POST', body: '{}' }).catch(() => {});
