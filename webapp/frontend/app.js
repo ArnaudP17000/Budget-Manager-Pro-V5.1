@@ -60,7 +60,7 @@ async function doLogin() {
         setToken(data.token);
         hideLoginOverlay();
         applyRoleUI(data.user);
-        apiFetch('/notifications/generate', { method: 'POST', body: '{}' }).catch(() => {});
+        _bgPost('/notifications/generate');
         initRefs().then(() => { loadDashboard(); loadNotifications(); });
     } catch (e) {
         errEl.textContent = e.message;
@@ -193,6 +193,17 @@ function progressBar(val, max) {
 
 let _sessionExpired = false; // évite les déconnexions multiples simultanées
 let _loginGen = 0;          // incrémenté à chaque login pour invalider les requêtes antérieures
+
+/** Fire-and-forget POST sans passer par apiFetch — ne peut jamais tuer la session */
+function _bgPost(path) {
+    const token = getToken();
+    if (!token) return;
+    fetch(API + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: '{}'
+    }).catch(() => {});
+}
 let _quillRapport = null;   // instance Quill pour rapport de réunion
 let _quillNote    = null;   // instance Quill pour les notes
 let _notesTab     = 'postit'; // onglet actif notes
@@ -4406,7 +4417,7 @@ if (_existingToken) {
         _loginGen++;
         hideLoginOverlay();
         applyRoleUI(_payload);
-        apiFetch('/notifications/generate', { method: 'POST', body: '{}' }).catch(() => {});
+        _bgPost('/notifications/generate');
         initRefs().then(() => { loadDashboard(); loadNotifications(); });
     } else {
         removeToken();
