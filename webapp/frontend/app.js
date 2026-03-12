@@ -204,6 +204,27 @@ function _bgPost(path) {
         body: '{}'
     }).catch(() => {});
 }
+
+/** Rafraîchit silencieusement le token si < 60 min restantes */
+function _maybeRefreshToken() {
+    const token = getToken();
+    if (!token) return;
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const remaining = payload.exp * 1000 - Date.now();
+        if (remaining > 0 && remaining < 60 * 60 * 1000) {
+            fetch(API + '/auth/refresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: '{}'
+            }).then(r => r.ok ? r.json() : null)
+              .then(d => { if (d && d.token) setToken(d.token); })
+              .catch(() => {});
+        }
+    } catch { /* ignore */ }
+}
+// Vérification toutes les 15 minutes
+setInterval(_maybeRefreshToken, 15 * 60 * 1000);
 let _quillRapport = null;   // instance Quill pour rapport de réunion
 let _quillNote    = null;   // instance Quill pour les notes
 let _notesTab     = 'postit'; // onglet actif notes

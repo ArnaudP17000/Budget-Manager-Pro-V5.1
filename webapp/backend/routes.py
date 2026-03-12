@@ -152,6 +152,27 @@ def login():
 def me():
     return jsonify(g.user)
 
+@routes.route('/auth/refresh', methods=['POST'])
+@require_auth()
+def refresh_token():
+    """Émet un nouveau token JWT si le token actuel est encore valide."""
+    from app.services.auth_service import AuthService, SECRET_KEY, EXPIRY_HOURS
+    import jwt as _jwt
+    from datetime import datetime, timezone, timedelta
+    u = g.user
+    payload = {
+        'sub':        str(u['sub']),
+        'login':      u.get('login'),
+        'nom':        u.get('nom'),
+        'prenom':     u.get('prenom'),
+        'role':       u.get('role'),
+        'service_id': u.get('service_id'),
+        'iat':        datetime.now(timezone.utc),
+        'exp':        datetime.now(timezone.utc) + timedelta(hours=EXPIRY_HOURS),
+    }
+    new_token = _jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+    return jsonify({'token': new_token})
+
 
 # ─────────────────────────────────────────────
 # USERS (admin)
