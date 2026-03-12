@@ -18,7 +18,7 @@ else:
     SECRET_KEY = hashlib.sha256(_base.encode()).hexdigest()
     logger.warning("SECRET_KEY non défini — clé dérivée utilisée. Ajoutez SECRET_KEY dans .env.")
 
-EXPIRY_HOURS = int(os.getenv('JWT_EXPIRY_HOURS', '2'))
+EXPIRY_HOURS = int(os.getenv('JWT_EXPIRY_HOURS', '8'))
 
 
 class AuthService:
