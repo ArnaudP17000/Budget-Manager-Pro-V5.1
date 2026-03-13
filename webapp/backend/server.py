@@ -345,6 +345,31 @@ def run_migrations():
         _mlog.warning("TPE import skipped: %s", _me)
     # ── /TPE MODULE ───────────────────────────────────────────────
 
+    # ── Modules utilisateur (permissions par module) ────────────
+    try:
+        db.execute(
+            "ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS modules JSONB"
+        )
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
+    # Peupler les défauts pour les comptes existants sans modules
+    try:
+        db.execute("""
+            UPDATE utilisateurs SET modules = CASE role
+                WHEN 'admin' THEN
+                    '["budget","bc","contrats","projets","taches","kanban","fournisseurs","contacts","services","etp","gantt","notifications","notes","tpe"]'::jsonb
+                WHEN 'gestionnaire_service' THEN
+                    '["budget","projets","contacts","notifications"]'::jsonb
+                WHEN 'gestionnaire' THEN
+                    '["budget","bc","contrats","projets","taches","kanban","fournisseurs","contacts","gantt","notifications","notes"]'::jsonb
+                ELSE
+                    '["budget","bc","projets","notifications","notes"]'::jsonb
+            END
+            WHERE modules IS NULL
+        """)
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
+
     # ── Resync séquences (évite duplicate key après import CSV) ─
     for table in ['projets', 'services', 'utilisateurs', 'contacts',
                   'taches', 'contrats', 'bons_commande', 'fournisseurs']:

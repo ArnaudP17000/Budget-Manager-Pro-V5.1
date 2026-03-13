@@ -18,6 +18,21 @@ function hideLoginOverlay() {
     document.getElementById('login-overlay').style.display = 'none';
 }
 
+const _ALL_MODULES = ['budget','bc','contrats','projets','taches','kanban',
+    'fournisseurs','contacts','services','etp','gantt','notifications','notes','tpe'];
+const _MODULE_LABELS = {
+    budget:'Budgets', bc:'Bons de commande', contrats:'Contrats', projets:'Projets',
+    taches:'Tâches', kanban:'Kanban', fournisseurs:'Fournisseurs', contacts:'Contacts',
+    services:'Services', etp:'ETP', gantt:'Gantt', notifications:'Notifications',
+    notes:'Notes', tpe:'TPE'
+};
+const _DEFAULT_MODULES = {
+    admin: _ALL_MODULES,
+    gestionnaire_service: ['budget','projets','contacts','notifications'],
+    gestionnaire: ['budget','bc','contrats','projets','taches','kanban','fournisseurs','contacts','gantt','notifications','notes'],
+    lecteur: ['budget','bc','projets','notifications','notes'],
+};
+
 function applyRoleUI(user) {
     document.getElementById('user-name').textContent =
         ((user.prenom || '') + ' ' + (user.nom || '')).trim();
@@ -25,7 +40,19 @@ function applyRoleUI(user) {
     document.getElementById('user-info').style.display = 'flex';
     const adminNav = document.getElementById('nav-admin');
     if (adminNav) adminNav.style.display = user.role === 'admin' ? '' : 'none';
-    loadModules();
+    // Appliquer visibilité des onglets selon modules
+    const userModules = user.modules || _DEFAULT_MODULES[user.role] || [];
+    _ALL_MODULES.forEach(m => {
+        const btn = document.getElementById('nav-' + m);
+        if (btn) btn.style.display = userModules.includes(m) ? '' : 'none';
+    });
+    // Mode lecture seule pour gestionnaire_service
+    if (user.role === 'gestionnaire_service') {
+        document.body.classList.add('mode-readonly');
+    } else {
+        document.body.classList.remove('mode-readonly');
+    }
+    loadModules(userModules);
 }
 
 let _loginInProgress = false;
@@ -3992,7 +4019,8 @@ async function loadAdminUsers() {
         ]);
         _adminServicesCache = servicesData.list || [];
         const tbody = document.getElementById('admin-users-tbody');
-        const roleColor = { admin: '#c0392b', gestionnaire: '#2563a8', lecteur: '#27ae60' };
+        const roleColor = { admin: '#c0392b', gestionnaire: '#2563a8', gestionnaire_service: '#7b3fa8', lecteur: '#27ae60' };
+        const roleLabel = { admin: 'Admin', gestionnaire: 'Gestionnaire', gestionnaire_service: 'Gest. Service', lecteur: 'Lecteur' };
         tbody.innerHTML = (usersData.list || []).map(u => `
             <tr style="opacity:${u.actif ? 1 : 0.5}">
                 <td>${u.nom || '-'}</td>
@@ -4000,7 +4028,7 @@ async function loadAdminUsers() {
                 <td><strong>${u.login || '-'}</strong></td>
                 <td>${u.email || '-'}</td>
                 <td><span style="background:${roleColor[u.role]||'#888'};color:#fff;
-                    padding:2px 8px;border-radius:10px;font-size:.82em;">${u.role}</span></td>
+                    padding:2px 8px;border-radius:10px;font-size:.82em;">${roleLabel[u.role]||u.role}</span></td>
                 <td>${u.service_id
                     ? (_adminServicesCache.find(s => s.id === u.service_id) || {}).nom || u.service_id
                     : '<em style="color:#aaa">Global</em>'}</td>
@@ -4071,6 +4099,32 @@ async function loadAuditLog() {
     } catch (e) { showMsg('Erreur journal audit: ' + e.message, false); }
 }
 
+function _renderModuleCheckboxes(containerId, selectedModules) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = _ALL_MODULES.map(m => `
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+            <input type="checkbox" value="${m}" ${selectedModules.includes(m) ? 'checked' : ''}>
+            ${_MODULE_LABELS[m] || m}
+        </label>`).join('');
+}
+
+function _getModuleCheckboxValues(containerId) {
+    const el = document.getElementById(containerId);
+    if (!el) return null;
+    return Array.from(el.querySelectorAll('input[type=checkbox]:checked')).map(cb => cb.value);
+}
+
+function _onNewUserRoleChange() {
+    const role = document.getElementById('new-user-role').value;
+    _renderModuleCheckboxes('new-user-modules', _DEFAULT_MODULES[role] || []);
+}
+
+function _onEditUserRoleChange() {
+    const role = document.getElementById('edit-user-role').value;
+    _renderModuleCheckboxes('edit-user-modules', _DEFAULT_MODULES[role] || []);
+}
+
 async function saveNewUser() {
     const serviceVal = document.getElementById('new-user-service').value;
     const data = {
@@ -4082,6 +4136,7 @@ async function saveNewUser() {
         role:         document.getElementById('new-user-role').value,
         service_id:   serviceVal ? parseInt(serviceVal) : null,
         actif:        true,
+        modules:      _getModuleCheckboxValues('new-user-modules'),
     };
     if (!data.login || !data.mot_de_passe) { showMsg('Login et mot de passe obligatoires', false); return; }
     try {
@@ -4106,6 +4161,9 @@ async function editAdminUser(id) {
         // Peupler select service avec hiérarchie
         const sel = document.getElementById('edit-user-service');
         _buildServiceOptions(sel, u.service_id);
+        // Modules
+        const userModules = u.modules || _DEFAULT_MODULES[u.role] || [];
+        _renderModuleCheckboxes('edit-user-modules', userModules);
         openModal('modal-edit-user');
     } catch (e) { showMsg(e.message, false); }
 }
@@ -4121,6 +4179,7 @@ async function saveEditUser() {
         role:         document.getElementById('edit-user-role').value,
         service_id:   serviceVal ? parseInt(serviceVal) : null,
         actif:        document.getElementById('edit-user-actif').checked,
+        modules:      _getModuleCheckboxValues('edit-user-modules'),
     };
     const pwd = document.getElementById('edit-user-password').value;
     if (pwd) data.mot_de_passe = pwd;
@@ -4475,7 +4534,11 @@ document.getElementById('modal-add-user').addEventListener('click', function(e) 
 const _addUserBtn = document.querySelector('[onclick="openModal(\'modal-add-user\')"]');
 if (_addUserBtn) {
     _addUserBtn.addEventListener('click', () => {
-        setTimeout(_populateNewUserServiceSelect, 50);
+        setTimeout(() => {
+            _populateNewUserServiceSelect();
+            const role = document.getElementById('new-user-role')?.value || 'lecteur';
+            _renderModuleCheckboxes('new-user-modules', _DEFAULT_MODULES[role] || []);
+        }, 50);
     });
 }
 
@@ -4699,16 +4762,17 @@ function makeTableResizable(table) {
 // ═══════════════════════════════════════════════════════════════
 
 // ─── Modules : activation / nav tabs ────────────────────────
-async function loadModules() {
+async function loadModules(userModules) {
     try {
         const data = await apiFetch('/modules');
         const modules = data.list || [];
         const tpeMod = modules.find(m => m.module_name === 'tpe');
         const tpeEnabled = tpeMod && tpeMod.enabled;
+        // TPE visible uniquement si le module global est activé ET l'user a le droit
         const navTpe = document.getElementById('nav-tpe');
-        if (navTpe) navTpe.style.display = tpeEnabled ? '' : 'none';
-        // Exposer pour réutilisation (ex: bouton add dans la vue)
-        window._tpeModuleEnabled = tpeEnabled;
+        const userHasTpe = !userModules || userModules.includes('tpe');
+        if (navTpe) navTpe.style.display = (tpeEnabled && userHasTpe) ? '' : 'none';
+        window._tpeModuleEnabled = tpeEnabled && userHasTpe;
     } catch {
         // silencieux si non connecté
     }

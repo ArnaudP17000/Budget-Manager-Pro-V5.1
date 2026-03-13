@@ -844,8 +844,8 @@ def _ownership_where(user_id, role, service_id, alias='bc'):
     p = alias + '.'
     if role == 'admin':
         return "1=1", []
-    elif role == 'gestionnaire' and service_id:
-        # Chef de service : voit tous les membres de son service/unité
+    elif role in ('gestionnaire', 'gestionnaire_service') and service_id:
+        # Gestionnaire / gestionnaire de service : voit tous les membres de son service/unité
         return (
             f"({p}created_by_id = %s "
             f"OR {p}created_by_id IN "

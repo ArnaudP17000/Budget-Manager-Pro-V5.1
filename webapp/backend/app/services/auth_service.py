@@ -30,7 +30,7 @@ class AuthService:
     def login(self, login: str, password: str):
         user = self.db.fetch_one(
             "SELECT id, nom, prenom, email, login, mot_de_passe, "
-            "role, service_id, actif "
+            "role, service_id, actif, modules "
             "FROM utilisateurs WHERE login = %s",
             [login]
         )
@@ -44,6 +44,13 @@ class AuthService:
         if not bcrypt.checkpw(password.encode('utf-8'), stored_hash):
             return None
 
+        _default_modules = {
+            'admin': ["budget","bc","contrats","projets","taches","kanban","fournisseurs","contacts","services","etp","gantt","notifications","notes","tpe"],
+            'gestionnaire_service': ["budget","projets","contacts","notifications"],
+            'gestionnaire': ["budget","bc","contrats","projets","taches","kanban","fournisseurs","contacts","gantt","notifications","notes"],
+            'lecteur': ["budget","bc","projets","notifications","notes"],
+        }
+        modules = user.get('modules') or _default_modules.get(user['role'], [])
         payload = {
             'sub':        str(user['id']),
             'login':      user['login'],
@@ -51,6 +58,7 @@ class AuthService:
             'prenom':     user['prenom'],
             'role':       user['role'],
             'service_id': user['service_id'],
+            'modules':    modules,
             'iat':        datetime.now(timezone.utc),
             'exp':        datetime.now(timezone.utc) + timedelta(hours=EXPIRY_HOURS),
         }
@@ -58,6 +66,7 @@ class AuthService:
         return {
             'token': token,
             'user': {k: user[k] for k in ['id', 'nom', 'prenom', 'login', 'role', 'service_id']}
+                    | {'modules': modules}
         }
 
     # ── VERIFY TOKEN ────────────────────────────────────────
@@ -76,36 +85,49 @@ class AuthService:
 
     def get_all_users(self):
         return self.db.fetch_all(
-            "SELECT id, nom, prenom, email, login, role, service_id, actif, date_creation "
+            "SELECT id, nom, prenom, email, login, role, service_id, actif, modules, date_creation "
             "FROM utilisateurs ORDER BY nom, prenom"
         ) or []
 
     def get_user_by_id(self, user_id: int):
         return self.db.fetch_one(
-            "SELECT id, nom, prenom, email, login, role, service_id, actif "
+            "SELECT id, nom, prenom, email, login, role, service_id, actif, modules "
             "FROM utilisateurs WHERE id = %s",
             [user_id]
         )
 
+    _DEFAULT_MODULES = {
+        'admin': ["budget","bc","contrats","projets","taches","kanban","fournisseurs","contacts","services","etp","gantt","notifications","notes","tpe"],
+        'gestionnaire_service': ["budget","projets","contacts","notifications"],
+        'gestionnaire': ["budget","bc","contrats","projets","taches","kanban","fournisseurs","contacts","gantt","notifications","notes"],
+        'lecteur': ["budget","bc","projets","notifications","notes"],
+    }
+
     def create_user(self, data: dict):
+        import json as _json
         if len(data.get('mot_de_passe', '')) < 8:
             raise ValueError('Le mot de passe doit contenir au moins 8 caractères')
         hashed = bcrypt.hashpw(
             data['mot_de_passe'].encode('utf-8'), bcrypt.gensalt()
         ).decode('utf-8')
+        role = data.get('role', 'lecteur')
+        modules = data.get('modules') or self._DEFAULT_MODULES.get(role, [])
         self.db.execute(
             "INSERT INTO utilisateurs "
-            "(nom, prenom, email, login, mot_de_passe, role, service_id, actif) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            "(nom, prenom, email, login, mot_de_passe, role, service_id, actif, modules) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             [data.get('nom') or None, data.get('prenom') or None,
              data.get('email') or None,
-             data['login'], hashed,
-             data.get('role', 'lecteur'),
+             data['login'], hashed, role,
              data.get('service_id') or None,
-             data.get('actif', True)]
+             data.get('actif', True),
+             _json.dumps(modules)]
         )
 
     def update_user(self, user_id: int, data: dict):
+        import json as _json
+        modules_val = data.get('modules')
+        modules_json = _json.dumps(modules_val) if modules_val is not None else None
         if data.get('mot_de_passe'):
             if len(data['mot_de_passe']) < 8:
                 raise ValueError('Le mot de passe doit contenir au moins 8 caractères')
@@ -114,20 +136,28 @@ class AuthService:
             ).decode('utf-8')
             self.db.execute(
                 "UPDATE utilisateurs SET nom=%s, prenom=%s, email=%s, login=%s, "
-                "mot_de_passe=%s, role=%s, service_id=%s, actif=%s WHERE id=%s",
+                "mot_de_passe=%s, role=%s, service_id=%s, actif=%s"
+                + (", modules=%s" if modules_json is not None else "")
+                + " WHERE id=%s",
                 [data.get('nom') or None, data.get('prenom') or None,
                  data.get('email') or None,
                  data.get('login'), hashed, data.get('role'),
-                 data.get('service_id') or None, data.get('actif', True), user_id]
+                 data.get('service_id') or None, data.get('actif', True)]
+                + ([modules_json] if modules_json is not None else [])
+                + [user_id]
             )
         else:
             self.db.execute(
                 "UPDATE utilisateurs SET nom=%s, prenom=%s, email=%s, login=%s, "
-                "role=%s, service_id=%s, actif=%s WHERE id=%s",
+                "role=%s, service_id=%s, actif=%s"
+                + (", modules=%s" if modules_json is not None else "")
+                + " WHERE id=%s",
                 [data.get('nom') or None, data.get('prenom') or None,
                  data.get('email') or None,
                  data.get('login'), data.get('role'),
-                 data.get('service_id') or None, data.get('actif', True), user_id]
+                 data.get('service_id') or None, data.get('actif', True)]
+                + ([modules_json] if modules_json is not None else [])
+                + [user_id]
             )
 
     def delete_user(self, user_id: int):
