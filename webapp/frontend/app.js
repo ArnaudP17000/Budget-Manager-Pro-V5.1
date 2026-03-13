@@ -78,19 +78,7 @@ function doLogout() {
     showLoginOverlay();
 }
 
-// ─── Déconnexion automatique après 30 min d'inactivité ───
-let inactivityTimeout;
-
-function resetInactivityTimer() {
-    clearTimeout(inactivityTimeout);
-    inactivityTimeout = setTimeout(doLogout, 30 * 60 * 1000); // 30 minutes
-}
-
-['mousemove', 'keydown', 'mousedown', 'touchstart'].forEach(event => {
-    window.addEventListener(event, resetInactivityTimer);
-});
-
-resetInactivityTimer();
+// Session gérée uniquement par le JWT (8h) + refresh silencieux — pas de timer d'inactivité.
 
 // ─── État global ───────────────────────────────────────────
 let _currentBudgetId  = null;   // pour modal voter
@@ -884,22 +872,82 @@ async function loadBudget() {
     } catch (e) { showMsg('Erreur chargement budgets', false); }
 }
 
-async function dupliquerBudget() {
+// ─── Simulation N+1 ────────────────────────────────────────────────────────────
+
+let _simData = null; // données de simulation en cours
+
+async function simulerBudgetN1() {
     const exercice = parseInt(document.getElementById('export-exercice')?.value || new Date().getFullYear());
-    const target = exercice + 1;
     const taux = parseFloat(document.getElementById('syntec-taux')?.value ?? 3.5);
-    if (!confirm(`Créer le budget ${target} en dupliquant la structure ${exercice} ?\n\nIndice Syntec appliqué : +${taux}%\nMontants prévisionnels = engagé réel ${exercice} × (1 + ${taux}%)`)) return;
+    try {
+        _simData = await apiFetch(`/budget/preview_n1?source_exercice=${exercice}&taux=${taux}`);
+        _renderSimModal(_simData);
+        openModal('modal-sim-n1');
+    } catch (e) { showMsg(e.message || 'Erreur chargement simulation', false); }
+}
+
+function _renderSimModal(data) {
+    document.getElementById('sim-n1-titre').textContent =
+        `Simulation Budget ${data.target_exercice} — base ${data.source_exercice}`;
+    document.getElementById('sim-n1-taux').value = data.taux;
+
+    let html = '';
+    for (const b of data.budgets) {
+        const label = `${b.entite_code || b.entite_nom || '?'} — ${b.nature}`;
+        html += `<tr class="sim-budget-header">
+            <td colspan="3"><strong>${_h(label)}</strong></td>
+            <td style="text-align:right"><strong>${fmt(b.base_n)}</strong></td>
+            <td style="text-align:right;color:#7c3aed"><strong>${fmt(b.previsionnel_n1)}</strong></td>
+        </tr>`;
+        for (const l of b.lignes) {
+            const app = l.application_nom ? `<small style="color:#888"> — ${_h(l.application_nom)}</small>` : '';
+            html += `<tr>
+                <td style="padding-left:1.4em">${_h(l.libelle)}${app}</td>
+                <td><small>${_h(l.fournisseur_nom || '')}</small></td>
+                <td><small style="color:#888">${_h(l.nature || '')}</small></td>
+                <td style="text-align:right">${fmt(l.base_n)}</td>
+                <td style="text-align:right;color:#7c3aed">${fmt(l.prevu_n1)}</td>
+            </tr>`;
+        }
+    }
+    document.getElementById('sim-n1-tbody').innerHTML = html;
+    document.getElementById('sim-n1-total-n').textContent  = fmt(data.total_n)  + ' €';
+    document.getElementById('sim-n1-total-n1').textContent = fmt(data.total_n1) + ' €';
+    const delta = data.total_n1 - data.total_n;
+    const deltaEl = document.getElementById('sim-n1-delta');
+    deltaEl.textContent = (delta >= 0 ? '+' : '') + fmt(delta) + ' €';
+    deltaEl.style.color = delta > 0 ? '#e67e22' : '#27ae60';
+}
+
+async function _recalcSim() {
+    const taux = parseFloat(document.getElementById('sim-n1-taux').value || 0);
+    document.getElementById('syntec-taux').value = taux; // synchroniser champ principal
+    if (!_simData) return;
+    const coeff = 1 + taux / 100;
+    _simData.taux = taux;
+    for (const b of _simData.budgets) {
+        b.previsionnel_n1 = Math.round(b.base_n * coeff * 100) / 100;
+        for (const l of b.lignes) l.prevu_n1 = Math.round(l.base_n * coeff * 100) / 100;
+    }
+    _simData.total_n1 = _simData.budgets.reduce((s, b) => s + b.previsionnel_n1, 0);
+    _renderSimModal(_simData);
+}
+
+async function _validerSimN1() {
+    if (!_simData) return;
+    const { source_exercice, target_exercice, taux } = _simData;
     try {
         const res = await apiFetch('/budget/dupliquer', {
             method: 'POST',
-            body: JSON.stringify({ source_exercice: exercice, target_exercice: target, taux_revalorisation: taux })
+            body: JSON.stringify({ source_exercice, target_exercice, taux_revalorisation: taux })
         });
         if (res.success) {
-            showMsg(`Budget ${target} créé : ${res.budgets_crees} budget(s), ${res.lignes_creees} ligne(s)`);
-            document.getElementById('export-exercice').value = target;
+            closeModal('modal-sim-n1');
+            showMsg(`Budget ${target_exercice} créé : ${res.budgets_crees} budget(s), ${res.lignes_creees} ligne(s)`);
+            document.getElementById('export-exercice').value = target_exercice;
             loadBudget();
         } else {
-            showMsg(res.error || 'Erreur', false);
+            showMsg(res.error || 'Erreur création', false);
         }
     } catch (e) { showMsg(e.message || 'Erreur', false); }
 }

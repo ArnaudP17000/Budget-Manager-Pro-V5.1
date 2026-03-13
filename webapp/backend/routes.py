@@ -635,6 +635,69 @@ def delete_budget(budget_id):
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+# ─── Simulation + Duplication budget N → N+1 ──────────────────────────────────
+
+@routes.route('/budget/preview_n1', methods=['GET'])
+@require_auth('admin')
+def preview_budget_n1():
+    """Retourne la simulation N+1 sans rien écrire en base."""
+    source_exercice = request.args.get('source_exercice', type=int)
+    taux = float(request.args.get('taux', 3.5))
+    if not source_exercice:
+        return jsonify({'error': 'source_exercice requis'}), 400
+    coeff = 1 + taux / 100
+    budgets = budget_service.db.fetch_all(
+        "SELECT ba.*, e.code as entite_code, e.nom as entite_nom "
+        "FROM budgets_annuels ba LEFT JOIN entites e ON e.id = ba.entite_id "
+        "WHERE ba.exercice=%s ORDER BY ba.id", [source_exercice]
+    ) or []
+    if not budgets:
+        return jsonify({'error': f'Aucun budget pour {source_exercice}'}), 404
+    result = []
+    for b in budgets:
+        engage = float(b.get('montant_engage') or 0)
+        vote   = float(b.get('montant_vote')   or 0)
+        base   = engage if engage > 0 else vote
+        lignes = budget_service.db.fetch_all(
+            "SELECT l.*, app.nom as application_nom, f.nom as fournisseur_nom "
+            "FROM lignes_budgetaires l "
+            "LEFT JOIN applications app ON app.id = l.application_id "
+            "LEFT JOIN fournisseurs f ON f.id = l.fournisseur_id "
+            "WHERE l.budget_id=%s AND l.statut != 'ANNULEE' ORDER BY l.id",
+            [b['id']]
+        ) or []
+        lignes_sim = []
+        for l in lignes:
+            eng_l  = float(l.get('montant_engage') or 0)
+            vot_l  = float(l.get('montant_vote')   or 0)
+            base_l = eng_l if eng_l > 0 else vot_l
+            lignes_sim.append({
+                'libelle':         l['libelle'],
+                'application_nom': l.get('application_nom'),
+                'fournisseur_nom': l.get('fournisseur_nom'),
+                'nature':          l.get('nature'),
+                'base_n':          round(base_l, 2),
+                'prevu_n1':        round(base_l * coeff, 2),
+            })
+        result.append({
+            'budget_id':      b['id'],
+            'entite_code':    b.get('entite_code'),
+            'entite_nom':     b.get('entite_nom'),
+            'nature':         b['nature'],
+            'base_n':         round(base, 2),
+            'previsionnel_n1': round(base * coeff, 2),
+            'lignes':         lignes_sim,
+        })
+    return jsonify({
+        'source_exercice': source_exercice,
+        'target_exercice': source_exercice + 1,
+        'taux':            taux,
+        'budgets':         result,
+        'total_n':         round(sum(r['base_n']          for r in result), 2),
+        'total_n1':        round(sum(r['previsionnel_n1'] for r in result), 2),
+    })
+
+
 # ─── Duplication budget N → N+1 ───────────────────────────────────────────────
 
 @routes.route('/budget/dupliquer', methods=['POST'])
