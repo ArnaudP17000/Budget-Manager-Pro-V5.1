@@ -4049,7 +4049,7 @@ async function loadAdminUsers() {
 }
 
 function switchAdminTab(tab) {
-    ['users', 'audit', 'modules', 'smtp'].forEach(t => {
+    ['users', 'audit', 'modules', 'smtp', 'sso'].forEach(t => {
         const sub = document.getElementById('admin-sub-' + t);
         const btn = document.getElementById('admin-tab-' + t);
         if (sub) sub.classList.toggle('active', t === tab);
@@ -4060,6 +4060,99 @@ function switchAdminTab(tab) {
     if (tab === 'audit')   loadAuditLog();
     if (tab === 'modules') loadAdminModules();
     if (tab === 'smtp')    loadSmtpConfig();
+    if (tab === 'sso')     loadSsoConfig();
+}
+
+// ─── SSO Admin ───────────────────────────────────────────────
+async function loadSsoConfig() {
+    try {
+        const cfg = await apiFetch('/admin/sso/config');
+        document.getElementById('sso-enabled').checked        = !!cfg.enabled;
+        document.getElementById('sso-provider-name').value   = cfg.provider_name || '';
+        document.getElementById('sso-issuer-url').value      = cfg.issuer_url || '';
+        document.getElementById('sso-client-id').value       = cfg.client_id || '';
+        document.getElementById('sso-client-secret').value   = cfg.client_secret || '';
+        document.getElementById('sso-redirect-uri').value    = cfg.redirect_uri || '';
+        document.getElementById('sso-scope').value           = cfg.scope || 'openid email profile';
+        document.getElementById('sso-auto-create').checked   = !!cfg.auto_create_users;
+        document.getElementById('sso-default-role').value    = cfg.default_role || 'lecteur';
+        const res = document.getElementById('sso-discovery-result');
+        if (res) res.style.display = 'none';
+    } catch(e) { showMsg('Erreur chargement config SSO: ' + e.message, false); }
+}
+
+async function saveSsoConfig() {
+    const data = {
+        enabled:          document.getElementById('sso-enabled').checked,
+        provider_name:    document.getElementById('sso-provider-name').value.trim(),
+        issuer_url:       document.getElementById('sso-issuer-url').value.trim(),
+        client_id:        document.getElementById('sso-client-id').value.trim(),
+        client_secret:    document.getElementById('sso-client-secret').value,
+        redirect_uri:     document.getElementById('sso-redirect-uri').value.trim(),
+        scope:            document.getElementById('sso-scope').value.trim() || 'openid email profile',
+        auto_create_users: document.getElementById('sso-auto-create').checked,
+        default_role:     document.getElementById('sso-default-role').value,
+    };
+    const el = document.getElementById('sso-save-result');
+    try {
+        await apiFetch('/admin/sso/config', { method: 'PUT', body: JSON.stringify(data) });
+        if (el) { el.textContent = 'Configuration enregistrée.'; el.style.color = '#27ae60'; }
+        showMsg('Configuration SSO enregistrée');
+        // Rafraîchir le bouton SSO sur la page de login
+        _checkSsoLogin();
+    } catch(e) {
+        if (el) { el.textContent = 'Erreur : ' + e.message; el.style.color = '#c0392b'; }
+        showMsg(e.message, false);
+    }
+}
+
+async function testSsoDiscovery() {
+    const issuer = document.getElementById('sso-issuer-url').value.trim();
+    const res = document.getElementById('sso-discovery-result');
+    if (!issuer) { showMsg('Saisissez d\'abord l\'Issuer URL', false); return; }
+    res.style.display = 'none';
+    try {
+        const data = await apiFetch('/admin/sso/test', {
+            method: 'POST', body: JSON.stringify({ issuer_url: issuer })
+        });
+        res.style.display = 'block';
+        res.style.background = '#d4edda';
+        res.style.color = '#155724';
+        res.style.border = '1px solid #c3e6cb';
+        res.innerHTML = `<strong>Découverte OIDC réussie</strong><br>
+            Issuer : ${_h(data.issuer || '')}<br>
+            Authorization : ${_h(data.authorization_endpoint || '')}<br>
+            Token : ${_h(data.token_endpoint || '')}<br>
+            UserInfo : ${_h(data.userinfo_endpoint || '')}`;
+    } catch(e) {
+        res.style.display = 'block';
+        res.style.background = '#f8d7da';
+        res.style.color = '#721c24';
+        res.style.border = '1px solid #f5c6cb';
+        res.textContent = e.message;
+    }
+}
+
+// ─── SSO Login (page connexion) ──────────────────────────────
+async function _checkSsoLogin() {
+    try {
+        const cfg = await fetch(API + '/auth/sso/config_public').then(r => r.json());
+        const wrap  = document.getElementById('sso-login-btn-wrap');
+        const label = document.getElementById('sso-login-label');
+        if (wrap) wrap.style.display = cfg.enabled ? '' : 'none';
+        if (label && cfg.provider_name) label.textContent = `Se connecter avec ${cfg.provider_name}`;
+    } catch { /* silencieux */ }
+}
+
+async function doSsoLogin() {
+    try {
+        const data = await fetch(API + '/auth/sso/login').then(r => r.json());
+        if (data.redirect_url) {
+            window.location.href = data.redirect_url;
+        } else {
+            showMsg(data.error || 'SSO non disponible', false);
+        }
+    } catch(e) { showMsg('Erreur SSO : ' + e.message, false); }
 }
 
 async function loadAuditLog() {
@@ -4543,6 +4636,46 @@ if (_addUserBtn) {
 }
 
 // Vérifier token existant (refresh de page)
+// ─── Gestion SSO callback (sso_token / sso_error dans l'URL) ─
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const ssoToken = params.get('sso_token');
+    const ssoError = params.get('sso_error');
+    if (ssoToken || ssoError) {
+        // Nettoyer l'URL
+        const cleanUrl = window.location.pathname;
+        history.replaceState(null, '', cleanUrl);
+        if (ssoError) {
+            const msgs = {
+                user_not_found:       'Votre compte n\'est pas autorisé à accéder à cette application.',
+                invalid_state:        'Requête SSO invalide ou expirée. Réessayez.',
+                token_exchange_failed:'Échec de l\'échange de jeton avec le fournisseur SSO.',
+                provider_unreachable: 'Le fournisseur SSO est inaccessible.',
+                no_email:             'Le fournisseur SSO n\'a pas retourné d\'adresse email.',
+                userinfo_failed:      'Impossible de récupérer les informations utilisateur SSO.',
+            };
+            const errEl = document.getElementById('login-error');
+            if (errEl) {
+                errEl.textContent = msgs[ssoError] || `Erreur SSO : ${ssoError}`;
+                errEl.style.display = 'block';
+            }
+        }
+        if (ssoToken) {
+            const payload = decodeToken(ssoToken);
+            if (payload && payload.exp * 1000 > Date.now()) {
+                setToken(ssoToken);
+                _loginGen++;
+                hideLoginOverlay();
+                applyRoleUI(payload);
+                _bgPost('/notifications/generate');
+                initRefs().then(() => { loadDashboard(); loadNotifications(); });
+                return;
+            }
+        }
+    }
+})();
+
+// ─── Vérifier token existant (refresh de page) ───────────────
 const _existingToken = getToken();
 if (_existingToken) {
     const _payload = decodeToken(_existingToken);
@@ -4555,9 +4688,11 @@ if (_existingToken) {
     } else {
         removeToken();
         showLoginOverlay();
+        _checkSsoLogin();
     }
 } else {
     showLoginOverlay();
+    _checkSsoLogin();
 }
 
 // ─── Colonnes : redimensionnables + déplaçables + persistance ────────────────

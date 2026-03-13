@@ -316,6 +316,21 @@
                    border-radius:5px;font-size:1em;cursor:pointer;">
       Se connecter
     </button>
+    <div id="sso-login-btn-wrap" style="display:none;margin-top:14px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+            <hr style="flex:1;border:none;border-top:1px solid #ddd;">
+            <span style="font-size:.78em;color:#999;">ou</span>
+            <hr style="flex:1;border:none;border-top:1px solid #ddd;">
+        </div>
+        <button id="sso-login-btn" onclick="doSsoLogin()"
+                style="width:100%;padding:10px;background:#fff;color:#333;border:1px solid #ccc;
+                       border-radius:5px;font-size:.95em;cursor:pointer;display:flex;
+                       align-items:center;justify-content:center;gap:8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span id="sso-login-label">Se connecter avec SSO</span>
+        </button>
+    </div>
   </div>
 </div>
 
@@ -1124,6 +1139,7 @@
         <div class="budget-subtab" id="admin-tab-audit" onclick="switchAdminTab('audit')">Journal d'audit</div>
         <div class="budget-subtab" id="admin-tab-modules" onclick="switchAdminTab('modules')">Modules</div>
         <div class="budget-subtab" id="admin-tab-smtp" onclick="switchAdminTab('smtp')">Messagerie SMTP</div>
+        <div class="budget-subtab" id="admin-tab-sso" onclick="switchAdminTab('sso')">Configuration SSO</div>
     </div>
 
     <!-- Sous-onglet Utilisateurs -->
@@ -1174,6 +1190,101 @@
         <div style="margin-top:24px;padding-top:18px;border-top:1px solid #dee2e6;">
             <h4 style="margin-bottom:8px;color:#333;">Configuration actuelle (lue depuis le serveur)</h4>
             <div id="smtp-config-display" style="font-family:monospace;font-size:.85em;color:#555;"></div>
+        </div>
+    </div>
+
+    <!-- Sous-onglet SSO -->
+    <div id="admin-sub-sso" class="budget-subview">
+        <p style="color:#666;margin-bottom:16px;font-size:.9em;">
+            Configurez l'authentification unique (SSO) via le protocole OAuth 2.0 / OpenID Connect.
+            Une fois activé, un bouton "Se connecter avec [provider]" apparaît sur la page de connexion.
+        </p>
+
+        <div style="background:#fff;border:1px solid #dee2e6;border-radius:8px;padding:20px 24px;max-width:680px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+
+                <div style="grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:10px 14px;
+                            background:#f0f7ff;border-radius:6px;border:1px solid #bfd7f5;">
+                    <label style="font-weight:600;font-size:.9em;color:#1a3c5e;white-space:nowrap;">
+                        <input type="checkbox" id="sso-enabled" style="margin-right:6px;width:16px;height:16px;">
+                        Activer le SSO
+                    </label>
+                    <span style="font-size:.82em;color:#555;">
+                        Les utilisateurs pourront se connecter via le fournisseur d'identité configuré ci-dessous.
+                    </span>
+                </div>
+
+                <div>
+                    <label style="font-size:.83em;font-weight:600;color:#333;">Nom du fournisseur</label>
+                    <input id="sso-provider-name" class="form-control" placeholder="ex : Microsoft Entra, Google, Keycloak"
+                           style="margin-top:4px;">
+                </div>
+                <div>
+                    <label style="font-size:.83em;font-weight:600;color:#333;">Scope OIDC</label>
+                    <input id="sso-scope" class="form-control" placeholder="openid email profile"
+                           style="margin-top:4px;">
+                </div>
+
+                <div style="grid-column:1/-1;">
+                    <label style="font-size:.83em;font-weight:600;color:#333;">Issuer URL (URL de base du provider)</label>
+                    <div style="display:flex;gap:8px;margin-top:4px;">
+                        <input id="sso-issuer-url" class="form-control" placeholder="https://login.microsoftonline.com/{tenant}/v2.0"
+                               style="flex:1;">
+                        <button class="btn" onclick="testSsoDiscovery()"
+                                style="white-space:nowrap;background:#2563a8;color:#fff;padding:7px 14px;font-size:.85em;">
+                            Tester
+                        </button>
+                    </div>
+                    <div id="sso-discovery-result" style="margin-top:8px;font-size:.82em;display:none;padding:8px 12px;border-radius:4px;"></div>
+                </div>
+
+                <div>
+                    <label style="font-size:.83em;font-weight:600;color:#333;">Client ID</label>
+                    <input id="sso-client-id" class="form-control" style="margin-top:4px;" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                </div>
+                <div>
+                    <label style="font-size:.83em;font-weight:600;color:#333;">Client Secret</label>
+                    <input id="sso-client-secret" class="form-control" type="password" style="margin-top:4px;"
+                           placeholder="Laisser vide pour conserver l'actuel">
+                </div>
+
+                <div style="grid-column:1/-1;">
+                    <label style="font-size:.83em;font-weight:600;color:#333;">
+                        Redirect URI (à déclarer dans votre IdP)
+                    </label>
+                    <input id="sso-redirect-uri" class="form-control" style="margin-top:4px;"
+                           placeholder="https://votre-domaine.fr/api/auth/sso/callback">
+                    <p style="font-size:.78em;color:#888;margin-top:4px;">
+                        Le callback est servi par le backend : <code>/api/auth/sso/callback</code>
+                    </p>
+                </div>
+
+                <div style="padding:12px 14px;background:#f8f9fa;border-radius:6px;border:1px solid #e0e0e0;">
+                    <label style="font-weight:600;font-size:.85em;color:#333;">
+                        <input type="checkbox" id="sso-auto-create" style="margin-right:6px;">
+                        Créer automatiquement les utilisateurs inconnus
+                    </label>
+                    <p style="font-size:.78em;color:#888;margin-top:4px;">
+                        Si coché, tout utilisateur authentifié via le SSO dont l'email n'existe pas encore sera créé automatiquement.
+                    </p>
+                </div>
+
+                <div>
+                    <label style="font-size:.83em;font-weight:600;color:#333;">Rôle par défaut (auto-création)</label>
+                    <select id="sso-default-role" class="form-control" style="margin-top:4px;">
+                        <option value="lecteur">Lecteur</option>
+                        <option value="gestionnaire">Gestionnaire</option>
+                        <option value="gestionnaire_service">Gestionnaire de service</option>
+                    </select>
+                </div>
+
+            </div>
+            <div style="margin-top:20px;border-top:1px solid #eee;padding-top:16px;display:flex;gap:10px;align-items:center;">
+                <button class="btn btn-primary" onclick="saveSsoConfig()" style="padding:8px 22px;">
+                    Enregistrer la configuration
+                </button>
+                <span id="sso-save-result" style="font-size:.85em;"></span>
+            </div>
         </div>
     </div>
 
@@ -2137,6 +2248,6 @@
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
-<script src="app.js?v=6.38"></script>
+<script src="app.js?v=6.39"></script>
 </body>
 </html>

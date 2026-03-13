@@ -1,8 +1,12 @@
 import functools
+import hashlib
+import hmac
 import json
+import secrets
 import time
 from collections import defaultdict
-from flask import Blueprint, jsonify, request, g
+from urllib.parse import urlencode
+from flask import Blueprint, jsonify, request, g, redirect as flask_redirect
 
 from app.services.projet_service import ProjetService
 from app.services.budget_v5_service import BudgetV5Service
@@ -3176,3 +3180,236 @@ def delete_note(note_id):
         return _ok()
     except Exception as e:
         return _err(str(e))
+
+
+# ─────────────────────────────────────────────
+# SSO — OAuth2 / OpenID Connect
+# ─────────────────────────────────────────────
+
+def _sso_db():
+    from app.services.database_service import DatabaseService
+    return DatabaseService()
+
+def _sso_get_config():
+    return _sso_db().fetch_one("SELECT * FROM sso_config WHERE id = 1")
+
+def _sso_sign_state(value):
+    from app.services.auth_service import SECRET_KEY
+    window = str(int(time.time()) // 300)
+    return hmac.new(SECRET_KEY.encode(), f"{value}:{window}".encode(), hashlib.sha256).hexdigest()
+
+def _sso_verify_state(value, sig):
+    from app.services.auth_service import SECRET_KEY
+    ts = int(time.time()) // 300
+    for t in [ts, ts - 1]:
+        expected = hmac.new(SECRET_KEY.encode(), f"{value}:{t}".encode(), hashlib.sha256).hexdigest()
+        if hmac.compare_digest(expected, sig):
+            return True
+    return False
+
+def _oidc_discover(issuer_url):
+    import requests as _req
+    r = _req.get(issuer_url.rstrip('/') + '/.well-known/openid-configuration', timeout=8)
+    r.raise_for_status()
+    return r.json()
+
+
+@routes.route('/auth/sso/config_public', methods=['GET'])
+def sso_config_public():
+    """Retourne si le SSO est activé — utilisé par la page de login (sans auth)."""
+    cfg = _sso_get_config()
+    if cfg and cfg.get('enabled') and cfg.get('issuer_url') and cfg.get('client_id'):
+        return jsonify({'enabled': True, 'provider_name': cfg.get('provider_name') or 'SSO'})
+    return jsonify({'enabled': False})
+
+
+@routes.route('/auth/sso/login', methods=['GET'])
+def sso_login():
+    """Lance le flux OIDC — retourne l'URL d'autorisation du provider."""
+    cfg = _sso_get_config()
+    if not cfg or not cfg.get('enabled'):
+        return jsonify({"error": "SSO non configuré ou désactivé"}), 404
+    try:
+        disc = _oidc_discover(cfg['issuer_url'])
+    except Exception as e:
+        return jsonify({"error": f"Provider inaccessible : {e}"}), 502
+    state_val = secrets.token_urlsafe(16)
+    state = f"{state_val}.{_sso_sign_state(state_val)}"
+    params = {
+        'response_type': 'code',
+        'client_id':     cfg['client_id'],
+        'redirect_uri':  cfg['redirect_uri'],
+        'scope':         cfg.get('scope') or 'openid email profile',
+        'state':         state,
+    }
+    return jsonify({'redirect_url': disc['authorization_endpoint'] + '?' + urlencode(params)})
+
+
+@routes.route('/auth/sso/callback', methods=['GET'])
+def sso_callback():
+    """Callback OIDC : échange le code, émet un JWT interne, redirige vers le frontend."""
+    import requests as _req
+
+    error = request.args.get('error')
+    if error:
+        return flask_redirect(f"/?sso_error={error}", 302)
+
+    code  = request.args.get('code', '')
+    state = request.args.get('state', '')
+    if not code:
+        return flask_redirect("/?sso_error=missing_code", 302)
+
+    parts = state.rsplit('.', 1)
+    if len(parts) != 2 or not _sso_verify_state(parts[0], parts[1]):
+        return flask_redirect("/?sso_error=invalid_state", 302)
+
+    cfg = _sso_get_config()
+    if not cfg or not cfg.get('enabled'):
+        return flask_redirect("/?sso_error=sso_disabled", 302)
+
+    try:
+        disc = _oidc_discover(cfg['issuer_url'])
+    except Exception:
+        return flask_redirect("/?sso_error=provider_unreachable", 302)
+
+    # Échange code → tokens
+    try:
+        token_resp = _req.post(disc['token_endpoint'], data={
+            'grant_type':    'authorization_code',
+            'code':          code,
+            'redirect_uri':  cfg['redirect_uri'],
+            'client_id':     cfg['client_id'],
+            'client_secret': cfg['client_secret'],
+        }, timeout=10)
+        token_resp.raise_for_status()
+        tokens = token_resp.json()
+    except Exception:
+        return flask_redirect("/?sso_error=token_exchange_failed", 302)
+
+    access_token = tokens.get('access_token')
+    if not access_token:
+        return flask_redirect("/?sso_error=no_access_token", 302)
+
+    # UserInfo
+    try:
+        ui_resp = _req.get(disc['userinfo_endpoint'],
+                           headers={'Authorization': f'Bearer {access_token}'}, timeout=8)
+        ui_resp.raise_for_status()
+        userinfo = ui_resp.json()
+    except Exception:
+        return flask_redirect("/?sso_error=userinfo_failed", 302)
+
+    email = (userinfo.get('email') or '').lower().strip()
+    if not email:
+        return flask_redirect("/?sso_error=no_email", 302)
+
+    db = _sso_db()
+    user = db.fetch_one(
+        "SELECT id, nom, prenom, email, login, role, service_id, actif, modules "
+        "FROM utilisateurs WHERE LOWER(email) = %s AND actif = true",
+        [email]
+    )
+
+    if not user:
+        if cfg.get('auto_create_users'):
+            login = email.split('@')[0]
+            if db.fetch_one("SELECT id FROM utilisateurs WHERE login=%s", [login]):
+                login = email.replace('@', '_at_').replace('.', '_')
+            role = cfg.get('default_role') or 'lecteur'
+            from app.services.auth_service import AuthService
+            mods = json.dumps(AuthService._DEFAULT_MODULES.get(role, []))
+            db.execute(
+                "INSERT INTO utilisateurs (nom, prenom, email, login, mot_de_passe, role, actif, modules) "
+                "VALUES (%s, %s, %s, %s, '', %s, true, %s)",
+                [userinfo.get('family_name', ''), userinfo.get('given_name', ''),
+                 email, login, role, mods]
+            )
+            user = db.fetch_one(
+                "SELECT id, nom, prenom, email, login, role, service_id, actif, modules "
+                "FROM utilisateurs WHERE login=%s", [login]
+            )
+        else:
+            return flask_redirect("/?sso_error=user_not_found", 302)
+
+    # Émettre le JWT interne
+    from app.services.auth_service import AuthService, SECRET_KEY, EXPIRY_HOURS
+    import jwt as _jwt
+    from datetime import datetime, timezone, timedelta
+    modules = user.get('modules') or AuthService._DEFAULT_MODULES.get(user['role'], [])
+    payload = {
+        'sub':        str(user['id']),
+        'login':      user['login'],
+        'nom':        user.get('nom', ''),
+        'prenom':     user.get('prenom', ''),
+        'role':       user['role'],
+        'service_id': user.get('service_id'),
+        'modules':    modules,
+        'iat':        datetime.now(timezone.utc),
+        'exp':        datetime.now(timezone.utc) + timedelta(hours=EXPIRY_HOURS),
+    }
+    token = _jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+    return flask_redirect(f"/?sso_token={token}", 302)
+
+
+@routes.route('/admin/sso/config', methods=['GET'])
+@require_auth('admin')
+def get_sso_config():
+    cfg = _sso_get_config()
+    if not cfg:
+        return jsonify({'enabled': False, 'provider_name': 'SSO', 'issuer_url': '',
+                        'client_id': '', 'client_secret': '', 'redirect_uri': '',
+                        'scope': 'openid email profile', 'auto_create_users': False,
+                        'default_role': 'lecteur'})
+    result = dict(cfg)
+    result['client_secret'] = '••••••••' if cfg.get('client_secret') else ''
+    return jsonify(result)
+
+
+@routes.route('/admin/sso/config', methods=['PUT'])
+@require_auth('admin')
+def save_sso_config():
+    data = request.json or {}
+    secret = data.get('client_secret', '')
+    if secret in ('••••••••', ''):
+        existing = _sso_get_config()
+        secret = (existing.get('client_secret') or '') if existing else ''
+    _sso_db().execute("""
+        INSERT INTO sso_config
+            (id, enabled, provider_name, issuer_url, client_id, client_secret,
+             redirect_uri, scope, auto_create_users, default_role, date_maj)
+        VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (id) DO UPDATE SET
+            enabled=%s, provider_name=%s, issuer_url=%s, client_id=%s, client_secret=%s,
+            redirect_uri=%s, scope=%s, auto_create_users=%s, default_role=%s, date_maj=NOW()
+    """, [
+        data.get('enabled', False), data.get('provider_name', 'SSO'),
+        data.get('issuer_url', ''), data.get('client_id', ''), secret,
+        data.get('redirect_uri', ''), data.get('scope', 'openid email profile'),
+        data.get('auto_create_users', False), data.get('default_role', 'lecteur'),
+        data.get('enabled', False), data.get('provider_name', 'SSO'),
+        data.get('issuer_url', ''), data.get('client_id', ''), secret,
+        data.get('redirect_uri', ''), data.get('scope', 'openid email profile'),
+        data.get('auto_create_users', False), data.get('default_role', 'lecteur'),
+    ])
+    return _ok()
+
+
+@routes.route('/admin/sso/test', methods=['POST'])
+@require_auth('admin')
+def test_sso_discovery():
+    """Teste la découverte OIDC depuis l'issuer_url fourni."""
+    data = request.json or {}
+    issuer = (data.get('issuer_url') or '').rstrip('/')
+    if not issuer:
+        return _err("issuer_url requis")
+    try:
+        disc = _oidc_discover(issuer)
+        return jsonify({
+            'success':                True,
+            'authorization_endpoint': disc.get('authorization_endpoint'),
+            'token_endpoint':         disc.get('token_endpoint'),
+            'userinfo_endpoint':      disc.get('userinfo_endpoint'),
+            'issuer':                 disc.get('issuer'),
+        })
+    except Exception as e:
+        return _err(f"Échec découverte OIDC : {e}", 502)

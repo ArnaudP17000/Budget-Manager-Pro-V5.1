@@ -345,6 +345,30 @@ def run_migrations():
         _mlog.warning("TPE import skipped: %s", _me)
     # ── /TPE MODULE ───────────────────────────────────────────────
 
+    # ── Configuration SSO (OAuth2 / OIDC) ───────────────────────
+    try:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS sso_config (
+                id                INTEGER PRIMARY KEY DEFAULT 1,
+                enabled           BOOLEAN DEFAULT FALSE,
+                provider_name     VARCHAR(100) DEFAULT 'SSO',
+                issuer_url        VARCHAR(500),
+                client_id         VARCHAR(500),
+                client_secret     TEXT,
+                redirect_uri      VARCHAR(500),
+                scope             VARCHAR(200) DEFAULT 'openid email profile',
+                auto_create_users BOOLEAN DEFAULT FALSE,
+                default_role      VARCHAR(20) DEFAULT 'lecteur',
+                date_maj          TIMESTAMP DEFAULT NOW()
+            )
+        """)
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
+    try:
+        db.execute("INSERT INTO sso_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING")
+    except Exception as _me:
+        _mlog.warning("Migration skipped: %s", _me)
+
     # ── Modules utilisateur (permissions par module) ────────────
     try:
         db.execute(
