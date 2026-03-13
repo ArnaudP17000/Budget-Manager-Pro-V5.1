@@ -1240,8 +1240,9 @@ async function ficheBc(id) {
 
 function openImputer(bcId) {
     _currentBcId = bcId;
-    document.getElementById('imputer-ligne').value = '';
     document.getElementById('imputer-info').textContent = '';
+    const bc = _bcCache.find(b => b.id === bcId);
+    _fillLignesSelectByEntite('imputer-ligne', bc?.entite_id ?? null, null);
     openModal('modal-imputer-bc');
 }
 
