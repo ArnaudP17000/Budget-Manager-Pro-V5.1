@@ -371,10 +371,11 @@ def get_budget():
     role     = g.user.get('role')
     exercice = request.args.get('exercice', type=int)
 
-    if role == 'admin':
+    if role in ('admin', 'gestionnaire_service'):
         budgets = budget_service.get_budget()
+        perm = 'gestionnaire' if role == 'admin' else 'lecteur'
         for b in budgets:
-            b['user_perm'] = 'gestionnaire'
+            b['user_perm'] = perm
     else:
         rows = budget_service.db.fetch_all(
             "SELECT ba.*, e.code as entite_code, e.nom as entite_nom, bp.role as user_perm "
@@ -401,7 +402,7 @@ def get_budget():
 def get_lignes_budget(budget_id):
     user_id = g.user.get('sub')
     role    = g.user.get('role')
-    if role != 'admin' and _user_budget_role(user_id, budget_id) is None:
+    if role not in ('admin', 'gestionnaire_service') and _user_budget_role(user_id, budget_id) is None:
         return jsonify({"error": "Accès interdit à ce budget"}), 403
     return jsonify({"list": budget_service.get_lignes(budget_id)})
 
@@ -413,10 +414,10 @@ def get_all_lignes():
     role      = g.user.get('role')
     budget_id = request.args.get('budget_id', type=int)
     if budget_id:
-        if role != 'admin' and _user_budget_role(user_id, budget_id) is None:
+        if role not in ('admin', 'gestionnaire_service') and _user_budget_role(user_id, budget_id) is None:
             return jsonify({"list": []})
         return jsonify({"list": budget_service.get_lignes(budget_id)})
-    if role == 'admin':
+    if role in ('admin', 'gestionnaire_service'):
         rows = budget_service.db.fetch_all(
             "SELECT l.*, ba.exercice, ba.nature, "
             "e.code as entite_code, e.nom as entite_nom, "
