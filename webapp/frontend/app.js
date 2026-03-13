@@ -1087,7 +1087,7 @@ function _renderBcRows() {
                     ? `<button class="btn btn-warning btn-sm" onclick="validerBc(${b.id})">Valider</button>` : ''}
                 ${b.statut === 'EN_ATTENTE' && ['admin','gestionnaire'].includes(userRole)
                     ? `<button class="btn btn-danger btn-sm" onclick="openRefuserBc(${b.id})">Refuser</button>` : ''}
-                ${b.statut === 'VALIDE'
+                ${b.statut === 'VALIDE' && !b.ligne_budgetaire_id
                     ? `<button class="btn btn-success btn-sm" onclick="openImputer(${b.id})">Imputer</button>` : ''}
                 ${!['IMPUTE','SOLDE'].includes(b.statut)
                     ? `<button class="btn btn-danger btn-sm" onclick="deleteBC(${b.id})">Suppr.</button>` : ''}
