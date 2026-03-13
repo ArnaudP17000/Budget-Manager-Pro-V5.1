@@ -46,8 +46,8 @@ function applyRoleUI(user) {
         const btn = document.getElementById('nav-' + m);
         if (btn) btn.style.display = userModules.includes(m) ? '' : 'none';
     });
-    // Mode lecture seule pour gestionnaire_service
-    if (user.role === 'gestionnaire_service') {
+    // Mode lecture seule pour lecteur et gestionnaire_service
+    if (user.role === 'lecteur' || user.role === 'gestionnaire_service') {
         document.body.classList.add('mode-readonly');
     } else {
         document.body.classList.remove('mode-readonly');
