@@ -1359,7 +1359,7 @@ def get_contrat_by_id(contrat_id):
     c = contrat_service.get_by_id(contrat_id)
     if not c:
         return jsonify({"error": "Contrat introuvable"}), 404
-    if role != 'admin' and c.get('created_by_id') is not None:
+    if role != 'admin':
         where, params = _ownership_where(user_id, role, service_id, 'c')
         row = contrat_service.db.fetch_one(
             f"SELECT id FROM contrats c WHERE c.id=%s AND {where}", [contrat_id] + params
@@ -1506,8 +1506,7 @@ def get_projets():
         if filters.get('statut'):
             extra.append("p.statut = %s")
             params.append(filters['statut'])
-        # Inclure aussi les projets sans created_by_id (cohérent avec GET /projet/<id>)
-        clause = f"({where} OR p.created_by_id IS NULL)" + (" AND " + " AND ".join(extra) if extra else "")
+        clause = where + (" AND " + " AND ".join(extra) if extra else "")
         rows = projet_service.db.fetch_all(
             "SELECT p.*, s.nom as service_nom, s.code as service_code "
             "FROM projets p "
@@ -1528,7 +1527,7 @@ def get_projet(projet_id):
     p = projet_service.get_by_id(projet_id)
     if not p:
         return jsonify({"error": "Projet introuvable"}), 404
-    if role != 'admin' and p.get('created_by_id') is not None:
+    if role != 'admin':
         where, params = _ownership_where(user_id, role, service_id, 'p')
         row = projet_service.db.fetch_one(
             f"SELECT id FROM projets p WHERE p.id=%s AND {where}", [projet_id] + params
@@ -1646,7 +1645,7 @@ def export_fiche_projet_word(projet_id):
     p = projet_service.get_by_id(projet_id)
     if not p:
         return jsonify({"error": "Projet introuvable"}), 404
-    if role != 'admin' and p.get('created_by_id') is not None:
+    if role != 'admin':
         where, params = _ownership_where(user_id, role, service_id, 'p')
         row = projet_service.db.fetch_one(
             f"SELECT id FROM projets p WHERE p.id=%s AND {where}", [projet_id] + params
@@ -1682,7 +1681,7 @@ def export_fiche_projet_html(projet_id):
     p = projet_service.get_by_id(projet_id)
     if not p:
         return jsonify({"error": "Projet introuvable"}), 404
-    if role != 'admin' and p.get('created_by_id') is not None:
+    if role != 'admin':
         where, params = _ownership_where(user_id, role, service_id, 'p')
         row = projet_service.db.fetch_one(
             f"SELECT id FROM projets p WHERE p.id=%s AND {where}", [projet_id] + params
