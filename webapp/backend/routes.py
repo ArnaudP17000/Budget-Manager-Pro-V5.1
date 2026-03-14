@@ -4,6 +4,7 @@ import hmac
 import json
 import secrets
 import time
+import threading
 from collections import defaultdict
 from urllib.parse import urlencode
 from flask import Blueprint, jsonify, request, g, redirect as flask_redirect
@@ -127,27 +128,34 @@ def require_auth(*roles):
 # AUTH
 # ─────────────────────────────────────────────
 
-# Rate limiting — max 10 tentatives par fenêtre de 5 min par IP
+# Rate limiting — max 5 échecs par fenêtre de 10 min par IP (thread-safe)
 _login_attempts: dict = defaultdict(list)
-_LOGIN_WINDOW   = 300   # secondes
-_LOGIN_MAX      = 10    # tentatives max
+_login_lock = threading.Lock()
+_LOGIN_WINDOW   = 600   # secondes
+_LOGIN_MAX      = 5     # échecs max avant blocage
 
 def _check_login_rate(ip: str) -> bool:
+    """Retourne True si la requête est autorisée, False si l'IP est bloquée."""
     now = time.time()
-    _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < _LOGIN_WINDOW]
-    if len(_login_attempts[ip]) >= _LOGIN_MAX:
-        return False
-    _login_attempts[ip].append(now)
-    return True
+    with _login_lock:
+        _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < _LOGIN_WINDOW]
+        return len(_login_attempts[ip]) < _LOGIN_MAX
+
+def _record_login_failure(ip: str):
+    """Enregistre un échec d'authentification pour l'IP."""
+    now = time.time()
+    with _login_lock:
+        _login_attempts[ip].append(now)
 
 @routes.route('/auth/login', methods=['POST'])
 def login():
     ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
     if not _check_login_rate(ip):
-        return jsonify({"error": "Trop de tentatives, réessayez dans quelques minutes"}), 429
+        return jsonify({"error": "Trop de tentatives, réessayez dans 10 minutes"}), 429
     data = request.json or {}
     result = auth_service.login(data.get('login', ''), data.get('password', ''))
     if not result:
+        _record_login_failure(ip)
         return jsonify({"error": "Identifiants invalides ou compte désactivé"}), 401
     return jsonify(result)
 
@@ -159,11 +167,20 @@ def me():
 @routes.route('/auth/refresh', methods=['POST'])
 @require_auth()
 def refresh_token():
-    """Émet un nouveau token JWT si le token actuel est encore valide."""
-    from app.services.auth_service import AuthService, SECRET_KEY, EXPIRY_HOURS
+    """Émet un nouveau token JWT avec les données fraîches depuis la DB."""
+    from app.services.auth_service import SECRET_KEY, EXPIRY_HOURS
     import jwt as _jwt
     from datetime import datetime, timezone, timedelta
     u = g.user
+    # Relire modules frais depuis la DB pour refléter les changements admin
+    fresh = auth_service.get_user_by_id(u['sub']) or {}
+    _default_modules = {
+        'admin': ["budget","bc","contrats","projets","taches","kanban","fournisseurs","contacts","services","etp","gantt","notifications","notes","tpe"],
+        'gestionnaire_service': ["budget","projets","contacts","notifications"],
+        'gestionnaire': ["budget","bc","contrats","projets","taches","kanban","fournisseurs","contacts","gantt","notifications","notes"],
+        'lecteur': ["budget","bc","projets","notifications","notes"],
+    }
+    modules = fresh.get('modules') or _default_modules.get(u.get('role'), [])
     payload = {
         'sub':        str(u['sub']),
         'login':      u.get('login'),
@@ -171,6 +188,7 @@ def refresh_token():
         'prenom':     u.get('prenom'),
         'role':       u.get('role'),
         'service_id': u.get('service_id'),
+        'modules':    modules,
         'iat':        datetime.now(timezone.utc),
         'exp':        datetime.now(timezone.utc) + timedelta(hours=EXPIRY_HOURS),
     }
@@ -1026,7 +1044,7 @@ def get_bon_commande():
             "LEFT JOIN projets p ON p.id = bc.projet_id "
             "LEFT JOIN contrats c ON c.id = bc.contrat_id "
             "LEFT JOIN utilisateurs u ON u.id = bc.created_by_id "
-            f"WHERE {' AND '.join(extra_where)} ORDER BY bc.date_creation DESC",
+            f"WHERE {' AND '.join(extra_where)} ORDER BY bc.date_creation DESC LIMIT 1000",
             extra_params
         )
         bc_list = [dict(r) for r in (rows or [])]
@@ -1064,15 +1082,13 @@ def get_bon_commande_by_id(bc_id):
     if not bc:
         return jsonify({"error": "BC introuvable"}), 404
     if role != 'admin':
-        creator = bc.get('created_by_id')
-        if creator is not None:
-            where, params = _ownership_where(user_id, role, service_id, 'bc')
-            row = bc_service.db.fetch_one(
-                f"SELECT id FROM bons_commande bc WHERE bc.id=%s AND {where}",
-                [bc_id] + params
-            )
-            if not row:
-                return jsonify({"error": "Accès interdit"}), 403
+        where, params = _ownership_where(user_id, role, service_id, 'bc')
+        row = bc_service.db.fetch_one(
+            f"SELECT id FROM bons_commande bc WHERE bc.id=%s AND {where}",
+            [bc_id] + params
+        )
+        if not row:
+            return jsonify({"error": "Accès interdit"}), 403
     return jsonify(bc)
 
 
@@ -1412,7 +1428,7 @@ def get_contrats():
             "FROM contrats c "
             "LEFT JOIN fournisseurs f ON f.id = c.fournisseur_id "
             "LEFT JOIN utilisateurs u ON u.id = c.created_by_id "
-            f"WHERE {where} ORDER BY c.date_creation DESC",
+            f"WHERE {where} ORDER BY c.date_creation DESC LIMIT 1000",
             params
         )
         contrats = [dict(r) for r in (rows or [])]
@@ -1580,7 +1596,7 @@ def get_projets():
             "SELECT p.*, s.nom as service_nom, s.code as service_code "
             "FROM projets p "
             "LEFT JOIN services s ON s.id = p.service_id "
-            f"WHERE {clause} ORDER BY p.date_creation DESC",
+            f"WHERE {clause} ORDER BY p.date_creation DESC LIMIT 1000",
             params
         )
         projets = [dict(r) for r in (rows or [])]
