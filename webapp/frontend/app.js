@@ -188,6 +188,23 @@ function badge(statut) {
     return `<span class="badge ${cls}">${statut}</span>`;
 }
 
+// ─── Icônes SVG pour boutons d'action ──────────────────────
+const _ico = {
+    eye:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+    edit:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+    trash:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
+    check:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+    link:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+    x:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+    xc:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
+    refresh:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
+    list:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
+    chart:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>`,
+    vote:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`,
+    lock:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+    power:  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>`,
+};
+
 function alerteBadge(niveau) {
     const map = {
         'EXPIRE':    'bg-expire',
@@ -677,7 +694,7 @@ function _renderLignesRows() {
             <td style="font-size:.82em;color:#2563a8;font-weight:600;">${l.note || ''}</td>
             <td style="font-size:.78em;color:#666;">${l.budget_label || '-'}</td>
             <td style="text-align:center;" onclick="event.stopPropagation()">
-                <button class="btn btn-warning btn-sm" onclick="editLigne(${l.id})">&#9998; Modifier</button>
+                <button class="btn btn-warning btn-sm" title="Modifier" onclick="editLigne(${l.id})">${_ico.edit}</button>
             </td>
         </tr>`;
     }).join('');
@@ -896,12 +913,12 @@ async function loadBudget() {
                 <td>${progressBar(engage, vote)}</td>
                 <td>${badge(b.statut)}</td>
                 <td style="text-align:center;">
-                    <button class="btn btn-info btn-sm" onclick="openBudgetDetail(${b.id}, '${labelEsc}')">Lignes &amp; BC</button>
+                    <button class="btn btn-info btn-sm" title="Lignes &amp; BC" onclick="openBudgetDetail(${b.id}, '${labelEsc}')">${_ico.list}</button>
                 </td>
                 <td style="white-space:nowrap;">
-                    ${canPerms ? `<button class="btn btn-sm" style="background:#6c757d;color:#fff;" onclick="openBudgetPerms(${b.id}, '${labelEsc}')">&#128274; Accès</button>` : ''}
-                    ${canWrite ? `<button class="btn btn-success btn-sm" onclick="openVoterBudget(${b.id}, ${vote})">Voter</button>` : ''}
-                    ${userRole === 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteBudget(${b.id})">Suppr.</button>` : ''}
+                    ${canPerms ? `<button class="btn btn-sm" style="background:#6c757d;color:#fff;" title="Gérer les accès" onclick="openBudgetPerms(${b.id}, '${labelEsc}')">${_ico.lock}</button>` : ''}
+                    ${canWrite ? `<button class="btn btn-success btn-sm" title="Voter" onclick="openVoterBudget(${b.id}, ${vote})">${_ico.vote}</button>` : ''}
+                    ${userRole === 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteBudget(${b.id})"title="Supprimer">${_ico.trash}</button>` : ''}
                 </td>
             </tr>`;
         }).join('');
@@ -1021,7 +1038,7 @@ async function _refreshBudgetPerms() {
                 <span style="background:${p.role==='gestionnaire'?'#2563a8':'#6c757d'};color:#fff;padding:2px 8px;border-radius:10px;font-size:.82em;">${p.role}</span>
             </td>
             <td style="padding:5px 8px;text-align:center;">
-                <button class="btn btn-danger btn-sm" onclick="removeBudgetPerm(${p.user_id})">Révoquer</button>
+                <button class="btn btn-danger btn-sm" title="Révoquer" onclick="removeBudgetPerm(${p.user_id})">${_ico.xc}</button>
             </td>
         </tr>`).join('');
     } catch(e) {
@@ -1117,16 +1134,16 @@ function _renderBcRows() {
             <td>${badge(b.statut)}</td>
             <td style="font-size:.78em;color:#555;">${b.createur_nom ? b.createur_nom.trim() : '<span style="color:#bbb">—</span>'}</td>
             <td style="white-space:nowrap;">
-                <button class="btn btn-info btn-sm" onclick="ficheBc(${b.id})">Fiche</button>
+                <button class="btn btn-info btn-sm" onclick="ficheBc(${b.id})"title="Voir la fiche">${_ico.eye}</button>
                 <button class="btn btn-sm" style="background:#6c757d;color:#fff;" onclick="editBC(${b.id})">Modifier</button>
                 ${['BROUILLON','EN_ATTENTE'].includes(b.statut)
-                    ? `<button class="btn btn-warning btn-sm" onclick="validerBc(${b.id})">Valider</button>` : ''}
+                    ? `<button class="btn btn-warning btn-sm" title="Valider" onclick="validerBc(${b.id})">${_ico.check}</button>` : ''}
                 ${b.statut === 'EN_ATTENTE' && ['admin','gestionnaire'].includes(userRole)
-                    ? `<button class="btn btn-danger btn-sm" onclick="openRefuserBc(${b.id})">Refuser</button>` : ''}
+                    ? `<button class="btn btn-danger btn-sm" title="Refuser" onclick="openRefuserBc(${b.id})">${_ico.xc}</button>` : ''}
                 ${b.statut === 'VALIDE' && !b.ligne_budgetaire_id
-                    ? `<button class="btn btn-success btn-sm" onclick="openImputer(${b.id})">Imputer</button>` : ''}
+                    ? `<button class="btn btn-success btn-sm" title="Imputer sur ligne" onclick="openImputer(${b.id})">${_ico.link}</button>` : ''}
                 ${!['IMPUTE','SOLDE'].includes(b.statut)
-                    ? `<button class="btn btn-danger btn-sm" onclick="deleteBC(${b.id})">Suppr.</button>` : ''}
+                    ? `<button class="btn btn-danger btn-sm" onclick="deleteBC(${b.id})"title="Supprimer">${_ico.trash}</button>` : ''}
             </td>
         </tr>`).join('');
     _updateSortHeaders('bc');
@@ -1486,11 +1503,11 @@ function _renderContratsRows() {
             <td>${alerteBadge(niveau)}</td>
             <td style="font-size:.78em;color:#555;">${c.createur_nom ? c.createur_nom.trim() : '<span style="color:#bbb">—</span>'}</td>
             <td style="white-space:nowrap;">
-                <button class="btn btn-info btn-sm" onclick="ficheContrat(${c.id})">Fiche</button>
-                <button class="btn btn-warning btn-sm" onclick="editContrat(${c.id})">Éditer</button>
+                <button class="btn btn-info btn-sm" onclick="ficheContrat(${c.id})"title="Voir la fiche">${_ico.eye}</button>
+                <button class="btn btn-warning btn-sm" onclick="editContrat(${c.id})"title="Éditer">${_ico.edit}</button>
                 ${['ACTIF','RECONDUIT'].includes(c.statut)
-                    ? `<button class="btn btn-sm" style="background:#6c757d;color:#fff;" onclick="openReconduire(${c.id})">Reconduire</button>` : ''}
-                <button class="btn btn-danger btn-sm" onclick="deleteContrat(${c.id})">Suppr.</button>
+                    ? `<button class="btn btn-sm" style="background:#6c757d;color:#fff;" title="Reconduire" onclick="openReconduire(${c.id})">${_ico.refresh}</button>` : ''}
+                <button class="btn btn-danger btn-sm" onclick="deleteContrat(${c.id})"title="Supprimer">${_ico.trash}</button>
             </td>
         </tr>`;
     }).join('');
@@ -1656,7 +1673,7 @@ async function ficheContrat(id) {
             <div class="proj-tab-content" id="ctab-bc">${bcsHtml}</div>
 
             <div class="modal-footer" style="margin-top:14px;">
-                <button class="btn btn-warning" onclick="closeModal('modal-fiche-contrat');editContrat(${c.id})">Éditer</button>
+                <button class="btn btn-warning" onclick="closeModal('modal-fiche-contrat');editContrat(${c.id})"title="Éditer">${_ico.edit}</button>
                 ${['ACTIF','RECONDUIT'].includes(c.statut)
                     ? `<button class="btn" style="background:#6c757d;color:#fff;" onclick="closeModal('modal-fiche-contrat');openReconduire(${c.id})">Reconduire</button>` : ''}
                 <button class="btn btn-danger" onclick="closeModal('modal-fiche-contrat')">Fermer</button>
@@ -1780,10 +1797,10 @@ function _renderProjets(list) {
             <td>${fmtDate(p.date_debut)}</td>
             <td>${fmtDate(p.date_fin_prevue)}</td>
             <td style="white-space:nowrap;">
-                <button class="btn btn-sm" style="background:#6f42c1;color:#fff;" onclick="openProjetDashboard(${p.id})">📊</button>
-                <button class="btn btn-info btn-sm" onclick="ficheProjet(${p.id})">Fiche</button>
-                <button class="btn btn-warning btn-sm" onclick="editProjet(${p.id})">Éditer</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteProjet(${p.id})">Suppr.</button>
+                <button class="btn btn-sm" style="background:#6f42c1;color:#fff;" title="Tableau de bord" onclick="openProjetDashboard(${p.id})">${_ico.chart}</button>
+                <button class="btn btn-info btn-sm" onclick="ficheProjet(${p.id})"title="Voir la fiche">${_ico.eye}</button>
+                <button class="btn btn-warning btn-sm" onclick="editProjet(${p.id})"title="Éditer">${_ico.edit}</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteProjet(${p.id})"title="Supprimer">${_ico.trash}</button>
             </td>
         </tr>`).join('');
     _initTable('projets-table');
@@ -1952,7 +1969,7 @@ function _renderJalons() {
                 <td style="padding:6px 8px;white-space:nowrap;">${_h(dateStr)}</td>
                 <td style="padding:6px 8px;"><span style="border-radius:10px;padding:2px 8px;font-size:.8em;font-weight:bold;${st}">${stLbl}</span></td>
                 <td style="padding:6px 8px;text-align:center;">
-                    <button class="btn btn-danger btn-sm" onclick="deleteJalon(${j.id})">✕</button>
+                    <button class="btn btn-danger btn-sm" title="Supprimer" onclick="deleteJalon(${j.id})">${_ico.trash}</button>
                 </td>
             </tr>`;
         }).join('')}</tbody>
@@ -2309,7 +2326,7 @@ async function _ficheProjetModal(id) {
                         <td>${fmtDate(t.date_echeance)}</td>
                         <td>${t.estimation_heures != null ? t.estimation_heures + ' h' : '-'}</td>
                         <td>${t.avancement != null ? t.avancement + '%' : '-'}</td>
-                        <td><button class="btn btn-warning btn-sm" onclick="editTache(${t.id})">Éditer</button></td>
+                        <td><button class="btn btn-warning btn-sm" onclick="editTache(${t.id})"title="Éditer">${_ico.edit}</button></td>
                     </tr>`).join('')}
                     </tbody></table>
                     <div style="font-size:.78em;color:#666;margin-top:6px;">
@@ -2888,8 +2905,8 @@ async function loadTaches() {
                     ? `<span style="font-size:.82em;color:#2563a8;">${t.assignee_nom}</span>`
                     : '<span style="color:#aaa;font-size:.82em;">—</span>'}</td>
                 <td style="white-space:nowrap;">
-                    <button class="btn btn-warning btn-sm" onclick="editTache(${t.id})">Éditer</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteTache(${t.id})">Suppr.</button>
+                    <button class="btn btn-warning btn-sm" onclick="editTache(${t.id})"title="Éditer">${_ico.edit}</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteTache(${t.id})"title="Supprimer">${_ico.trash}</button>
                 </td>
             </tr>`).join('');
 
@@ -3098,8 +3115,8 @@ async function loadFournisseurs() {
                 <td>${fmt(f.montant_total)}</td>
                 <td>${badge(f.statut || 'ACTIF')}</td>
                 <td style="white-space:nowrap;">
-                    <button class="btn btn-warning btn-sm" onclick="editFournisseur(${f.id})">Éditer</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteFournisseur(${f.id})">Suppr.</button>
+                    <button class="btn btn-warning btn-sm" onclick="editFournisseur(${f.id})"title="Éditer">${_ico.edit}</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteFournisseur(${f.id})"title="Supprimer">${_ico.trash}</button>
                 </td>
             </tr>`).join('');
         _initTable('fournisseurs-table');
@@ -3180,7 +3197,7 @@ async function loadFournisseurContacts(fournisseurId) {
                     ${c.fonction ? `<span style="color:#666;"> · ${c.fonction}</span>` : ''}
                     ${c.societe || c.email ? `<span style="color:#888;font-size:.9em;"> — ${c.societe || c.email}</span>` : ''}
                 </span>
-                <button class="btn btn-danger btn-sm" onclick="unlinkContactFournisseur(${fournisseurId},${c.id})">✕</button>
+                <button class="btn btn-danger btn-sm" title="Dissocier" onclick="unlinkContactFournisseur(${fournisseurId},${c.id})">${_ico.x}</button>
             </div>`).join('');
     } catch(e) {
         container.innerHTML = '<p style="color:#c00;font-size:.82em;">Erreur chargement contacts.</p>';
@@ -3287,8 +3304,8 @@ async function loadContacts() {
                 <td>${c.organisation || '-'}</td>
                 <td>${c.societe || '-'}</td>
                 <td style="white-space:nowrap;">
-                    <button class="btn btn-warning btn-sm" onclick="editContact(${c.id})">Éditer</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteContact(${c.id})">Suppr.</button>
+                    <button class="btn btn-warning btn-sm" onclick="editContact(${c.id})"title="Éditer">${_ico.edit}</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteContact(${c.id})"title="Supprimer">${_ico.trash}</button>
                 </td>
             </tr>`).join('');
         _initTable('contacts-table');
@@ -3467,10 +3484,8 @@ function _serviceRowHtml(s, hasChildren) {
         <td style="text-align:center;">${nbP}</td>
         <td style="text-align:center;">${nbM > 0 ? `<span style="color:#2563a8;font-weight:bold;">${nbM}</span>` : '-'}</td>
         <td style="white-space:nowrap;">
-            <button onclick="editService(${s.id})"
-                style="padding:3px 8px;font-size:.8em;background:#f39c12;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-right:4px;">Éditer</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteService(${s.id})"
-                style="padding:3px 8px;font-size:.8em;">Suppr.</button>
+            <button class="btn btn-warning btn-sm" title="Éditer" onclick="editService(${s.id})">${_ico.edit}</button>
+            <button class="btn btn-danger btn-sm" title="Supprimer" onclick="deleteService(${s.id})">${_ico.trash}</button>
         </td>
     </tr>`;
 }
@@ -4045,13 +4060,10 @@ async function loadAdminUsers() {
                     ? '<span style="color:#27ae60">✓</span>'
                     : '<span style="color:#c0392b">✗</span>'}</td>
                 <td style="white-space:nowrap;">
-                    <button class="btn btn-warning btn-sm" onclick="editAdminUser(${u.id})"
-                            style="padding:3px 8px;font-size:.8em;">Éditer</button>
-                    <button class="btn btn-sm" onclick="toggleAdminUser(${u.id}, ${!u.actif})"
-                            style="padding:3px 8px;font-size:.8em;background:${u.actif ? '#e67e22' : '#27ae60'};color:#fff;border:none;border-radius:4px;cursor:pointer;">
-                        ${u.actif ? 'Désactiver' : 'Activer'}</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteAdminUser(${u.id})"
-                            style="padding:3px 8px;font-size:.8em;">Suppr.</button>
+                    <button class="btn btn-warning btn-sm" title="Éditer" onclick="editAdminUser(${u.id})">${_ico.edit}</button>
+                    <button class="btn btn-sm" title="${u.actif ? 'Désactiver' : 'Activer'}" onclick="toggleAdminUser(${u.id}, ${!u.actif})"
+                            style="background:${u.actif ? '#e67e22' : '#27ae60'};color:#fff;border:none;border-radius:4px;cursor:pointer;">${_ico.power}</button>
+                    <button class="btn btn-danger btn-sm" title="Supprimer" onclick="deleteAdminUser(${u.id})">${_ico.trash}</button>
                 </td>
             </tr>`).join('');
     } catch (e) { showMsg('Erreur chargement utilisateurs: ' + e.message, false); }
@@ -5083,7 +5095,7 @@ function _renderTpeRows(list) {
             : `<span style="color:#ccc;">Non</span>${boEmail}`;
         const actions = canEdit
             ? `<button class="btn btn-sm" onclick="editTpe(${t.id})" style="margin-right:4px;">Modifier</button>
-               <button class="btn btn-danger btn-sm" onclick="deleteTpe(${t.id}, '${_h(t.service).replace(/['\u2018\u2019]/g,'&#39;')}')">Suppr.</button>`
+               <button class="btn btn-danger btn-sm" onclick="deleteTpe(${t.id}, '${_h(t.service).replace(/['\u2018\u2019]/g,'&#39;')}')"title="Supprimer">${_ico.trash}</button>`
             : '';
         return `<tr>
             <td style="text-align:center;"><input type="checkbox" class="tpe-chk" value="${t.id}" onchange="_updateTpeBulkBar()"></td>
@@ -5391,8 +5403,8 @@ function _renderPostits(list) {
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:6px;border-top:1px solid rgba(0,0,0,.07);">
                 <span style="font-size:.72em;color:#777;">${date}</span>
                 <div style="display:flex;gap:4px;">
-                    <button class="btn btn-warning btn-sm" style="padding:2px 6px;font-size:.72em;" onclick="editNote(${n.id})">✏️</button>
-                    <button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:.72em;" onclick="deleteNote(${n.id})">✕</button>
+                    <button class="btn btn-warning btn-sm" title="Modifier" onclick="editNote(${n.id})">${_ico.edit}</button>
+                    <button class="btn btn-danger btn-sm" title="Supprimer" onclick="deleteNote(${n.id})">${_ico.trash}</button>
                 </div>
             </div>
         </div>`;
@@ -5430,10 +5442,8 @@ function _renderNotesProjet(list) {
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:8px;">
                         <div style="font-weight:700;font-size:.92em;color:#1e293b;flex:1;">${_h(n.titre || 'Sans titre')}</div>
                         <div style="display:flex;gap:5px;flex-shrink:0;">
-                            <button class="btn btn-warning btn-sm" style="padding:2px 8px;font-size:.75em;"
-                                onclick="editNote(${n.id})">✏️</button>
-                            <button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:.75em;"
-                                onclick="deleteNote(${n.id})">✕</button>
+                            <button class="btn btn-warning btn-sm" title="Modifier" onclick="editNote(${n.id})">${_ico.edit}</button>
+                            <button class="btn btn-danger btn-sm" title="Supprimer" onclick="deleteNote(${n.id})">${_ico.trash}</button>
                         </div>
                     </div>
                     <div class="ql-snow"><div class="ql-editor" style="padding:0;font-size:.85em;line-height:1.6;color:#374151;
