@@ -662,11 +662,27 @@ async function loadDashboard() {
 
 // ─── UX v6.48 — Dark mode · Mobile sidebar · Global search ─────────────────
 
+function _applyDarkRows() {
+    let el = document.getElementById('_bmp-dark-rows');
+    if (!el) {
+        el = document.createElement('style');
+        el.id = '_bmp-dark-rows';
+        document.head.appendChild(el);
+    }
+    if (document.body.classList.contains('dark')) {
+        el.textContent = 'tr:nth-child(even) td{background:#253047 !important;}' +
+                         'tr:hover td{background:#334155 !important;}';
+    } else {
+        el.textContent = '';
+    }
+}
+
 function toggleDark() {
     const on = document.body.classList.toggle('dark');
     localStorage.setItem('bmp_dark', on ? '1' : '0');
     const btn = document.getElementById('dark-toggle');
     if (btn) btn.title = on ? 'Mode clair' : 'Mode sombre';
+    _applyDarkRows();
 }
 
 function toggleSidebar() {
@@ -5096,6 +5112,7 @@ if (localStorage.getItem('bmp_dark') === '1') {
     const _darkBtn = document.getElementById('dark-toggle');
     if (_darkBtn) _darkBtn.title = 'Mode clair';
 }
+_applyDarkRows();
 
 // ─── Vérifier token existant (refresh de page) ───────────────
 const _existingToken = getToken();
