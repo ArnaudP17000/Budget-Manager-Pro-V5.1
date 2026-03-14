@@ -40,6 +40,8 @@ function applyRoleUI(user) {
     document.getElementById('user-info').style.display = 'flex';
     const adminNav = document.getElementById('nav-admin');
     if (adminNav) adminNav.style.display = user.role === 'admin' ? '' : 'none';
+    const ssoNav = document.getElementById('nav-sso-config');
+    if (ssoNav) ssoNav.style.display = user.role === 'admin' ? '' : 'none';
     // Appliquer visibilité des onglets selon modules
     const userModules = user.modules || _DEFAULT_MODULES[user.role] || [];
     _ALL_MODULES.forEach(m => {
@@ -416,7 +418,7 @@ const loaders = {
 
 function showView(name) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.sidebar-nav button').forEach(b => b.classList.remove('active'));
     const view = document.getElementById('view-' + name);
     if (view) {
         view.classList.add('active');
@@ -427,10 +429,17 @@ function showView(name) {
             el.style.display = 'none';
         });
     }
-    const navBtns = document.querySelectorAll('nav button');
-    const idx = Object.keys(loaders).indexOf(name);
-    if (idx >= 0 && navBtns[idx]) navBtns[idx].classList.add('active');
+    const navBtn = document.getElementById('nav-' + name);
+    if (navBtn) navBtn.classList.add('active');
     if (loaders[name]) loaders[name]();
+}
+
+function openSsoConfig() {
+    showView('admin');
+    setTimeout(() => switchAdminTab('sso'), 80);
+    document.querySelectorAll('.sidebar-nav button').forEach(b => b.classList.remove('active'));
+    const btn = document.getElementById('nav-sso-config');
+    if (btn) btn.classList.add('active');
 }
 
 // ─── Init (références pour les selects) ────────────────────
