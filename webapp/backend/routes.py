@@ -861,7 +861,6 @@ def get_budget_vue_service():
             'user': dict(u),
             'budgets': [dict(b) for b in (budgets or [])]
         })
-    db.conn.commit()
     return jsonify({'users': result})
 
 
@@ -892,7 +891,6 @@ def get_projets_vue_service():
             'user': dict(u),
             'projets': [dict(p) for p in (projets or [])]
         })
-    db.conn.commit()
     return jsonify({'users': result})
 
 
