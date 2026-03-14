@@ -139,6 +139,13 @@ function fmt(n) {
     if (n == null || n === '') return '-';
     return Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+function fmtKpi(n) {
+    if (n == null || n === '') return '0';
+    const v = Number(n), abs = Math.abs(v);
+    if (abs >= 1_000_000) return (v / 1_000_000).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' M€';
+    if (abs >= 10_000)    return (v / 1_000).toLocaleString('fr-FR',     { maximumFractionDigits: 1 }) + ' k€';
+    return v.toLocaleString('fr-FR', { maximumFractionDigits: 0 }) + ' €';
+}
 
 function fmtDate(d) {
     if (!d) return '-';
@@ -448,6 +455,9 @@ function showView(name) {
     }
     const navBtn = document.getElementById('nav-' + name);
     if (navBtn) navBtn.classList.add('active');
+    const _viewTitles = { dashboard:'Tableau de bord', budget:'Budgets', bc:'Bons de commande', contrats:'Contrats', projets:'Projets', taches:'Tâches', kanban:'Kanban', gantt:'Gantt', etp:'ETP', fournisseurs:'Fournisseurs', contacts:'Contacts', services:'Services', notifications:'Notifications', notes:'Notes', tpe:'TPE', admin:'Administration' };
+    const _titleEl = document.getElementById('topbar-view-title');
+    if (_titleEl) _titleEl.textContent = _viewTitles[name] || '';
     if (loaders[name]) loaders[name]();
 }
 
@@ -521,9 +531,9 @@ async function loadDashboard() {
     try {
         const d = await apiFetch('/dashboard');
         document.getElementById('kpi-projets').textContent    = d.kpi_projets ?? '-';
-        document.getElementById('kpi-budget').textContent     = fmt(d.kpi_budget);
+        document.getElementById('kpi-budget').textContent     = fmtKpi(d.kpi_budget);
         document.getElementById('kpi-bc').textContent         = d.kpi_bons_commande ?? '-';
-        document.getElementById('kpi-montant-bc').textContent = fmt(d.kpi_montant_bc);
+        document.getElementById('kpi-montant-bc').textContent = fmtKpi(d.kpi_montant_bc);
         document.getElementById('kpi-contrats').textContent   = d.kpi_contrats ?? '-';
         document.getElementById('kpi-alertes').textContent    = d.kpi_alertes_contrats ?? '-';
         document.getElementById('kpi-bc-attente').textContent = d.kpi_bc_attente ?? '-';
@@ -601,6 +611,60 @@ async function loadDashboard() {
         }
     } catch (e) { console.error('Dashboard:', e); }
 }
+
+// ─── UX v6.48 — Dark mode · Mobile sidebar · Global search ─────────────────
+
+function toggleDark() {
+    const on = document.body.classList.toggle('dark');
+    localStorage.setItem('bmp_dark', on ? '1' : '0');
+    const btn = document.getElementById('dark-toggle');
+    if (btn) btn.title = on ? 'Mode clair' : 'Mode sombre';
+}
+
+function toggleSidebar() {
+    document.querySelector('.sidebar').classList.toggle('open');
+    document.getElementById('sidebar-overlay').classList.toggle('visible');
+}
+
+function globalSearch(q) {
+    const dropdown = document.getElementById('global-search-dropdown');
+    if (!dropdown) return;
+    q = (q || '').trim().toLowerCase();
+    if (!q || q.length < 2) { dropdown.classList.remove('open'); return; }
+    const hits = [];
+    (_cache.projets || []).filter(p =>
+        (p.nom || '').toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q)
+    ).slice(0, 5).forEach(p => hits.push({ type:'projets', icon:'📋', label: p.nom || p.code, sub: (p.code||'') + ' · ' + (p.statut||'') }));
+    (_bcCache || []).filter(b =>
+        (b.numero_bc || '').toLowerCase().includes(q) || (b.objet || '').toLowerCase().includes(q)
+    ).slice(0, 5).forEach(b => hits.push({ type:'bc', icon:'📄', label: b.objet || b.numero_bc, sub: 'BC ' + (b.numero_bc||'') + ' · ' + (b.statut||'') }));
+    (_cache.contrats || []).filter(c =>
+        (c.numero_contrat || '').toLowerCase().includes(q) || (c.objet || '').toLowerCase().includes(q)
+    ).slice(0, 5).forEach(c => hits.push({ type:'contrats', icon:'📃', label: c.objet || c.numero_contrat, sub: (c.numero_contrat||'') + ' · ' + (c.statut||'') }));
+    (_cache.fournisseurs || []).filter(f =>
+        (f.nom || '').toLowerCase().includes(q)
+    ).slice(0, 3).forEach(f => hits.push({ type:'fournisseurs', icon:'🏢', label: f.nom, sub: f.ville || '' }));
+    if (!hits.length) {
+        dropdown.innerHTML = `<div class="gsd-empty">Aucun résultat pour « ${q} »</div>`;
+    } else {
+        const groups = {};
+        hits.forEach(h => { if (!groups[h.type]) groups[h.type] = []; groups[h.type].push(h); });
+        const labels = { projets:'Projets', bc:'Bons de commande', contrats:'Contrats', fournisseurs:'Fournisseurs' };
+        dropdown.innerHTML = Object.entries(groups).map(([type, items]) =>
+            `<div class="gsd-section"><div class="gsd-section-title">${labels[type]||type}</div>` +
+            items.map(r => `<div class="gsd-item" onmousedown="showView('${type}')"><span>${r.icon}</span><div><div>${r.label}</div><div class="gsd-item-sub">${r.sub}</div></div></div>`).join('') +
+            `</div>`
+        ).join('');
+    }
+    dropdown.classList.add('open');
+}
+
+function closeGlobalSearch() {
+    const d = document.getElementById('global-search-dropdown');
+    if (d) d.classList.remove('open');
+}
+
+// ─── /UX v6.48 ─────────────────────────────────────────────────────────────
 
 // ─── BUDGETS ───────────────────────────────────────────────
 
@@ -4925,6 +4989,13 @@ if (_addUserBtn) {
         }
     }
 })();
+
+// ─── Restaurer préférence dark mode ───────────────────────────
+if (localStorage.getItem('bmp_dark') === '1') {
+    document.body.classList.add('dark');
+    const _darkBtn = document.getElementById('dark-toggle');
+    if (_darkBtn) _darkBtn.title = 'Mode clair';
+}
 
 // ─── Vérifier token existant (refresh de page) ───────────────
 const _existingToken = getToken();
