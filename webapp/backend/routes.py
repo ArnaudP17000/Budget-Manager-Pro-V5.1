@@ -274,30 +274,99 @@ def get_audit_log():
 @routes.route('/dashboard', methods=['GET'])
 @require_auth()
 def dashboard():
-    try: projets = projet_service.get_all()
-    except Exception: projets = []
-    try: budget = budget_service.get_budget()
-    except Exception: budget = []
-    try: bons_commande = bc_service.get_all_bons_commande()
-    except Exception: bons_commande = []
-    try: contrats = contrat_service.get_all()
-    except Exception: contrats = []
-    try: alertes = contrat_service.get_alertes()
-    except Exception: alertes = []
+    user_id    = g.user.get('sub')
+    role       = g.user.get('role')
+    service_id = g.user.get('service_id')
+    db = bc_service.db
+
+    # ── Projets ──────────────────────────────────────────────
+    try:
+        if role == 'admin':
+            projets = projet_service.get_all()
+        else:
+            w, p = _ownership_where(user_id, role, service_id, 'p')
+            rows = db.fetch_all(
+                f"SELECT statut FROM projets p WHERE {w}", p
+            )
+            projets = [dict(r) for r in (rows or [])]
+    except Exception:
+        projets = []
+
+    # ── Budget (via permissions explicites) ──────────────────
+    try:
+        if role == 'admin':
+            budget = budget_service.get_budget()
+        else:
+            rows = db.fetch_all(
+                "SELECT ba.montant_vote, ba.montant_engage, ba.nature, "
+                "e.code as entite_code, e.nom as entite_nom "
+                "FROM budget_permissions bp "
+                "JOIN budgets_annuels ba ON ba.id = bp.budget_id "
+                "LEFT JOIN entites e ON e.id = ba.entite_id "
+                "WHERE bp.user_id = %s",
+                [user_id]
+            )
+            budget = [dict(r) for r in (rows or [])]
+    except Exception:
+        budget = []
+
+    # ── Bons de commande ──────────────────────────────────────
+    try:
+        if role == 'admin':
+            bons_commande = bc_service.get_all_bons_commande()
+        else:
+            w, p = _ownership_where(user_id, role, service_id, 'bc')
+            rows = db.fetch_all(
+                f"SELECT statut, montant_ttc FROM bons_commande bc WHERE {w}", p
+            )
+            bons_commande = [dict(r) for r in (rows or [])]
+    except Exception:
+        bons_commande = []
+
+    # ── Contrats ──────────────────────────────────────────────
+    try:
+        if role == 'admin':
+            contrats = contrat_service.get_all()
+            alertes  = contrat_service.get_alertes()
+        else:
+            w, p = _ownership_where(user_id, role, service_id, 'c')
+            rows = db.fetch_all(
+                f"SELECT statut FROM contrats c WHERE {w}", p
+            )
+            contrats = [dict(r) for r in (rows or [])]
+            rows_a = db.fetch_all(
+                "SELECT c.* FROM contrats c "
+                f"WHERE {w} AND c.date_fin IS NOT NULL "
+                "AND c.date_fin <= NOW() + INTERVAL '30 days' AND c.statut = 'ACTIF'",
+                p
+            )
+            alertes = [dict(r) for r in (rows_a or [])]
+    except Exception:
+        contrats = []
+        alertes  = []
 
     bc_attente = [b for b in bons_commande if b.get('statut') in ('BROUILLON', 'EN_ATTENTE')]
 
-    # Lignes budgétaires en alerte (taux_engagement >= 80%)
+    # ── Lignes budgétaires en alerte ─────────────────────────
     try:
-        row_alerte = bc_service.db.fetch_one(
-            "SELECT COUNT(*) as cnt FROM lignes_budgetaires "
-            "WHERE montant_vote > 0 AND montant_engage::numeric * 100 / montant_vote::numeric >= 80"
-        )
+        if role == 'admin':
+            row_alerte = db.fetch_one(
+                "SELECT COUNT(*) as cnt FROM lignes_budgetaires "
+                "WHERE montant_vote > 0 AND montant_engage::numeric * 100 / montant_vote::numeric >= 80"
+            )
+        else:
+            row_alerte = db.fetch_one(
+                "SELECT COUNT(*) as cnt FROM lignes_budgetaires l "
+                "JOIN budget_permissions bp ON bp.budget_id = l.budget_id "
+                "WHERE bp.user_id = %s AND l.montant_vote > 0 "
+                "AND l.montant_engage::numeric * 100 / l.montant_vote::numeric >= 80",
+                [user_id]
+            )
         kpi_alertes_lignes = int(row_alerte['cnt']) if row_alerte else 0
     except Exception:
         kpi_alertes_lignes = 0
 
-    # Répartition par nature (pour doughnut chart)
+    # ── Répartition par nature (doughnut) ────────────────────
     nature_map = {}
     for b in budget:
         n = b.get('nature') or 'AUTRE'
@@ -306,7 +375,7 @@ def dashboard():
         nature_map[n]['vote']   += float(b.get('montant_vote', 0) or 0)
         nature_map[n]['engage'] += float(b.get('montant_engage', 0) or 0)
 
-    # Engagement par entité (pour bar chart)
+    # ── Engagement par entité (bar chart) ────────────────────
     entite_map = {}
     for b in budget:
         e = b.get('entite_nom') or b.get('entite_code') or 'Inconnu'
@@ -316,18 +385,18 @@ def dashboard():
         entite_map[e]['engage'] += float(b.get('montant_engage', 0) or 0)
 
     return jsonify({
-        "kpi_projets":        len([p for p in projets if p.get('statut') == 'ACTIF']),
-        "kpi_budget":         sum(b.get('montant_vote', 0) or 0 for b in budget),
-        "kpi_bons_commande":  len(bons_commande),
-        "kpi_montant_bc":     sum(b.get('montant_ttc', 0) or 0 for b in bons_commande),
-        "kpi_contrats":       len([c for c in contrats if c.get('statut') == 'ACTIF']),
+        "kpi_projets":          len([p for p in projets if p.get('statut') == 'ACTIF']),
+        "kpi_budget":           sum(b.get('montant_vote', 0) or 0 for b in budget),
+        "kpi_bons_commande":    len(bons_commande),
+        "kpi_montant_bc":       sum(b.get('montant_ttc', 0) or 0 for b in bons_commande),
+        "kpi_contrats":         len([c for c in contrats if c.get('statut') == 'ACTIF']),
         "kpi_alertes_contrats": len(alertes),
-        "kpi_bc_attente":     len(bc_attente),
-        "alertes_contrats":   alertes[:5],
-        "kpi_alertes_lignes": kpi_alertes_lignes,
-        "repartition_nature": [{"nature": k, "vote": v['vote'], "engage": v['engage']}
-                                for k, v in nature_map.items()],
-        "engagement_entite":  sorted(
+        "kpi_bc_attente":       len(bc_attente),
+        "alertes_contrats":     alertes[:5],
+        "kpi_alertes_lignes":   kpi_alertes_lignes,
+        "repartition_nature":   [{"nature": k, "vote": v['vote'], "engage": v['engage']}
+                                  for k, v in nature_map.items()],
+        "engagement_entite":    sorted(
             [{"entite": k, "vote": v['vote'], "engage": v['engage']}
              for k, v in entite_map.items()],
             key=lambda x: x['engage'], reverse=True
