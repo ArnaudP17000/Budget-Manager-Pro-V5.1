@@ -6,12 +6,14 @@
     <title>Budget Manager Pro V5</title>
     <style>
         :root {
+            --row-odd-bg:   transparent;
             --row-even-bg:  #f8fafc;
-            --row-hover-bg: #f7f9fc;
+            --row-hover-bg: #f0f4ff;
         }
         body.dark {
+            --row-odd-bg:   #334155;
             --row-even-bg:  #253047;
-            --row-hover-bg: #334155;
+            --row-hover-bg: #4a5f7a;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #f1f5f9; color: #1e293b;
@@ -503,8 +505,9 @@
         th { position: sticky; top: 0; z-index: 2; }
 
         /* ── Alternating rows ──────────────────────────────────────────── */
+        tr:nth-child(odd)  td { background: var(--row-odd-bg); }
         tr:nth-child(even) td { background: var(--row-even-bg); }
-        tr:hover td { transition: background .1s; }
+        tr:hover td { background: var(--row-hover-bg); transition: background .1s; }
 
         /* ── Modal animations ──────────────────────────────────────────── */
         .modal-overlay { backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
@@ -2719,6 +2722,6 @@
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
-<script src="app.js?v=6.54"></script>
+<script src="app.js?v=6.55"></script>
 </body>
 </html>

@@ -670,8 +670,9 @@ function _applyDarkRows() {
         document.head.appendChild(el);
     }
     if (document.body.classList.contains('dark')) {
-        el.textContent = 'tr:nth-child(even) td{background:#253047 !important;}' +
-                         'tr:hover td{background:#334155 !important;}';
+        el.textContent = 'tr:nth-child(odd)  td{background:#334155 !important;}' +
+                         'tr:nth-child(even) td{background:#253047 !important;}' +
+                         'tr:hover td{background:#4a5f7a !important;}';
     } else {
         el.textContent = '';
     }
