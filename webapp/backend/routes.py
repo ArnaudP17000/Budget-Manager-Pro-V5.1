@@ -3068,6 +3068,323 @@ def export_budget():
 
 
 # ─────────────────────────────────────────────
+# EXPORT EXCEL — BONS DE COMMANDE
+# ─────────────────────────────────────────────
+
+@routes.route('/export/bons_commande', methods=['GET'])
+@require_auth()
+def export_bons_commande():
+    from io import BytesIO
+    from flask import send_file
+    from datetime import datetime
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError as e:
+        return jsonify({"error": f"openpyxl non installé: {e}"}), 500
+
+    user_id    = g.user['sub']
+    role       = g.user['role']
+    service_id = g.user.get('service_id')
+    db         = budget_service.db
+
+    w, params = _ownership_where(user_id, role, service_id, 'bc')
+    rows = db.fetch_all(
+        f"SELECT bc.*, f.nom as fournisseur_nom, e.code as entite_code, e.nom as entite_nom, "
+        f"p.nom as projet_nom, lb.libelle as ligne_libelle, "
+        f"u.nom||' '||COALESCE(u.prenom,'') as createur_nom "
+        f"FROM bons_commande bc "
+        f"LEFT JOIN fournisseurs f ON f.id=bc.fournisseur_id "
+        f"LEFT JOIN entites e ON e.id=bc.entite_id "
+        f"LEFT JOIN projets p ON p.id=bc.projet_id "
+        f"LEFT JOIN lignes_budgetaires lb ON lb.id=bc.ligne_budgetaire_id "
+        f"LEFT JOIN utilisateurs u ON u.id=bc.created_by_id "
+        f"WHERE {w} ORDER BY bc.date_creation DESC",
+        params
+    ) or []
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Bons de commande"
+
+    headers = ["N°BC", "Objet", "Fournisseur", "Entité", "Montant HT", "Montant TTC",
+               "Statut", "Ligne budgétaire", "Projet", "Créé par", "Date création"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font      = Font(bold=True, color="FFFFFF")
+        cell.fill      = PatternFill("solid", fgColor="1E3A5F")
+        cell.alignment = Alignment(horizontal="center")
+
+    def fdate(v):
+        return v.strftime("%Y-%m-%d") if v and hasattr(v, "strftime") else (str(v)[:10] if v else None)
+    def ff(v):
+        try:    return float(v or 0)
+        except: return 0.0
+
+    for r in rows:
+        ws.append([
+            r.get("numero_bc"),
+            r.get("objet"),
+            r.get("fournisseur_nom"),
+            r.get("entite_nom") or r.get("entite_code"),
+            ff(r.get("montant_ht")),
+            ff(r.get("montant_ttc")),
+            r.get("statut"),
+            r.get("ligne_libelle"),
+            r.get("projet_nom"),
+            (r.get("createur_nom") or "").strip(),
+            fdate(r.get("date_creation")),
+        ])
+
+    col_widths = [15, 35, 25, 20, 14, 14, 12, 30, 25, 22, 15]
+    for i, w_val in enumerate(col_widths, 1):
+        from openpyxl.utils import get_column_letter
+        ws.column_dimensions[get_column_letter(i)].width = w_val
+
+    for row in ws.iter_rows(min_row=2, min_col=5, max_col=6):
+        for c in row:
+            c.number_format = "#,##0.00"
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    filename = f"bons_commande_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename
+    )
+
+
+# ─────────────────────────────────────────────
+# EXPORT EXCEL — CONTRATS
+# ─────────────────────────────────────────────
+
+@routes.route('/export/contrats', methods=['GET'])
+@require_auth()
+def export_contrats_excel():
+    from io import BytesIO
+    from flask import send_file
+    from datetime import datetime
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+    except ImportError as e:
+        return jsonify({"error": f"openpyxl non installé: {e}"}), 500
+
+    user_id    = g.user['sub']
+    role       = g.user['role']
+    service_id = g.user.get('service_id')
+    db         = budget_service.db
+
+    w, params = _ownership_where(user_id, role, service_id, 'c')
+    rows = db.fetch_all(
+        f"SELECT c.*, f.nom as fournisseur_nom, "
+        f"u.nom||' '||COALESCE(u.prenom,'') as createur_nom "
+        f"FROM contrats c "
+        f"LEFT JOIN fournisseurs f ON f.id=c.fournisseur_id "
+        f"LEFT JOIN utilisateurs u ON u.id=c.created_by_id "
+        f"WHERE {w} ORDER BY c.date_creation DESC",
+        params
+    ) or []
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Contrats"
+
+    headers = ["N° Contrat", "Objet", "Fournisseur", "Montant HT", "Montant TTC",
+               "Date début", "Date fin", "Statut", "Type", "Créé par"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font      = Font(bold=True, color="FFFFFF")
+        cell.fill      = PatternFill("solid", fgColor="1E3A5F")
+        cell.alignment = Alignment(horizontal="center")
+
+    def fdate(v):
+        return v.strftime("%Y-%m-%d") if v and hasattr(v, "strftime") else (str(v)[:10] if v else None)
+    def ff(v):
+        try:    return float(v or 0)
+        except: return 0.0
+
+    for r in rows:
+        ws.append([
+            r.get("numero_contrat"),
+            r.get("objet"),
+            r.get("fournisseur_nom"),
+            ff(r.get("montant_initial_ht")),
+            ff(r.get("montant_total_ht")),
+            fdate(r.get("date_debut")),
+            fdate(r.get("date_fin")),
+            r.get("statut"),
+            r.get("type_contrat"),
+            (r.get("createur_nom") or "").strip(),
+        ])
+
+    col_widths = [18, 35, 25, 14, 14, 13, 13, 12, 16, 22]
+    for i, w_val in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w_val
+
+    for row in ws.iter_rows(min_row=2, min_col=4, max_col=5):
+        for c in row:
+            c.number_format = "#,##0.00"
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    filename = f"contrats_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename
+    )
+
+
+# ─────────────────────────────────────────────
+# EXPORT EXCEL — PROJETS
+# ─────────────────────────────────────────────
+
+@routes.route('/export/projets', methods=['GET'])
+@require_auth()
+def export_projets_excel():
+    from io import BytesIO
+    from flask import send_file
+    from datetime import datetime
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+    except ImportError as e:
+        return jsonify({"error": f"openpyxl non installé: {e}"}), 500
+
+    user_id    = g.user['sub']
+    role       = g.user['role']
+    service_id = g.user.get('service_id')
+    db         = budget_service.db
+
+    w, params = _ownership_where(user_id, role, service_id, 'p')
+    rows = db.fetch_all(
+        f"SELECT p.*, s.nom as service_nom "
+        f"FROM projets p "
+        f"LEFT JOIN services s ON s.id=p.service_id "
+        f"WHERE {w} ORDER BY p.date_creation DESC",
+        params
+    ) or []
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Projets"
+
+    headers = ["Code", "Nom", "Type", "Phase", "Statut", "Priorité", "Service",
+               "Avancement %", "Budget estimé", "Date début", "Date fin prévue", "Statut RAG"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font      = Font(bold=True, color="FFFFFF")
+        cell.fill      = PatternFill("solid", fgColor="1E3A5F")
+        cell.alignment = Alignment(horizontal="center")
+
+    def fdate(v):
+        return v.strftime("%Y-%m-%d") if v and hasattr(v, "strftime") else (str(v)[:10] if v else None)
+    def ff(v):
+        try:    return float(v or 0)
+        except: return 0.0
+
+    for r in rows:
+        ws.append([
+            r.get("code"),
+            r.get("nom"),
+            r.get("type_projet"),
+            r.get("phase"),
+            r.get("statut"),
+            r.get("priorite"),
+            r.get("service_nom"),
+            ff(r.get("avancement")),
+            ff(r.get("budget_estime")),
+            fdate(r.get("date_debut")),
+            fdate(r.get("date_fin_prevue")),
+            r.get("statut_rag"),
+        ])
+
+    col_widths = [14, 35, 16, 16, 14, 12, 22, 13, 15, 13, 15, 12]
+    for i, w_val in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w_val
+
+    for row in ws.iter_rows(min_row=2, min_col=9, max_col=9):
+        for c in row:
+            c.number_format = "#,##0.00"
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    filename = f"projets_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename
+    )
+
+
+# ─────────────────────────────────────────────
+# VIREMENT ENTRE LIGNES BUDGÉTAIRES
+# ─────────────────────────────────────────────
+
+@routes.route('/virement', methods=['POST'])
+@require_auth('admin', 'gestionnaire')
+def virement_lignes():
+    data       = request.get_json() or {}
+    source_id  = data.get('source_id')
+    dest_id    = data.get('dest_id')
+    montant    = data.get('montant')
+    motif      = data.get('motif', '')
+    user_id    = g.user['sub']
+    role       = g.user['role']
+    db         = budget_service.db
+
+    if not source_id or not dest_id or source_id == dest_id:
+        return _err("source_id et dest_id doivent être différents et renseignés", 400)
+    try:
+        montant = float(montant)
+    except (TypeError, ValueError):
+        return _err("Montant invalide", 400)
+    if montant <= 0:
+        return _err("Le montant doit être supérieur à zéro", 400)
+
+    source = db.fetch_one("SELECT * FROM lignes_budgetaires WHERE id = %s", [source_id])
+    dest   = db.fetch_one("SELECT * FROM lignes_budgetaires WHERE id = %s", [dest_id])
+    if not source:
+        return _err("Ligne source introuvable", 404)
+    if not dest:
+        return _err("Ligne destination introuvable", 404)
+
+    if role != 'admin':
+        src_role  = _user_budget_role(user_id, source['budget_id'])
+        dest_role = _user_budget_role(user_id, dest['budget_id'])
+        if src_role != 'gestionnaire' or dest_role != 'gestionnaire':
+            return _err("Droits insuffisants", 403)
+
+    disponible = float(source['montant_vote'] or 0) - float(source['montant_engage'] or 0)
+    if montant > disponible:
+        return _err(f"Montant supérieur au disponible ({disponible:.2f} €)", 400)
+
+    db.execute(
+        "UPDATE lignes_budgetaires SET montant_vote = montant_vote - %s, "
+        "montant_solde = (montant_vote - %s) - montant_engage, date_maj = NOW() WHERE id = %s",
+        [montant, montant, source_id]
+    )
+    db.execute(
+        "UPDATE lignes_budgetaires SET montant_vote = montant_vote + %s, "
+        "montant_solde = (montant_vote + %s) - montant_engage, date_maj = NOW() WHERE id = %s",
+        [montant, montant, dest_id]
+    )
+    _audit('VIREMENT', 'lignes_budgetaires', source_id,
+           {'montant': montant, 'source_id': source_id, 'dest_id': dest_id, 'motif': motif})
+    return _ok()
+
+
+# ─────────────────────────────────────────────
 # MODULES (activation plugins — admin)
 # ─────────────────────────────────────────────
 

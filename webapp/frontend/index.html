@@ -831,6 +831,7 @@
         </select>
         <input id="bc-search" placeholder="Rechercher..." oninput="loadBC()">
         <button class="btn" onclick="resetBcFilters()" style="background:#e9ecef;border:1px solid #ccc;">✕ Reset</button>
+        <button class="btn" onclick="exportBC()" style="background:#217346;color:#fff;margin-left:auto;">&#128229; Export Excel</button>
     </div>
     <div id="bc-kpi-bar" class="kpi-bar"></div>
     <div class="tbl-wrap">
@@ -891,6 +892,7 @@
         </select>
         <input id="contrat-search" placeholder="Rechercher N°, objet, fournisseur..." oninput="_saveFilter('contrat-search');_renderContratsRows()" style="min-width:240px;">
         <button class="btn" onclick="resetContratsFilters()" style="background:#e9ecef;border:1px solid #ccc;">✕ Reset</button>
+        <button class="btn" onclick="exportContrats()" style="background:#217346;color:#fff;margin-left:auto;">&#128229; Export Excel</button>
     </div>
     <div class="tbl-wrap">
     <table id="contrats-table" data-table="contrats">
@@ -980,6 +982,7 @@
         </select>
         <input id="proj-filter-search" class="form-control" style="width:220px;" placeholder="Recherche nom / code..." oninput="applyProjetFilters()">
         <button class="btn" onclick="resetProjetFilters()" style="background:#e9ecef;border:1px solid #ccc;">✕ Réinitialiser</button>
+        <button class="btn" onclick="exportProjets()" style="background:#217346;color:#fff;">&#128229; Export Excel</button>
     </div>
     <div class="tbl-wrap">
     <table id="projets-table">
@@ -2517,10 +2520,50 @@
 </div><!-- /.content -->
 </div><!-- /.main-area -->
 
+<!-- MODAL VIREMENT -->
+<div id="modal-virement" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width:480px;">
+    <div class="modal-header">
+      <h3>Virement de ligne budgétaire</h3>
+      <button class="modal-close" onclick="closeModal('modal-virement')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:12px;font-size:.9em;color:#555;">
+        Transférer une partie du montant voté d'une ligne vers une autre.
+      </p>
+      <input type="hidden" id="virement-source-id">
+      <div class="form-group" style="margin-bottom:10px;">
+        <label style="font-size:.82em;font-weight:600;display:block;margin-bottom:4px;">Ligne source</label>
+        <input id="virement-source-label" disabled style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;background:#f9f9f9;font-size:.88em;">
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label style="font-size:.82em;font-weight:600;display:block;margin-bottom:4px;">Disponible sur la source</label>
+        <input id="virement-source-dispo" disabled style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;background:#f9f9f9;font-size:.88em;color:#27ae60;font-weight:bold;">
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label style="font-size:.82em;font-weight:600;display:block;margin-bottom:4px;">Ligne destination *</label>
+        <select id="virement-dest-id" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:.88em;"></select>
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label style="font-size:.82em;font-weight:600;display:block;margin-bottom:4px;">Montant à virer (€) *</label>
+        <input type="number" id="virement-montant" min="0.01" step="0.01" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:.88em;" placeholder="0.00">
+      </div>
+      <div class="form-group">
+        <label style="font-size:.82em;font-weight:600;display:block;margin-bottom:4px;">Motif</label>
+        <textarea id="virement-motif" rows="2" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;font-size:.88em;" placeholder="Motif du virement..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid #eee;">
+      <button class="btn" onclick="closeModal('modal-virement')" style="background:#e9ecef;">Annuler</button>
+      <button class="btn btn-primary" onclick="submitVirement()">Valider le virement</button>
+    </div>
+  </div>
+</div>
+
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
-<script src="app.js?v=6.44"></script>
+<script src="app.js?v=6.47"></script>
 </body>
 </html>

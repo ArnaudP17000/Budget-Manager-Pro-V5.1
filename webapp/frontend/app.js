@@ -627,6 +627,94 @@ function exportBudget() {
     .catch(e => showMsg(e.message || 'Erreur export', false));
 }
 
+async function exportBC() {
+    const token = getToken();
+    showMsg('Génération export BCs…', true);
+    try {
+        const res = await fetch('/api/export/bons_commande', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!res.ok) throw new Error('Erreur export');
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'bons_commande_' + new Date().toISOString().slice(0,10) + '.xlsx';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showMsg('Export généré', true);
+    } catch(e) { showMsg('Erreur lors de l\'export', false); }
+}
+
+async function exportContrats() {
+    const token = getToken();
+    showMsg('Génération export contrats…', true);
+    try {
+        const res = await fetch('/api/export/contrats', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!res.ok) throw new Error('Erreur export');
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'contrats_' + new Date().toISOString().slice(0,10) + '.xlsx';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showMsg('Export généré', true);
+    } catch(e) { showMsg('Erreur lors de l\'export', false); }
+}
+
+async function exportProjets() {
+    const token = getToken();
+    showMsg('Génération export projets…', true);
+    try {
+        const res = await fetch('/api/export/projets', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!res.ok) throw new Error('Erreur export');
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'projets_' + new Date().toISOString().slice(0,10) + '.xlsx';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showMsg('Export généré', true);
+    } catch(e) { showMsg('Erreur lors de l\'export', false); }
+}
+
+async function openVirement(ligneId, budgetId) {
+    const ligne = (_lignesCache || []).find(l => l.id === ligneId);
+    if (!ligne) return;
+    const dispo = parseFloat(ligne.montant_vote || 0) - parseFloat(ligne.montant_engage || 0);
+    document.getElementById('virement-source-id').value = ligneId;
+    document.getElementById('virement-source-label').value = ligne.libelle || ('Ligne #' + ligneId);
+    document.getElementById('virement-source-dispo').value = fmt(dispo) + ' €';
+    document.getElementById('virement-montant').value = '';
+    document.getElementById('virement-motif').value = '';
+    // Load destination lines (same budget, excluding source)
+    const select = document.getElementById('virement-dest-id');
+    select.innerHTML = '<option value="">-- Sélectionner --</option>';
+    try {
+        const data = await apiFetch(`/lignes?budget_id=${budgetId}`);
+        (data.list || []).filter(l => l.id !== ligneId && l.statut !== 'ANNULEE').forEach(l => {
+            const opt = document.createElement('option');
+            opt.value = l.id;
+            opt.textContent = (l.libelle || 'Ligne #'+l.id) + ' — Voté: ' + fmt(l.montant_vote) + ' €';
+            select.appendChild(opt);
+        });
+    } catch(e) {}
+    openModal('modal-virement');
+}
+
+async function submitVirement() {
+    const source_id = parseInt(document.getElementById('virement-source-id').value);
+    const dest_id   = parseInt(document.getElementById('virement-dest-id').value);
+    const montant   = parseFloat(document.getElementById('virement-montant').value);
+    const motif     = document.getElementById('virement-motif').value;
+    if (!dest_id)    { showMsg('Sélectionnez une ligne destination', false); return; }
+    if (!montant || montant <= 0) { showMsg('Montant invalide', false); return; }
+    try {
+        const res = await apiFetch('/virement', { method: 'POST', body: JSON.stringify({ source_id, dest_id, montant, motif }) });
+        if (res.success === false) { showMsg(res.error || 'Erreur', false); return; }
+        closeModal('modal-virement');
+        showMsg('Virement effectué', true);
+        loadAllLignes();
+    } catch(e) { showMsg('Erreur lors du virement', false); }
+}
+
 async function loadBudgetVueService() {
     const container = document.getElementById('budget-service-container');
     if (!container) return;
@@ -751,6 +839,7 @@ function _renderLignesRows() {
             <td style="font-size:.78em;color:#666;">${l.budget_label || '-'}</td>
             <td style="text-align:center;" onclick="event.stopPropagation()">
                 <button class="btn btn-warning btn-sm" title="Modifier" onclick="editLigne(${l.id})">${_ico.edit}</button>
+                <button class="btn btn-sm write-only" title="Virement" style="background:#7c3aed;color:#fff;" onclick="openVirement(${l.id}, ${l.budget_id})">${_ico.link}</button>
             </td>
         </tr>`;
     }).join('');
