@@ -901,27 +901,15 @@ def get_projets_vue_service():
 def _ownership_where(user_id, role, service_id, alias='bc'):
     """
     Retourne (clause WHERE, params) pour filtrer par propriétaire.
-    - admin        → voit tout
-    - gestionnaire → voit les siens + tous les membres de son service/unité
-    - lecteur      → voit uniquement les siens
+    - admin   → voit tout
+    - autres  → voit uniquement les siens (created_by_id = user_id)
     Les enregistrements sans created_by_id (NULL = données historiques)
-    sont visibles uniquement par admin. Les non-admins ne voient QUE
-    les enregistrements avec un created_by_id explicite.
+    sont visibles uniquement par admin.
     """
     p = alias + '.'
     if role == 'admin':
         return "1=1", []
-    elif role in ('gestionnaire', 'gestionnaire_service') and service_id:
-        # Gestionnaire / gestionnaire de service : voit tous les membres de son service/unité
-        return (
-            f"({p}created_by_id = %s "
-            f"OR {p}created_by_id IN "
-            f"(SELECT id FROM utilisateurs WHERE service_id = %s AND actif = true))",
-            [user_id, service_id]
-        )
-    else:
-        # lecteur (ou gestionnaire sans service) : uniquement les siens
-        return f"{p}created_by_id = %s", [user_id]
+    return f"{p}created_by_id = %s", [user_id]
 
 
 def _audit(action, table_name, record_id=None, details=None):
@@ -1916,18 +1904,7 @@ def _tache_visibility_where(user_id, role, service_id):
     """
     if role == 'admin':
         return "1=1", []
-    elif role == 'gestionnaire' and service_id:
-        return (
-            "(t.assignee_id = %s "
-            "OR t.created_by_id = %s "
-            "OR t.assignee_id IN (SELECT id FROM utilisateurs WHERE service_id = %s AND actif = true) "
-            "OR t.created_by_id IN (SELECT id FROM utilisateurs WHERE service_id = %s AND actif = true) "
-            "OR t.assignee_id IS NULL)",
-            [user_id, user_id, service_id, service_id]
-        )
-    else:
-        # lecteur ou gestionnaire sans service : uniquement les siennes
-        return "(t.assignee_id = %s OR t.created_by_id = %s)", [user_id, user_id]
+    return "(t.assignee_id = %s OR t.created_by_id = %s)", [user_id, user_id]
 
 
 @routes.route('/tache', methods=['GET'])
@@ -2428,11 +2405,8 @@ def etp():
             if role == 'admin':
                 user_where  = "u.actif = true"
                 user_params = []
-            elif role == 'gestionnaire' and service_id:
-                user_where  = "u.actif = true AND u.service_id = %s"
-                user_params = [service_id]
             else:
-                # lecteur : uniquement soi-même
+                # non-admin : uniquement soi-même
                 user_where  = "u.actif = true AND u.id = %s"
                 user_params = [user_id]
 
@@ -3148,10 +3122,6 @@ def _notes_db():
 def _notes_ownership(user_id, role, service_id):
     if role == 'admin':
         return "1=1", []
-    elif role == 'gestionnaire' and service_id:
-        return ("(n.created_by_id = %s OR n.created_by_id IN "
-                "(SELECT id FROM utilisateurs WHERE service_id = %s AND actif = true))",
-                [user_id, service_id])
     return "n.created_by_id = %s", [user_id]
 
 @routes.route('/note', methods=['GET'])
