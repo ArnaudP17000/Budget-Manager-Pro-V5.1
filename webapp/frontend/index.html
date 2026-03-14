@@ -687,8 +687,9 @@
         </div>
     </div>
     <div class="budget-subtabs">
-        <div class="budget-subtab active" onclick="switchBudgetSubTab('budgets')">&#128200; Budgets annuels</div>
-        <div class="budget-subtab" onclick="switchBudgetSubTab('lignes')">&#9776; Lignes budgétaires</div>
+        <div class="budget-subtab active" id="bst-budgets" onclick="switchBudgetSubTab('budgets')">&#128200; Budgets annuels</div>
+        <div class="budget-subtab" id="bst-lignes" onclick="switchBudgetSubTab('lignes')">&#9776; Lignes budgétaires</div>
+        <div class="budget-subtab" id="bst-service" onclick="switchBudgetSubTab('service')" style="display:none;">&#128101; Vue Service</div>
     </div>
 
     <!-- ── Sous-onglet : Budgets annuels ── -->
@@ -772,6 +773,13 @@
                     <tbody id="lignes-bc-tbody"><tr><td colspan="9" style="text-align:center;color:#555;padding:14px;font-style:italic;">Aucune ligne sélectionnée</td></tr></tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <!-- Vue Service sous-onglet -->
+    <div id="budget-sub-service" class="budget-subview">
+        <div id="budget-service-container" style="padding:8px 0;">
+            <p style="color:#888;font-style:italic;text-align:center;padding:24px;">Chargement...</p>
         </div>
     </div>
 </div>
@@ -908,7 +916,15 @@
 
 <!-- ══════════════════ PROJETS ══════════════════ -->
 <div id="view-projets" class="view">
-    <h2>Projets</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <h2 style="margin:0;">Projets</h2>
+        <div id="projets-vue-service-toggle" style="display:none;">
+            <button class="btn btn-sm" id="btn-proj-vue-normal" onclick="switchProjetsView('normal')"
+                    style="background:#2563a8;color:#fff;border-radius:4px 0 0 4px;">Ma vue</button>
+            <button class="btn btn-sm" id="btn-proj-vue-service" onclick="switchProjetsView('service')"
+                    style="background:#fff;color:#2563a8;border:1px solid #2563a8;border-radius:0 4px 4px 0;">Vue Service</button>
+        </div>
+    </div>
     <div class="form-card write-only">
         <h3>Nouveau projet</h3>
         <div class="form-grid">
@@ -974,6 +990,13 @@
         </tr></thead>
         <tbody id="projets-tbody"></tbody>
     </table>
+    </div>
+
+    <!-- Vue Service projets -->
+    <div id="projets-vue-service-panel" style="display:none;">
+        <div id="projets-service-container">
+            <p style="color:#888;font-style:italic;text-align:center;padding:24px;">Chargement...</p>
+        </div>
     </div>
 </div>
 
@@ -2498,6 +2521,6 @@
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
-<script src="app.js?v=6.43"></script>
+<script src="app.js?v=6.44"></script>
 </body>
 </html>

@@ -627,13 +627,69 @@ function exportBudget() {
     .catch(e => showMsg(e.message || 'Erreur export', false));
 }
 
+async function loadBudgetVueService() {
+    const container = document.getElementById('budget-service-container');
+    if (!container) return;
+    container.innerHTML = '<p style="color:#888;text-align:center;padding:24px;">Chargement...</p>';
+    try {
+        const data = await apiFetch('/budget/vue_service');
+        const users = data.users || [];
+        if (!users.length) {
+            container.innerHTML = '<p style="color:#aaa;text-align:center;padding:24px;font-style:italic;">Aucun membre dans votre service.</p>';
+            return;
+        }
+        const fmtM = v => v != null ? fmt(v) + ' €' : '-';
+        container.innerHTML = users.map(u => {
+            const name = ((u.user.prenom || '') + ' ' + (u.user.nom || '')).trim() || u.user.login;
+            const budgets = u.budgets || [];
+            const rows = budgets.length
+                ? budgets.map(b => `
+                    <tr>
+                        <td>${b.exercice || '-'}</td>
+                        <td>${b.entite_code || b.entite_nom || '-'}</td>
+                        <td>${b.nature || '-'}</td>
+                        <td>${badge(b.statut)}</td>
+                        <td style="text-align:right;">${fmtM(b.montant_vote)}</td>
+                        <td style="text-align:right;">${fmtM(b.montant_engage)}</td>
+                        <td style="text-align:right;">${fmtM(b.montant_solde)}</td>
+                        <td><span class="badge ${b.perm_role === 'gestionnaire' ? 'bg-valide' : 'bg-impute'}">${b.perm_role || '-'}</span></td>
+                    </tr>`).join('')
+                : `<tr><td colspan="8" style="color:#aaa;font-style:italic;text-align:center;">Aucun accès budget attribué</td></tr>`;
+            return `
+            <div style="margin-bottom:20px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                    <div style="width:34px;height:34px;border-radius:50%;background:#e0e7ff;
+                                color:#4f46e5;display:flex;align-items:center;justify-content:center;
+                                font-weight:700;font-size:.85em;flex-shrink:0;">
+                        ${(u.user.prenom||'?')[0]}${(u.user.nom||'?')[0]}
+                    </div>
+                    <strong style="font-size:.95em;color:#1e293b;">${name}</strong>
+                    <span style="font-size:.78em;color:#64748b;">${budgets.length} budget(s)</span>
+                </div>
+                <div class="tbl-wrap">
+                <table style="font-size:.82em;">
+                    <thead><tr>
+                        <th>Exercice</th><th>Entité</th><th>Nature</th><th>Statut</th>
+                        <th>Voté (€)</th><th>Engagé (€)</th><th>Solde (€)</th><th>Accès</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table></div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        container.innerHTML = `<p style="color:#e74c3c;text-align:center;padding:16px;">${e.message}</p>`;
+    }
+}
+
 function switchBudgetSubTab(tab) {
     document.querySelectorAll('.budget-subtab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.budget-subview').forEach(v => v.classList.remove('active'));
-    const idx = tab === 'lignes' ? 1 : 0;
-    document.querySelectorAll('.budget-subtab')[idx].classList.add('active');
-    document.getElementById(`budget-sub-${tab}`).classList.add('active');
+    const tabBtn = document.getElementById('bst-' + tab);
+    if (tabBtn) tabBtn.classList.add('active');
+    const subview = document.getElementById('budget-sub-' + tab);
+    if (subview) subview.classList.add('active');
     if (tab === 'lignes') loadAllLignes();
+    if (tab === 'service') loadBudgetVueService();
 }
 
 function _renderLignesRows() {
@@ -870,7 +926,11 @@ async function loadBudget() {
 
         // Afficher/masquer le formulaire "Nouveau budget"
         const newCard = document.getElementById('budget-new-card');
-        if (newCard) newCard.style.display = userRole === 'lecteur' ? 'none' : '';
+        if (newCard) newCard.style.display = (userRole === 'lecteur' || userRole === 'gestionnaire_service') ? 'none' : '';
+
+        // Vue Service sub-tab : visible pour gestionnaire_service uniquement
+        const bstService = document.getElementById('bst-service');
+        if (bstService) bstService.style.display = userRole === 'gestionnaire_service' ? '' : 'none';
 
         // Afficher message vide si aucun budget et non-admin
         const emptyMsg  = document.getElementById('budget-empty-msg');
@@ -2145,7 +2205,88 @@ async function loadProjets() {
 
         applyProjetFilters();
         _renderPortfolio(_cache.projets || []);
+
+        // Toggle Vue Service visible pour gestionnaire_service
+        const toggleDiv = document.getElementById('projets-vue-service-toggle');
+        if (toggleDiv) toggleDiv.style.display = _currentUserRole() === 'gestionnaire_service' ? '' : 'none';
     } catch (e) { showMsg('Erreur chargement projets', false); }
+}
+
+function switchProjetsView(mode) {
+    const normal = document.getElementById('view-projets');
+    const servicePanel = document.getElementById('projets-vue-service-panel');
+    const btnNormal = document.getElementById('btn-proj-vue-normal');
+    const btnService = document.getElementById('btn-proj-vue-service');
+    if (mode === 'service') {
+        // Hide the normal project content elements (form, filters, table) but keep the view visible
+        normal.querySelectorAll('.form-card, .toolbar, .tbl-wrap, #projets-pagination, #portfolio-section').forEach(el => el.style.display = 'none');
+        if (servicePanel) servicePanel.style.display = '';
+        if (btnNormal) { btnNormal.style.background='#fff'; btnNormal.style.color='#2563a8'; }
+        if (btnService) { btnService.style.background='#2563a8'; btnService.style.color='#fff'; }
+        loadProjetsVueService();
+    } else {
+        normal.querySelectorAll('.form-card, .toolbar, .tbl-wrap, #projets-pagination, #portfolio-section').forEach(el => el.style.display = '');
+        if (servicePanel) servicePanel.style.display = 'none';
+        if (btnNormal) { btnNormal.style.background='#2563a8'; btnNormal.style.color='#fff'; }
+        if (btnService) { btnService.style.background='#fff'; btnService.style.color='#2563a8'; }
+    }
+}
+
+async function loadProjetsVueService() {
+    const container = document.getElementById('projets-service-container');
+    if (!container) return;
+    container.innerHTML = '<p style="color:#888;text-align:center;padding:24px;">Chargement...</p>';
+    try {
+        const data = await apiFetch('/projets/vue_service');
+        const users = data.users || [];
+        if (!users.length) {
+            container.innerHTML = '<p style="color:#aaa;text-align:center;padding:24px;font-style:italic;">Aucun membre dans votre service.</p>';
+            return;
+        }
+        const ragDot = r => {
+            const c = r === 'ROUGE' ? '#ef4444' : r === 'ORANGE' ? '#f97316' : '#22c55e';
+            return `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c};"></span>`;
+        };
+        container.innerHTML = users.map(u => {
+            const name = ((u.user.prenom || '') + ' ' + (u.user.nom || '')).trim();
+            const projets = u.projets || [];
+            const rows = projets.length
+                ? projets.map(p => `
+                    <tr>
+                        <td>${ragDot(p.statut_rag)}</td>
+                        <td style="font-size:.8em;color:#64748b;">${p.code || '-'}</td>
+                        <td style="font-weight:600;">${p.nom || '-'}</td>
+                        <td>${badge(p.statut)}</td>
+                        <td>${p.phase || '-'}</td>
+                        <td>${p.avancement != null ? p.avancement + '%' : '-'}</td>
+                        <td>${p.date_fin_prevue ? p.date_fin_prevue.slice(0,10) : '-'}</td>
+                    </tr>`).join('')
+                : `<tr><td colspan="7" style="color:#aaa;font-style:italic;text-align:center;">Aucun projet</td></tr>`;
+            return `
+            <div style="margin-bottom:24px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                    <div style="width:34px;height:34px;border-radius:50%;background:#e0e7ff;
+                                color:#4f46e5;display:flex;align-items:center;justify-content:center;
+                                font-weight:700;font-size:.85em;flex-shrink:0;">
+                        ${(u.user.prenom||'?')[0]}${(u.user.nom||'?')[0]}
+                    </div>
+                    <strong style="font-size:.95em;color:#1e293b;">${name}</strong>
+                    <span style="font-size:.78em;color:#64748b;">${projets.length} projet(s)</span>
+                </div>
+                <div class="tbl-wrap">
+                <table style="font-size:.82em;">
+                    <thead><tr>
+                        <th style="width:30px;"></th>
+                        <th>Code</th><th>Nom</th><th>Statut</th>
+                        <th>Phase</th><th>Avancement</th><th>Fin prévue</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table></div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        container.innerHTML = `<p style="color:#e74c3c;text-align:center;padding:16px;">${e.message}</p>`;
+    }
 }
 
 function switchProjTab(tabId) {

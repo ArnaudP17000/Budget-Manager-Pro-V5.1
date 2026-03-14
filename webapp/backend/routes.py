@@ -832,6 +832,70 @@ def delete_budget_permission(budget_id, target_uid):
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@routes.route('/budget/vue_service', methods=['GET'])
+@require_auth('gestionnaire_service')
+def get_budget_vue_service():
+    """Vue agrégée des accès budgets par membre du service (gestionnaire_service uniquement)."""
+    service_id = g.user.get('service_id')
+    if not service_id:
+        return jsonify({'users': []})
+    db = budget_service.db
+    users = db.fetch_all(
+        "SELECT u.id, u.nom, u.prenom FROM utilisateurs u "
+        "WHERE u.service_id = %s AND u.actif = true ORDER BY u.nom, u.prenom",
+        [service_id]
+    )
+    result = []
+    for u in (users or []):
+        budgets = db.fetch_all(
+            "SELECT ba.id, ba.exercice, ba.nature, ba.statut, "
+            "ba.montant_vote, ba.montant_engage, ba.montant_solde, bp.role as perm_role, "
+            "e.code as entite_code, e.nom as entite_nom "
+            "FROM budget_permissions bp "
+            "JOIN budgets_annuels ba ON ba.id = bp.budget_id "
+            "LEFT JOIN entites e ON e.id = ba.entite_id "
+            "WHERE bp.user_id = %s ORDER BY ba.exercice DESC, e.code",
+            [u['id']]
+        )
+        result.append({
+            'user': dict(u),
+            'budgets': [dict(b) for b in (budgets or [])]
+        })
+    db.conn.commit()
+    return jsonify({'users': result})
+
+
+@routes.route('/projets/vue_service', methods=['GET'])
+@require_auth('gestionnaire_service')
+def get_projets_vue_service():
+    """Projets de chaque membre du service (gestionnaire_service uniquement)."""
+    service_id = g.user.get('service_id')
+    if not service_id:
+        return jsonify({'users': []})
+    db = budget_service.db
+    users = db.fetch_all(
+        "SELECT u.id, u.nom, u.prenom FROM utilisateurs u "
+        "WHERE u.service_id = %s AND u.actif = true ORDER BY u.nom, u.prenom",
+        [service_id]
+    )
+    result = []
+    for u in (users or []):
+        projets = db.fetch_all(
+            "SELECT p.id, p.code, p.nom, p.statut, p.phase, p.type_projet, "
+            "p.priorite, p.avancement, p.date_debut, p.date_fin_prevue, "
+            "p.budget_estime, p.statut_rag "
+            "FROM projets p "
+            "WHERE p.created_by_id = %s ORDER BY p.statut, p.nom",
+            [u['id']]
+        )
+        result.append({
+            'user': dict(u),
+            'projets': [dict(p) for p in (projets or [])]
+        })
+    db.conn.commit()
+    return jsonify({'users': result})
+
+
 # ─────────────────────────────────────────────
 # BONS DE COMMANDE  — filtre par propriétaire
 # ─────────────────────────────────────────────
