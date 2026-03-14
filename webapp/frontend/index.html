@@ -265,27 +265,35 @@
         th.col-drop-left  { border-left:  3px solid #2563a8 !important; }
         th.col-drop-right { border-right: 3px solid #2563a8 !important; }
 
+        /* ── Chips de statut ── */
         .badge {
-            display: inline-block; padding: 2px 8px; border-radius: 12px;
-            font-size: .75em; font-weight: bold; white-space: nowrap;
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 10px 3px 8px; border-radius: 999px;
+            font-size: .71em; font-weight: 600;
+            white-space: nowrap; letter-spacing: .25px; vertical-align: middle;
         }
-        .bg-brouillon { background: #e2e3e5; color: #383d41; }
-        .bg-en-attente{ background: #fff3cd; color: #856404; }
-        .bg-valide    { background: #d4edda; color: #155724; }
-        .bg-impute    { background: #cce5ff; color: #004085; }
-        .bg-solde     { background: #d1ecf1; color: #0c5460; }
-        .bg-annule    { background: #f8d7da; color: #721c24; }
-        .bg-refuse    { background: #f8d7da; color: #721c24; }
-        .bg-actif     { background: #d4edda; color: #155724; }
-        .bg-expire    { background: #f8d7da; color: #721c24; }
-        .bg-critique  { background: #fde8e8; color: #c0392b; }
-        .bg-attention { background: #fff3cd; color: #856404; }
-        .bg-info      { background: #cce5ff; color: #004085; }
-        .bg-ok        { background: #d4edda; color: #155724; }
-        .bg-vote      { background: #d4edda; color: #155724; }
-        .bg-en-cours  { background: #d4edda; color: #155724; }
-        .bg-termine   { background: #cce5ff; color: #004085; }
-        .bg-default   { background: #e2e3e5; color: #383d41; }
+        .badge::before {
+            content: ''; display: inline-block;
+            width: 6px; height: 6px; border-radius: 50%;
+            background: currentColor; opacity: .6; flex-shrink: 0;
+        }
+        .bg-brouillon { background: rgba(100,116,139,.11); color: #475569; }
+        .bg-en-attente{ background: rgba(245,158,11,.13);  color: #b45309; }
+        .bg-valide    { background: rgba(22,163,74,.12);   color: #15803d; }
+        .bg-impute    { background: rgba(59,130,246,.13);  color: #1d4ed8; }
+        .bg-solde     { background: rgba(20,184,166,.13);  color: #0f766e; }
+        .bg-annule    { background: rgba(239,68,68,.12);   color: #b91c1c; }
+        .bg-refuse    { background: rgba(239,68,68,.12);   color: #b91c1c; }
+        .bg-actif     { background: rgba(22,163,74,.12);   color: #15803d; }
+        .bg-expire    { background: rgba(239,68,68,.12);   color: #b91c1c; }
+        .bg-critique  { background: rgba(220,38,38,.14);   color: #991b1b; }
+        .bg-attention { background: rgba(249,115,22,.12);  color: #c2410c; }
+        .bg-info      { background: rgba(59,130,246,.13);  color: #1d4ed8; }
+        .bg-ok        { background: rgba(22,163,74,.12);   color: #15803d; }
+        .bg-vote      { background: rgba(22,163,74,.12);   color: #15803d; }
+        .bg-en-cours  { background: rgba(14,165,233,.12);  color: #0369a1; }
+        .bg-termine   { background: rgba(99,102,241,.12);  color: #4338ca; }
+        .bg-default   { background: rgba(100,116,139,.10); color: #64748b; }
 
         .progress-bar-wrap { background: #e0e0e0; border-radius: 4px; height: 8px; min-width: 80px; }
         .progress-bar-fill { height: 8px; border-radius: 4px; background: #2563a8; }
@@ -2409,6 +2417,6 @@
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
-<script src="app.js?v=6.40"></script>
+<script src="app.js?v=6.41"></script>
 </body>
 </html>
