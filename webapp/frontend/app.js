@@ -90,7 +90,9 @@ async function doLogin() {
         hideLoginOverlay();
         applyRoleUI(data.user);
         _bgPost('/notifications/generate');
-        initRefs().then(() => { loadDashboard(); loadNotifications(); });
+        initRefs().then(() => { loadDashboard(); loadNotifications(); _checkOnboarding(); });
+        if (_notifInterval) clearInterval(_notifInterval);
+        _notifInterval = setInterval(loadNotifications, 30 * 1000);
     } catch (e) {
         errEl.textContent = e.message;
         errEl.style.display = 'block';
@@ -101,6 +103,7 @@ async function doLogin() {
 }
 
 function doLogout() {
+    if (_notifInterval) { clearInterval(_notifInterval); _notifInterval = null; }
     removeToken();
     document.getElementById('user-name').textContent = '';
     document.getElementById('user-info').style.display = 'none';
@@ -110,6 +113,8 @@ function doLogout() {
 // Session gérée uniquement par le JWT (8h) + refresh silencieux — pas de timer d'inactivité.
 
 // ─── État global ───────────────────────────────────────────
+let _notifInterval = null;  // polling notifications
+let _activeView    = 'dashboard';
 let _currentBudgetId  = null;   // pour modal voter
 let _currentBcId      = null;   // pour modal imputer / valider
 let _currentContratId = null;   // pour modal reconduire
@@ -306,6 +311,33 @@ document.addEventListener('keydown', e => {
     if (open) open.classList.remove('open');
 });
 
+// ─── Raccourcis clavier globaux ────────────────────────────
+const _newActions = {
+    bc:           () => addBC?.(),
+    contrats:     () => addContrat?.(),
+    projets:      () => addProjet?.(),
+    taches:       () => addTache?.(),
+    fournisseurs: () => addFournisseur?.(),
+    contacts:     () => addContact?.(),
+};
+document.addEventListener('keydown', e => {
+    const tag = document.activeElement?.tagName?.toLowerCase();
+    const inInput = ['input','textarea','select'].includes(tag) || document.activeElement?.isContentEditable;
+    if (document.querySelector('.modal-overlay.open')) return; // modal ouverte → ignorer
+    // Ctrl+K → focus recherche globale
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        const gs = document.getElementById('global-search');
+        if (gs) { gs.focus(); gs.select(); }
+        return;
+    }
+    // N → nouveau élément (hors saisie)
+    if (e.key === 'n' && !inInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const fn = _newActions[_activeView];
+        if (fn) { e.preventDefault(); fn(); }
+    }
+});
+
 // ─── Tri des colonnes ──────────────────────────────────────
 const _sort = {};
 
@@ -385,20 +417,34 @@ function _renderPagination(tableId, totalCount) {
     const containerId = tableId + '-pagination';
     const el = document.getElementById(containerId);
     if (!el) return;
-    const p = _pagination[tableId] || { page: 1, perPage: _PER_PAGE };
+    const p = _pagination[tableId] || (_pagination[tableId] = { page: 1, perPage: _PER_PAGE });
     const totalPages = Math.ceil(totalCount / p.perPage);
-    if (totalPages <= 1) { el.innerHTML = ''; return; }
+    const sizeOpts = [10, 25, 50, 100].map(n =>
+        `<option value="${n}" ${p.perPage === n ? 'selected' : ''}>${n}/page</option>`).join('');
+    const sizeSelect = `<select class="pg-size" onchange="_setPerPage('${tableId}',+this.value)">${sizeOpts}</select>`;
+    if (totalPages <= 1) {
+        el.innerHTML = `<span class="pg-info">${totalCount} résultat${totalCount !== 1 ? 's' : ''}</span>${sizeSelect}`;
+        return;
+    }
     el.innerHTML =
         `<button onclick="_goPage('${tableId}',${p.page - 1})" ${p.page <= 1 ? 'disabled' : ''}>&#9664; Préc.</button>` +
         `<span class="pg-info">Page <strong>${p.page}</strong> / ${totalPages} &nbsp;(${totalCount} résultats)</span>` +
-        `<button onclick="_goPage('${tableId}',${p.page + 1})" ${p.page >= totalPages ? 'disabled' : ''}>Suiv. &#9654;</button>`;
+        `<button onclick="_goPage('${tableId}',${p.page + 1})" ${p.page >= totalPages ? 'disabled' : ''}>Suiv. &#9654;</button>` +
+        sizeSelect;
 }
 
 function _goPage(tableId, page) {
     if (!_pagination[tableId]) _pagination[tableId] = { page: 1, perPage: _PER_PAGE };
     _pagination[tableId].page = page;
-    const renders = { bc: _renderBcRows, contrats: _renderContratsRows };
+    const renders = { bc: _renderBcRows, contrats: _renderContratsRows, projets: () => applyProjetFilters(true) };
     if (renders[tableId]) renders[tableId]();
+}
+
+function _setPerPage(tableId, n) {
+    if (!_pagination[tableId]) _pagination[tableId] = { page: 1, perPage: _PER_PAGE };
+    _pagination[tableId].perPage = n;
+    _pagination[tableId].page = 1;
+    _goPage(tableId, 1);
 }
 
 function _resetPage(tableId) {
@@ -441,6 +487,7 @@ const loaders = {
 };
 
 function showView(name) {
+    _activeView = name;
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.querySelectorAll('.sidebar-nav button').forEach(b => b.classList.remove('active'));
     const view = document.getElementById('view-' + name);
@@ -530,6 +577,7 @@ let _chartEntite = null;
 async function loadDashboard() {
     try {
         const d = await apiFetch('/dashboard');
+        initKpiPrefs();
         document.getElementById('kpi-projets').textContent    = d.kpi_projets ?? '-';
         document.getElementById('kpi-budget').textContent     = fmtKpi(d.kpi_budget);
         document.getElementById('kpi-bc').textContent         = d.kpi_bons_commande ?? '-';
@@ -665,6 +713,54 @@ function closeGlobalSearch() {
 }
 
 // ─── /UX v6.48 ─────────────────────────────────────────────────────────────
+
+// ─── Onboarding ────────────────────────────────────────────
+
+function _checkOnboarding() {
+    if (!localStorage.getItem('bmp_onboarded')) {
+        setTimeout(() => openModal('modal-onboarding'), 600);
+    }
+}
+
+function closeOnboarding() {
+    localStorage.setItem('bmp_onboarded', '1');
+    closeModal('modal-onboarding');
+}
+
+// ─── KPI Dashboard personnalisable ─────────────────────────
+
+function initKpiPrefs() {
+    const hidden = JSON.parse(localStorage.getItem('bmp_kpi_hidden') || '[]');
+    document.querySelectorAll('#dashboard-kpis .kpi-card[id]').forEach(card => {
+        const isHidden = hidden.includes(card.id);
+        card.style.display = isHidden ? 'none' : '';
+        card.classList.toggle('kpi-hidden-mark', isHidden);
+    });
+}
+
+function toggleKpiConfigure() {
+    const grid = document.getElementById('dashboard-kpis');
+    const configuring = grid.classList.toggle('kpi-configure');
+    const btn = document.getElementById('btn-kpi-config');
+    if (btn) btn.textContent = configuring ? '✓ Terminer' : '⚙ Personnaliser';
+    if (configuring) {
+        document.querySelectorAll('#dashboard-kpis .kpi-card[id]').forEach(c => c.style.display = '');
+    } else {
+        initKpiPrefs();
+    }
+}
+
+function toggleKpiCard(cardId) {
+    const grid = document.getElementById('dashboard-kpis');
+    if (!grid.classList.contains('kpi-configure')) return;
+    const hidden = JSON.parse(localStorage.getItem('bmp_kpi_hidden') || '[]');
+    const idx = hidden.indexOf(cardId);
+    if (idx >= 0) hidden.splice(idx, 1); else hidden.push(cardId);
+    localStorage.setItem('bmp_kpi_hidden', JSON.stringify(hidden));
+    document.querySelectorAll('#dashboard-kpis .kpi-card[id]').forEach(card => {
+        card.classList.toggle('kpi-hidden-mark', hidden.includes(card.id));
+    });
+}
 
 // ─── BUDGETS ───────────────────────────────────────────────
 
@@ -1995,7 +2091,8 @@ function _ragDot(rag) {
 function _renderProjets(list) {
     const tbody = document.getElementById('projets-tbody');
     if (!tbody) return;
-    tbody.innerHTML = list.map(p => `
+    const page = _paginate(list, 'projets');
+    tbody.innerHTML = page.map(p => `
         <tr>
             <td style="text-align:center;">${_ragDot(p.statut_rag)}</td>
             <td>${_h(p.code) || '-'}</td>
@@ -2017,6 +2114,7 @@ function _renderProjets(list) {
             </td>
         </tr>`).join('');
     _initTable('projets-table');
+    _renderPagination('projets', list.length);
 }
 
 // ── Tableau de bord projet ─────────────────────────────────────────────────
@@ -2300,7 +2398,8 @@ function _renderPortfolio(list) {
     }).join('');
 }
 
-function applyProjetFilters() {
+function applyProjetFilters(noReset) {
+    if (!noReset) _resetPage('projets');
     const statut  = document.getElementById('proj-filter-statut')?.value  || '';
     const service = document.getElementById('proj-filter-service')?.value || '';
     const search  = (document.getElementById('proj-filter-search')?.value || '').toLowerCase();
@@ -2317,6 +2416,7 @@ function applyProjetFilters() {
 function resetProjetFilters() {
     const els = ['proj-filter-statut', 'proj-filter-service', 'proj-filter-search'];
     els.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    _resetPage('projets');
     _renderProjets(_cache.projets || []);
 }
 

@@ -281,6 +281,14 @@
         .pagination-bar button:hover:not(:disabled) { background: #e8f0fe; }
         .pagination-bar button:disabled { opacity: .4; cursor: default; }
         .pagination-bar .pg-info { padding: 0 6px; }
+        .pg-size { padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 5px; font-size: .82em; margin-left: 6px; background: #fff; cursor: pointer; }
+        body.dark .pg-size { background: #334155; color: #e2e8f0; border-color: #475569; }
+
+        /* KPI personnalisable */
+        #dashboard-kpis.kpi-configure .kpi-card[id] { cursor: pointer; outline: 2px dashed #94a3b8; position: relative; transition: opacity .15s; }
+        #dashboard-kpis.kpi-configure .kpi-card[id]:hover { outline-color: #3b82f6; }
+        #dashboard-kpis.kpi-configure .kpi-card.kpi-hidden-mark { opacity: .3; }
+        #dashboard-kpis.kpi-configure .kpi-card.kpi-hidden-mark::after { content: '✕'; position: absolute; top: 6px; right: 10px; font-size: 1.1em; color: #ef4444; font-weight: 700; }
 
         /* Dashboard charts */
         #dashboard-charts {
@@ -714,36 +722,39 @@
 
 <!-- ══════════════════ DASHBOARD ══════════════════ -->
 <div id="view-dashboard" class="view active">
+    <div style="display:flex;align-items:center;justify-content:flex-end;padding:12px 24px 0;">
+        <button id="btn-kpi-config" class="btn" style="font-size:.8em;padding:4px 12px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;" onclick="toggleKpiConfigure()">⚙ Personnaliser</button>
+    </div>
     <div id="dashboard-kpis">
-        <div class="kpi-card kc-indigo">
+        <div id="kpi-card-projets" class="kpi-card kc-indigo" onclick="toggleKpiCard(this.id)">
             <div class="kc-icon"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
             <div class="kc-body"><div class="kpi-value" id="kpi-projets">-</div><div class="kpi-label">Projets actifs</div></div>
         </div>
-        <div class="kpi-card kc-green">
+        <div id="kpi-card-budget" class="kpi-card kc-green" onclick="toggleKpiCard(this.id)">
             <div class="kc-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg></div>
             <div class="kc-body"><div class="kpi-value" id="kpi-budget">-</div><div class="kpi-label">Budget voté (€)</div></div>
         </div>
-        <div class="kpi-card kc-blue">
+        <div id="kpi-card-bc" class="kpi-card kc-blue" onclick="toggleKpiCard(this.id)">
             <div class="kc-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg></div>
             <div class="kc-body"><div class="kpi-value" id="kpi-bc">-</div><div class="kpi-label">Bons de commande</div></div>
         </div>
-        <div class="kpi-card kc-teal">
+        <div id="kpi-card-montant-bc" class="kpi-card kc-teal" onclick="toggleKpiCard(this.id)">
             <div class="kc-icon"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
             <div class="kc-body"><div class="kpi-value" id="kpi-montant-bc">-</div><div class="kpi-label">Engagé BC TTC (€)</div></div>
         </div>
-        <div class="kpi-card kc-purple">
+        <div id="kpi-card-contrats" class="kpi-card kc-purple" onclick="toggleKpiCard(this.id)">
             <div class="kc-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 2v6h6M9 15l2 2 4-4"/></svg></div>
             <div class="kc-body"><div class="kpi-value" id="kpi-contrats">-</div><div class="kpi-label">Contrats actifs</div></div>
         </div>
-        <div class="kpi-card kc-red alert">
+        <div id="kpi-card-alertes" class="kpi-card kc-red alert" onclick="toggleKpiCard(this.id)">
             <div class="kc-icon"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
             <div class="kc-body"><div class="kpi-value" id="kpi-alertes">-</div><div class="kpi-label">Alertes contrats</div></div>
         </div>
-        <div class="kpi-card kc-amber warning">
+        <div id="kpi-card-bc-attente" class="kpi-card kc-amber warning" onclick="toggleKpiCard(this.id)">
             <div class="kc-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
             <div class="kc-body"><div class="kpi-value" id="kpi-bc-attente">-</div><div class="kpi-label">BC en attente</div></div>
         </div>
-        <div class="kpi-card kc-orange">
+        <div id="kpi-card-alertes-lignes" class="kpi-card kc-orange" onclick="toggleKpiCard(this.id)">
             <div class="kc-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
             <div class="kc-body"><div class="kpi-value" id="kpi-alertes-lignes">-</div><div class="kpi-label">Lignes en alerte</div></div>
         </div>
@@ -1112,6 +1123,7 @@
         <tbody id="projets-tbody"></tbody>
     </table>
     </div>
+    <div id="projets-pagination" class="pagination-bar" style="padding: 8px 4px;"></div>
 
     <!-- Vue Service projets -->
     <div id="projets-vue-service-panel" style="display:none;">
@@ -2678,10 +2690,28 @@
   </div>
 </div>
 
+<!-- ══════════════════ ONBOARDING ══════════════════ -->
+<div id="modal-onboarding" class="modal-overlay">
+    <div class="modal-box" style="max-width:500px;">
+        <h3 style="color:#1a569e;margin:0 0 12px;">Bienvenue sur Budget Manager Pro</h3>
+        <p style="color:#555;margin:0 0 14px;">Quelques astuces pour bien démarrer :</p>
+        <ul style="color:#444;line-height:2;margin:0 0 0 18px;padding:0;">
+            <li><kbd style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:3px;padding:1px 6px;font-size:.85em;">N</kbd> — créer un nouvel élément dans la vue active</li>
+            <li><kbd style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:3px;padding:1px 6px;font-size:.85em;">Ctrl+K</kbd> — recherche rapide dans tous les modules</li>
+            <li><kbd style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:3px;padding:1px 6px;font-size:.85em;">Échap</kbd> — ferme les fenêtres de dialogue</li>
+            <li>Bouton <strong>⚙ Personnaliser</strong> sur le tableau de bord → afficher / masquer les indicateurs</li>
+            <li>Bouton 🌙 en haut à droite → mode sombre</li>
+        </ul>
+        <div style="text-align:right;margin-top:20px;">
+            <button class="btn btn-primary" onclick="closeOnboarding()">C'est parti !</button>
+        </div>
+    </div>
+</div>
+
 <div id="msg"></div>
 <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
-<script src="app.js?v=6.49"></script>
+<script src="app.js?v=6.50"></script>
 </body>
 </html>
